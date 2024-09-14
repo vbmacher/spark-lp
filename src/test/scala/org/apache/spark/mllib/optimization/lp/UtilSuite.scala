@@ -23,12 +23,10 @@ package org.apache.spark.mllib.optimization.lp
 
 import org.apache.spark.mllib.linalg.Vectors
 import org.apache.spark.mllib.util.TestingUtils._
+import breeze.linalg.{DenseMatrix => BDM}
+import org.scalatest.funsuite.AnyFunSuite
 
-import org.scalatest.FunSuite
-
-import breeze.linalg.{ DenseMatrix => BDM }
-
-class UtilSuite extends FunSuite {
+class UtilSuite extends AnyFunSuite {
 
   test(" toUpperTriangularArray is implemented properly") {
     val A: BDM[Double] = new BDM[Double](3, 3,

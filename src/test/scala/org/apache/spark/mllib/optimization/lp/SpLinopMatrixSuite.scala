@@ -21,15 +21,13 @@
 
 package org.apache.spark.mllib.optimization.lp
 
-import org.scalatest.FunSuite
-
-import org.apache.spark.mllib.linalg.{ DenseVector, Vectors }
-import org.apache.spark.mllib.util.MLlibTestSparkContext
-import org.apache.spark.mllib.optimization.lp.vs.dvector.DVectorSpace
+import org.apache.spark.mllib.linalg.{DenseVector, Vectors}
 import org.apache.spark.mllib.optimization.lp.VectorSpace._
 import org.apache.spark.mllib.optimization.lp.fs.dvector.dmatrix._
+import org.apache.spark.mllib.util.MLlibTestSparkContext
+import org.scalatest.funsuite.AnyFunSuite
 
-class SpLinopMatrixSuite extends FunSuite with MLlibTestSparkContext {
+class SpLinopMatrixSuite extends AnyFunSuite with MLlibTestSparkContext {
 
   test("SpLinopMatrix.apply is implemented properly") {
 

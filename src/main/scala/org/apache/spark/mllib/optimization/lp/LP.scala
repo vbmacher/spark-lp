@@ -22,7 +22,8 @@
 package org.apache.spark.mllib.optimization.lp
 
 import breeze.linalg.{DenseVector => BDV}
-import org.apache.spark.{Logging, SparkContext}
+import com.typesafe.scalalogging.LazyLogging
+import org.apache.spark.SparkContext
 import org.apache.spark.mllib.linalg.{DenseVector, Vector}
 import org.apache.spark.mllib.linalg.CholeskyDecomposition
 import org.apache.spark.mllib.optimization.lp.fs.dvector.vector.LinopMatrixAdjoint
@@ -34,9 +35,9 @@ import org.apache.spark.mllib.optimization.lp.fs.dvector.dmatrix.SpLinopMatrix
 /**
   * An abstract class for solving LP.
   *
-  * @param c the objective coefficient DVector.
+  * @param c    the objective coefficient DVector.
   * @param rows the constraint DMatrix.
-  * @param b the constraint values.
+  * @param b    the constraint values.
   */
 abstract class LP(val c: DVector, val rows: DMatrix, val b: DenseVector) extends Serializable {
 
@@ -48,7 +49,14 @@ abstract class LP(val c: DVector, val rows: DMatrix, val b: DenseVector) extends
             @transient sc: SparkContext): (Double, DVector)
 }
 
-object LP extends Logging {
+object LP extends LazyLogging {
+
+  implicit class DenseVectorOps(dv: DenseVector) {
+
+    def toBreeze(): BDV[Double] = {
+      new BDV[Double](dv.values)
+    }
+  }
 
   /**
     * Compute the optimal value and the corresponding vector for LP problem.
@@ -56,14 +64,15 @@ object LP extends Logging {
     * minimize c^Tx
     * subject to Ax=b and x >= 0
     *
-    * @param c the objective coefficient DVector.
-    * @param rows the constraint DMatrix.
-    * @param b the constraint values.
-    * @param tol convergence tolerance.
+    *
+    * @param c       the objective coefficient DVector.
+    * @param rows    the constraint DMatrix.
+    * @param b       the constraint values.
+    * @param tol     convergence tolerance.
     * @param maxIter maximum number of iterations if it did not converge.
-    * @param sc a SparkContext instance.
-    * @param row implicit for distributed computations.
-    * @param col implicit for local computations.
+    * @param sc      a SparkContext instance.
+    * @param row     implicit for distributed computations.
+    * @param col     implicit for local computations.
     * @return optimal value and the corresponding solution vector.
     */
   def solve(c: DVector,
@@ -72,8 +81,8 @@ object LP extends Logging {
             tol: Double = 1e-8,
             maxIter: Int = 50,
             @transient sc: SparkContext)(
-    implicit row: VectorSpace[DVector],
-    col: VectorSpace[DenseVector]): (Double, DVector) = {
+             implicit row: VectorSpace[DVector],
+             col: VectorSpace[DenseVector]): (Double, DVector) = {
 
     // cache distributed vector in memory
     row.cache(c)
@@ -133,7 +142,7 @@ object LP extends Logging {
 
       println(s"iteration $iter")
       // B^T * x - b
-      var rb: DenseVector = col.combine(1.0, dmatT(x), -1.0,  b)
+      var rb: DenseVector = col.combine(1.0, dmatT(x), -1.0, b)
       var rc: DVector = row.combine(1.0, dmat(lambdaBroadcast.value), 1.0, s.diff(c))
       row.cache(rc)
       //rc.localCheckpoint()
@@ -163,7 +172,7 @@ object LP extends Logging {
       val DB: DMatrix = (new SpLinopMatrix(D))(rows)
       val DBRowMat: LPRowMatrix = new LPRowMatrix(DB, n, m)
       // compute Gramian matrix B^TB
-      val BTD2B: BDV[Double] = DBRowMat.computeGramianMatrixColumn(m, depth=2)
+      val BTD2B: BDV[Double] = DBRowMat.computeGramianMatrixColumn(m, depth = 2)
       val BTD2rcx = dmatT(x.diff(row.entrywiseProd(D2, rc)))
       val dLambdaAffRightSide: Vector = col.combine(1.0, BTD2rcx, -1.0, rb)
       val upTriArray: Array[Double] = BTD2B.data
@@ -189,10 +198,10 @@ object LP extends Logging {
       // Solve (14.35) for (dx, dLambda, ds)
       // 1) BTD2B dLambda = -rb + BT * D2 *(-rc + s + X^(-1) dXAff dSAff e - sigma mu X^(-1)e)
       val xinv: DVector = x.mapElements {
-          case a if 0 < math.abs(a) && math.abs(a) < eps => math.signum(a) * cap
-          case a if a >= eps => math.pow(a, -1)
-          case _ => throw new IllegalArgumentException("Found zero element in X")
-        }
+        case a if 0 < math.abs(a) && math.abs(a) < eps => math.signum(a) * cap
+        case a if a >= eps => math.pow(a, -1)
+        case _ => throw new IllegalArgumentException("Found zero element in X")
+      }
       val xinvdXAffdsAff: DVector = row.entrywiseProd(xinv, row.entrywiseProd(dxAff, dsAff))
       val dLambdaRightSide: DenseVector = col.combine(
         -1.0,
@@ -247,7 +256,7 @@ object LP extends Logging {
       s = row.combine(1.0, s, alphaDualIter, ds)
       //s.checkpoint()
       s.localCheckpoint()
-      rb = col.combine(1.0, dmatT(x), -1.0,  b)
+      rb = col.combine(1.0, dmatT(x), -1.0, b)
       rc = row.combine(1.0, dmat(lambdaBroadcast.value), 1.0, s.diff(c))
       cTx = c.dot(x)
       val bTlambda = col.dot(b, lambdaBroadcast.value)

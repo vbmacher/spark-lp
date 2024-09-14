@@ -23,15 +23,10 @@
 
 package org.apache.spark.mllib.optimization.lp
 
-import breeze.linalg.{DenseMatrix => BDM, DenseVector => BDV}
-
-import com.github.fommil.netlib.{BLAS => NetlibBLAS}
-import com.github.fommil.netlib.BLAS.{getInstance => NativeBLAS}
-
-import org.apache.spark.Logging
-import org.apache.spark.mllib.linalg.{BLAS, Matrices, Matrix}
+import breeze.linalg.{DenseVector => BDV}
+import com.typesafe.scalalogging.LazyLogging
+import org.apache.spark.mllib.linalg.BLAS
 import org.apache.spark.mllib.optimization.lp.VectorSpace._
-import com.github.fommil.netlib.LAPACK.{getInstance => lapack}
 import org.apache.spark.storage.StorageLevel
 
 /**
@@ -45,7 +40,7 @@ import org.apache.spark.storage.StorageLevel
   */
 class LPRowMatrix (val rows: DMatrix,
                    val nRows: Long,
-                   val nCols: Int) extends Serializable with Logging {
+                   val nCols: Int) extends Serializable with LazyLogging {
 
 
   if (rows.getStorageLevel == StorageLevel.NONE) {
@@ -84,7 +79,7 @@ class LPRowMatrix (val rows: DMatrix,
     }
     if (cols > 10000) {
       val memMB = (cols.toLong * cols) / 125000
-      logWarning(s"$cols columns will require at least $memMB megabytes of memory!")
+      logger.warn(s"$cols columns will require at least $memMB megabytes of memory!")
     }
   }
 }

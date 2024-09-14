@@ -21,16 +21,15 @@
 
 package org.apache.spark.mllib.optimization.lp
 
-import org.scalatest.FunSuite
-
 import org.apache.spark.mllib.linalg.{DenseVector, Vectors}
 import org.apache.spark.mllib.util.MLlibTestSparkContext
 import org.apache.spark.mllib.optimization.lp.DVectorFunctions._
 import org.apache.spark.mllib.util.TestingUtils._
 import org.apache.spark.mllib.optimization.lp.vs.dvector.DVectorSpace
 import org.apache.spark.mllib.optimization.lp.vs.vector.DenseVectorSpace
+import org.scalatest.funsuite.AnyFunSuite
 
-class VectorSpaceSuite extends FunSuite with MLlibTestSparkContext {
+class VectorSpaceSuite extends AnyFunSuite with MLlibTestSparkContext {
   // taken from first iteration
   test("DenseVectorSpace.combine is implemented properly") {
     val alpha = -1.0

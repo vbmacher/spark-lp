@@ -21,19 +21,17 @@
 
 package org.apache.spark.mllib.optimization.lp
 
-import org.scalatest.FunSuite
 
-import org.apache.spark.SparkContext
-import org.apache.spark.mllib.linalg.{DenseVector, Vector, Vectors}
-import org.apache.spark.mllib.util.MLlibTestSparkContext
-import org.apache.spark.mllib.util.TestingUtils._
+import breeze.linalg.{DenseMatrix => BDM, DenseVector => BDV, _}
+import org.apache.spark.mllib.linalg.{DenseVector, Vectors}
 import org.apache.spark.mllib.optimization.lp.VectorSpace._
 import org.apache.spark.mllib.optimization.lp.vs.dvector.DVectorSpace
 import org.apache.spark.mllib.optimization.lp.vs.vector.DenseVectorSpace
-import breeze.linalg.{DenseMatrix => BDM, DenseVector => BDV, _}
-import org.apache.spark.mllib.optimization.tfocs.VectorSpace.{DMatrix, DVector}
+import org.apache.spark.mllib.util.MLlibTestSparkContext
+import org.apache.spark.mllib.util.TestingUtils._
+import org.scalatest.funsuite.AnyFunSuite
 
-class InitializeSuite extends FunSuite with MLlibTestSparkContext {
+class InitializeSuite extends AnyFunSuite with MLlibTestSparkContext {
 
   val numPartitions = 2
   val cArray = Array(2.0, 1.5, 0.0, 0.0, 0.0, 0.0, 0.0)
@@ -48,12 +46,12 @@ class InitializeSuite extends FunSuite with MLlibTestSparkContext {
   val bArray = Array(120.0, 120.0, 120.0, 15.0, 15.0)
 
   lazy val c: DVector = sc.parallelize(cArray, numPartitions).glom.map(new DenseVector(_))
-  lazy val rows: DMatrix = sc.parallelize(BArray, numPartitions).map(Vectors.dense(_))
+  lazy val rows: DMatrix = sc.parallelize(BArray, numPartitions).map(Vectors.dense)
   lazy val b: DenseVector = new DenseVector(bArray)
 
   val cBrz = new BDV[Double](cArray)
   val BBrz = new BDM[Double](7, 5,
-    BArray.flatMap(x => x),
+    BArray.flatten,
     offset = 0,
     majorStride = 5,
     isTranspose = true)
@@ -68,14 +66,14 @@ class InitializeSuite extends FunSuite with MLlibTestSparkContext {
   val sTilda = cBrz - BBrz * lambdaTilda
   val deltax = Math.max(1.5 * max(xTilda), 0)
   val deltas = Math.max(1.5 * max(sTilda), 0)
-  val xHat = xTilda :+ deltax
-  val sHat = sTilda :+ deltas
+  val xHat = xTilda + deltax
+  val sHat = sTilda + deltas
   val deltaxHat: Double = 0.5 * (xHat.t * sHat) / sum(sHat)
   val deltasHat: Double = 0.5 * (xHat.t * sHat) / sum(xHat)
   // x = xHat + deltaxHat * e
-  val expectedx: BDV[Double] = xHat :+ deltaxHat
+  val expectedx: BDV[Double] = xHat + deltaxHat
   // val expectedLambda = lambdaTilda
-  val expecteds: BDV[Double] = sHat :+ deltasHat
+  val expecteds: BDV[Double] = sHat + deltasHat
 
 
   test("Initialize.init is implemented properly") {

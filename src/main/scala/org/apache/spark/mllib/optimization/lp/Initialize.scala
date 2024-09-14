@@ -22,14 +22,12 @@
 package org.apache.spark.mllib.optimization.lp
 
 import breeze.linalg.{DenseVector => BDV}
-
-import org.apache.spark.Logging
+import com.typesafe.scalalogging.LazyLogging
 import org.apache.spark.mllib.linalg.{DenseVector, Matrix}
 import org.apache.spark.mllib.optimization.lp.VectorSpace._
 import org.apache.spark.mllib.optimization.lp.fs.dvector.vector.LinopMatrixAdjoint
 import org.apache.spark.mllib.optimization.lp.fs.vector.dvector.LinopMatrix
 import org.apache.spark.mllib.optimization.lp.DVectorFunctions._
-import org.apache.spark.storage.StorageLevel
 
 /**
   * An abstract class for LP initialization.
@@ -38,7 +36,7 @@ abstract class Initialize extends Serializable {
   def init(c: DVector, rows: DMatrix, b: DenseVector): (DVector, DenseVector, DVector, Long, Int)
 }
 
-object Initialize extends Logging {
+object Initialize extends LazyLogging {
 
   /**
     * Compute the heuristic starting points.

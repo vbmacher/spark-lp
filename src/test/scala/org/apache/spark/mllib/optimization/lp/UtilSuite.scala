@@ -24,6 +24,7 @@ package org.apache.spark.mllib.optimization.lp
 import org.apache.spark.mllib.linalg.Vectors
 import org.apache.spark.mllib.util.TestingUtils._
 import breeze.linalg.{DenseMatrix => BDM}
+import com.github.vbmacher.spark_lp.Util
 import org.scalatest.funsuite.AnyFunSuite
 
 class UtilSuite extends AnyFunSuite {

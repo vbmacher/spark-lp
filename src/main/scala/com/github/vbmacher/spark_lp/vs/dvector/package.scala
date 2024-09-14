@@ -1,32 +1,13 @@
-/*
- * Licensed to the Apache Software Foundation (ASF) under one or more
- * contributor license agreements.  See the NOTICE file distributed with
- * this work for additional information regarding copyright ownership.
- * The ASF licenses this file to You under the Apache License, Version 2.0
- * (the "License"); you may not use this file except in compliance with
- * the License.  You may obtain a copy of the License at
- *
- *    http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
+package com.github.vbmacher.spark_lp.vs
 
-/**
-  * @author Aaron Staple, Ehsan Mohyedin Kermani: ehsanmo1367@gmail.com
-  */
-
-package org.apache.spark.mllib.optimization.lp.vs
-
-import org.apache.spark.mllib.linalg.{DenseVector, BLAS, Vector}
-import org.apache.spark.mllib.optimization.lp.DVectorFunctions._
-import org.apache.spark.mllib.optimization.lp.VectorSpace
-import org.apache.spark.mllib.optimization.lp.VectorSpace._
-import org.apache.spark.mllib.optimization.lp.vs.vector.DenseVectorSpace
+import com.github.vbmacher.spark_lp.DVectorFunctions._
+import com.github.vbmacher.spark_lp.VectorSpace
+import com.github.vbmacher.spark_lp.VectorSpace._
+import com.github.vbmacher.spark_lp.vs.vector.DenseVectorSpace
+import org.apache.spark.internal_access.BLAS
+import org.apache.spark.mllib.linalg.DenseVector
 import org.apache.spark.storage.StorageLevel
+
 
 package object dvector {
 
@@ -36,10 +17,9 @@ package object dvector {
     override def combine(alpha: Double, a: DVector, beta: Double, b: DVector): DVector =
       if (alpha == 1.0 && beta == 1.0) {
         a.zip(b).map {
-          case (aPart, bPart) => {
+          case (aPart, bPart) =>
             BLAS.axpy(1.0, aPart, bPart) // bPart += aPart
             bPart
-          }
         }
       } else {
         a.zip(b).map {
@@ -61,7 +41,7 @@ package object dvector {
     override def entrywiseNegDiv(a: DVector, b: DVector): DVector = {
       a.zip(b).map {
         case (aPart, bPart) =>
-            DenseVectorSpace.entrywiseNegDiv(aPart, bPart)
+          DenseVectorSpace.entrywiseNegDiv(aPart, bPart)
       }
     }
 

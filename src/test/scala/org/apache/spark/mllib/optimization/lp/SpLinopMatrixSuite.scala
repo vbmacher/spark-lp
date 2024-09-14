@@ -22,7 +22,8 @@
 package org.apache.spark.mllib.optimization.lp
 
 import org.apache.spark.mllib.linalg.{DenseVector, Vectors}
-import org.apache.spark.mllib.optimization.lp.VectorSpace._
+import com.github.vbmacher.spark_lp.VectorSpace._
+import com.github.vbmacher.spark_lp.fs.dvector.dmatrix.SpLinopMatrix
 import org.apache.spark.mllib.optimization.lp.fs.dvector.dmatrix._
 import org.apache.spark.mllib.util.MLlibTestSparkContext
 import org.scalatest.funsuite.AnyFunSuite

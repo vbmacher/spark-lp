@@ -21,16 +21,16 @@
 
 package org.apache.spark.mllib.optimization.lp.examples
 
+import com.github.vbmacher.spark_lp.LP
 import java.io.File
 
 import com.joptimizer.optimizers.LPStandardConverter
 import com.joptimizer.util.MPSParser
 
 import org.apache.spark.mllib.linalg.{DenseVector, Vector, Vectors}
-import org.apache.spark.mllib.optimization.lp.LP
-import org.apache.spark.mllib.optimization.lp.VectorSpace._
-import org.apache.spark.mllib.optimization.lp.vs.dvector.DVectorSpace
-import org.apache.spark.mllib.optimization.lp.vs.vector.DenseVectorSpace
+import com.github.vbmacher.spark_lp.VectorSpace._
+import com.github.vbmacher.spark_lp.vs.dvector.DVectorSpace
+import com.github.vbmacher.spark_lp.vs.vector.DenseVectorSpace
 import org.apache.spark.{SparkConf, SparkContext}
 
 /**

@@ -1,33 +1,13 @@
-/*
- * Licensed to the Apache Software Foundation (ASF) under one or more
- * contributor license agreements.  See the NOTICE file distributed with
- * this work for additional information regarding copyright ownership.
- * The ASF licenses this file to You under the Apache License, Version 2.0
- * (the "License"); you may not use this file except in compliance with
- * the License.  You may obtain a copy of the License at
- *
- *    http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
-
-/**
-  * @author Ehsan Mohyedin Kermani: ehsanmo1367@gmail.com
-  */
-
-package org.apache.spark.mllib.optimization.lp
+package com.github.vbmacher.spark_lp
 
 import breeze.linalg.{DenseVector => BDV}
+import com.github.vbmacher.spark_lp.VectorSpace._
+import com.github.vbmacher.spark_lp.fs.dmatrix.vector.LPRowMatrix
+import com.github.vbmacher.spark_lp.fs.dvector.vector.LinopMatrixAdjoint
+import com.github.vbmacher.spark_lp.fs.vector.dvector.LinopMatrix
 import com.typesafe.scalalogging.LazyLogging
 import org.apache.spark.mllib.linalg.{DenseVector, Matrix}
-import org.apache.spark.mllib.optimization.lp.VectorSpace._
-import org.apache.spark.mllib.optimization.lp.fs.dvector.vector.LinopMatrixAdjoint
-import org.apache.spark.mllib.optimization.lp.fs.vector.dvector.LinopMatrix
-import org.apache.spark.mllib.optimization.lp.DVectorFunctions._
+import DVectorFunctions._
 
 /**
   * An abstract class for LP initialization.
@@ -41,11 +21,11 @@ object Initialize extends LazyLogging {
   /**
     * Compute the heuristic starting points.
     *
-    * @param c the objective coefficient DVector.
+    * @param c    the objective coefficient DVector.
     * @param rows the constraint DMatrix.
-    * @param b the constraint values.
-    * @param row implicit for distributed computations.
-    * @param col implicit for local computations.
+    * @param b    the constraint values.
+    * @param row  implicit for distributed computations.
+    * @param col  implicit for local computations.
     * @return starting points (x, lambda, s) and the computed dimensions of rows DMatrix (n, m).
     */
   def init(c: DVector, rows: DMatrix, b: DenseVector)(
@@ -61,7 +41,7 @@ object Initialize extends LazyLogging {
     val m: Int = rows.first().size
     println(s"number of equations: $m")
     val B: LPRowMatrix = new LPRowMatrix(rows, n, m)
-    val BTB: BDV[Double] = B.computeGramianMatrixColumn(m, depth=2)
+    val BTB: BDV[Double] = B.computeGramianMatrixColumn(m, depth = 2)
     val BTBtoArrayToInv = BTB.toArray
     Util.posSymDefInv(BTBtoArrayToInv, m) // less space with managed side effect
     val BTBInv: Matrix = Util.triuToFull(BTBtoArrayToInv, m)

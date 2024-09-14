@@ -1,25 +1,4 @@
-/*
- * Licensed to the Apache Software Foundation (ASF) under one or more
- * contributor license agreements.  See the NOTICE file distributed with
- * this work for additional information regarding copyright ownership.
- * The ASF licenses this file to You under the Apache License, Version 2.0
- * (the "License"); you may not use this file except in compliance with
- * the License.  You may obtain a copy of the License at
- *
- *    http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
-
-/**
-  * @author Aaron Staple, Ehsan Mohyedin Kermani: ehsanmo1367@gmail.com
-  */
-
-package org.apache.spark.mllib.optimization.lp
+package com.github.vbmacher.spark_lp
 
 import org.apache.spark.mllib.linalg.{DenseVector, Vector}
 import org.apache.spark.rdd.RDD
@@ -96,7 +75,7 @@ trait VectorSpace[X] {
   def min(a: X): Double
 
   /**
-    * Cache a vector for for efficient access later.
+    * Cache a vector for efficient access later.
     *
     * @param a The vector to cache.
     */
@@ -113,7 +92,7 @@ object VectorSpace {
   type DVector = RDD[DenseVector]
 
   /**
-    * A distributed two dimensional matrix stored as an RDD of mllib.linalg Vectors, where each
+    * A distributed two-dimensional matrix stored as an RDD of mllib.linalg Vectors, where each
     * Vector represents a row of the matrix. The Vectors may be dense or sparse.
     *
     * NOTE In order to multiply the transpose of a DMatrix 'm' by a DVector 'v', m and v must be
@@ -124,5 +103,4 @@ object VectorSpace {
     * in its first partition and a single Vector containing three elements in its second partition.
     */
   type DMatrix = RDD[Vector]
-
 }

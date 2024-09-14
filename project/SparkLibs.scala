@@ -10,8 +10,7 @@ case class SparkLibs(
   lazy val sparkLibs: Seq[ModuleID] = Seq(
     "org.apache.spark" %% "spark-core" % sparkFull,
     "org.apache.spark" %% "spark-sql" % sparkFull,
-    "org.apache.spark" %% "spark-mllib" % sparkFull
-  ).flatMap(r => Seq(r % Test, r % Provided))
+    "org.apache.spark" %% "spark-mllib" % sparkFull)
 
   lazy val sparkTestingBaseLib = ("com.holdenkarau" %% "spark-testing-base" % sparkTestingBase excludeAll ExclusionRule(organization = "org.apache.zookeeper") exclude("log4j", "*")) % Test
 }

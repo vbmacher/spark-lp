@@ -21,11 +21,11 @@ lazy val `spark-lp` = project
             case PathList("META-INF", _*) => MergeStrategy.discard
             case _ => MergeStrategy.first
           },
-          libraryDependencies ++= spark.sparkLibs ++ Libs.scalaTestLibs ++ Seq(
+          libraryDependencies ++= spark.sparkLibs.flatMap(r => Seq(r % Test, r % Provided)) ++ Libs.scalaTestLibs ++ Seq(
             spark.sparkTestingBaseLib,
             Libs.netlib,
             Libs.scalaLogging,
-            Libs.log4jImpl),
+            Libs.log4jImpl % Test),
           Test / parallelExecution := false
         )
 

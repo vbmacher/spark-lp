@@ -1,14 +1,12 @@
 import SparkLibs._
 
+name := "spark-lp"
+organization := "com.github.vbmacher"
+version := "1.1-SNAPSHOT"
+licenses += "Apache-2.0" -> url("http://opensource.org/licenses/Apache-2.0")
 
-// https://github.com/sbt/sbt/issues/5849
-Global / lintUnusedKeysOnLoad := false
-
-ThisBuild / organization := "com.github.vbmacher"
-ThisBuild / version := "1.1-SNAPSHOT"
-ThisBuild / scalaVersion := "2.12.18"
-ThisBuild / name := "spark-lp"
-ThisBuild / autoAPIMappings := true
+scalaVersion := "2.12.18"
+autoAPIMappings := true
 
 lazy val emr = SPARK_3_5_0
 

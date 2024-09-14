@@ -8,7 +8,7 @@ licenses += "Apache-2.0" -> url("http://opensource.org/licenses/Apache-2.0")
 scalaVersion := "2.12.18"
 autoAPIMappings := true
 
-lazy val emr = SPARK_3_5_0
+lazy val spark = SPARK_3_5_0
 
 lazy val `spark-lp` = project
         .settings(
@@ -21,8 +21,8 @@ lazy val `spark-lp` = project
             case PathList("META-INF", _*) => MergeStrategy.discard
             case _ => MergeStrategy.first
           },
-          libraryDependencies ++= emr.sparkLibs ++ Libs.scalaTestLibs ++ Seq(
-            emr.sparkTestingBaseLib,
+          libraryDependencies ++= spark.sparkLibs ++ Libs.scalaTestLibs ++ Seq(
+            spark.sparkTestingBaseLib,
             Libs.netlib,
             Libs.scalaLogging,
             Libs.log4jImpl),
@@ -31,7 +31,7 @@ lazy val `spark-lp` = project
 
 lazy val examples = project
         .settings(
-          libraryDependencies ++= emr.sparkLibs ++ Seq(Libs.jOptimizer))
+          libraryDependencies ++= spark.sparkLibs ++ Seq(Libs.jOptimizer))
         .dependsOn(`spark-lp`)
 
 lazy val root = (project in file("."))

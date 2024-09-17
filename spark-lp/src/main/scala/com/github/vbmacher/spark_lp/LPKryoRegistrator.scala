@@ -3,7 +3,7 @@ package com.github.vbmacher.spark_lp
 import com.esotericsoftware.kryo.Kryo
 import com.github.vbmacher.spark_lp.fs.dmatrix.vector.LPRowMatrix
 import com.github.vbmacher.spark_lp.fs.dvector.dmatrix.SpLinopMatrix
-import com.github.vbmacher.spark_lp.fs.dvector.vector.LinopMatrixAdjoint
+import com.github.vbmacher.spark_lp.fs.dvector.vector.LinopMatrixSpark
 import com.github.vbmacher.spark_lp.fs.vector.dvector.LinopMatrix
 import org.apache.spark.serializer.KryoRegistrator
 
@@ -17,7 +17,7 @@ class LPKryoRegistrator extends KryoRegistrator {
     kryo.register(classOf[Initialize])
     kryo.register(classOf[LPRowMatrix])
     kryo.register(classOf[SpLinopMatrix])
-    kryo.register(classOf[LinopMatrixAdjoint])
+    kryo.register(classOf[LinopMatrixSpark])
     kryo.register(classOf[LinopMatrix])
   }
 }

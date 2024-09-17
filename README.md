@@ -9,8 +9,31 @@ Linear programming has the following standard form:
 	minimize c^T x 
 	subject to Ax=b and x >= 0
 
-where `c, b` are given vectors ((.)^T is the traspose operation), `A` is a given `m` by `n` matrix and `x` is the objective vector. We assume that in `A` the number of rows (equations) is
+where `c, b` are given vectors ((.)^T is the transpose operation), `A` is a given `m` by `n` matrix and `x` is the objective vector. We assume that in `A` the number of rows (equations) is
 at most equal to the number of columns (unknowns) (`m <= n`) and `A` has full row rank, thus `AA^T` is invertible.
+
+The Karush-Kuhn-Tucker (KKT) conditions are:
+
+    A^T * lambda + s = c   (Langrange gradient condition)
+                  Ax = b   (Feasibility condition)
+           X * S * e = 0   (Complementary condition)
+             (x, s) >= 0
+
+where `X = diag(x)`, `S = diag(s)` whence `e = (1, 1, ... , 1)^T`
+
+These conditions can be reformulated as a mapping `F`:
+
+    F(x, lambda, s) = [ A^T * lambda + s - c 
+                              A * x - b         = 0
+                              X * S * e      ]
+    (x, s) >= 0
+
+The predictor-corrector method then works by using Newton's method to obtain the affine scaling direction. The system becomes:
+
+    [ 0  A^T  I    [ delta(x_aff)           [ -r_c
+      A  0    0      delta(lambda_aff)   =    -r_b         ,  r_c = A^T * lambda + s - c,   r_b = Ax - b
+      S  0    X ]    delta(s_aff)      ]      -X * S * e ]
+
 
 ## Example
 

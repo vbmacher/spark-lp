@@ -13,6 +13,9 @@ object CholeskyDecomposition {
     * @return the solution array
     */
   def solve(A: Array[Double], bx: Array[Double]): Array[Double] = {
+    println(s"cholesky A: ${A.toList}")
+    println(s"cholesky bx: ${bx.toList}")
+
     ICholeskyDecomposition.solve(A, bx)
   }
 }

@@ -31,7 +31,7 @@ lazy val `spark-lp` = project
 
 lazy val examples = project
         .settings(
-          libraryDependencies ++= spark.sparkLibs ++ Seq(Libs.jOptimizer))
+          libraryDependencies ++= spark.sparkLibs ++ Seq(Libs.jOptimizer, Libs.netlib))
         .dependsOn(`spark-lp`)
 
 lazy val root = (project in file("."))

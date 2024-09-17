@@ -1,9 +1,11 @@
 package com.github.vbmacher.spark_lp
 
-import breeze.linalg.{DenseMatrix => BDM}
+import breeze.linalg.{svd, DenseMatrix => BDM}
 import com.github.fommil.netlib.LAPACK.{getInstance => lapack}
-import org.apache.spark.mllib.linalg.{Matrices, Matrix}
+import org.apache.spark.mllib.linalg.{Matrices, Matrix, Vectors}
 import org.netlib.util.intW
+import org.apache.spark.rdd.RDD
+import org.apache.spark.mllib.linalg.Vector
 
 private[spark_lp] object Util {
 
@@ -76,5 +78,28 @@ private[spark_lp] object Util {
     }
 
     Matrices.dense(n, n, G.data)
+  }
+
+  def matrixRank(matrix: Array[Array[Double]]): Int = {
+    val denseMatrix = BDM(matrix: _*)
+    val svd.SVD(_, s, _) = svd(denseMatrix)
+    s.toArray.count(_ > 1e-10) // Rank is the number of singular values greater than a threshold
+  }
+
+  def transpose(matrix: RDD[Vector]): RDD[Vector] = {
+    // Convert each vector (row) into an indexed sequence of tuples (colIndex, value)
+    val indexedRows = matrix.zipWithIndex.flatMap {
+      case (vector, rowIndex) => vector.toArray.zipWithIndex.map {
+        case (value, colIndex) => (colIndex, (rowIndex, value))
+      }
+    }
+
+    // Group by column index and sort by row index to form the transposed rows
+    val transposed = indexedRows.groupByKey().sortByKey().map {
+      case (colIndex, rowValues) =>
+        Vectors.dense(rowValues.toSeq.sortBy(_._1).map(_._2).toArray)
+    }
+
+    transposed
   }
 }

@@ -1,5 +1,6 @@
 package com.github.vbmacher.spark_lp
 
+import breeze.linalg.DenseMatrix
 import com.github.vbmacher.spark_lp.util.MLlibTestSparkContext
 import com.github.vbmacher.spark_lp.vs.dvector.DVectorSpace
 import com.github.vbmacher.spark_lp.vs.vector.DenseVectorSpace
@@ -36,5 +37,12 @@ class LPSuite extends AnyFunSuite with MLlibTestSparkContext {
     println(s"$xx")
     println("optimal min value: " + v)
     assert(xx ~== expectedSol absTol 1e-6, "LP.solve x should return the correct answer.")
+  }
+
+  test("transpose works") {
+    val result = Util.transpose(rows)
+    println(rows.collect().mkString(", "))
+    println(result.collect().mkString(", "))
+
   }
 }

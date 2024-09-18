@@ -1,7 +1,7 @@
 package com.github.vbmacher.spark_lp
 
 import breeze.linalg.{DenseMatrix => BDM, DenseVector => BDV, _}
-import com.github.vbmacher.spark_lp.VectorSpace._
+import com.github.vbmacher.spark_lp.vector_space.VectorSpace._
 import com.github.vbmacher.spark_lp.util.MLlibTestSparkContext
 import com.github.vbmacher.spark_lp.vs.dvector.DVectorSpace
 import com.github.vbmacher.spark_lp.vs.vector.DenseVectorSpace

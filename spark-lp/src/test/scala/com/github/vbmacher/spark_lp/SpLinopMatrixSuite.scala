@@ -1,6 +1,6 @@
 package com.github.vbmacher.spark_lp
 
-import com.github.vbmacher.spark_lp.VectorSpace._
+import com.github.vbmacher.spark_lp.vector_space.VectorSpace._
 import com.github.vbmacher.spark_lp.fs.dvector.dmatrix.SpLinopMatrix
 import com.github.vbmacher.spark_lp.util.MLlibTestSparkContext
 import org.apache.spark.mllib.linalg.{DenseVector, Vectors}

@@ -1,8 +1,7 @@
 package com.github.vbmacher.spark_lp
 
-import com.github.vbmacher.spark_lp.VectorSpace._
-import com.github.vbmacher.spark_lp.vs.dvector.DVectorSpace
-import com.github.vbmacher.spark_lp.vs.vector.DenseVectorSpace
+import com.github.vbmacher.spark_lp.dmatrix.DMatrix
+import com.github.vbmacher.spark_lp.dvector.DVector
 import com.joptimizer.optimizers.LPStandardConverter
 import com.joptimizer.util.MPSParser
 import org.apache.spark.mllib.linalg.{DenseVector, Vector, Vectors}
@@ -14,7 +13,7 @@ import java.io.File
   * This example reads a linear program in MPS format and solves it using LP.solve.
   *
   * The example can be executed as follows:
-  * sbt 'test:run-main org.apache.spark.mllib.optimization.lp.examples.TestMPSLinearProgramSolver <mps file>'
+  * sbt 'test:run-main com.github.vbmacher.spark_lp.TestMPSLinearProgramSolver <mps file>'
   */
 object TestMPSLinearProgramSolver {
 

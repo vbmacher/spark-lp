@@ -1,12 +1,12 @@
 package com.github.vbmacher.spark_lp
 
 import breeze.linalg.{DenseVector => BDV}
-import com.github.vbmacher.spark_lp.DVectorFunctions._
-import com.github.vbmacher.spark_lp.VectorSpace._
-import com.github.vbmacher.spark_lp.fs.dmatrix.vector.LPRowMatrix
-import com.github.vbmacher.spark_lp.fs.dvector.dmatrix.SpLinopMatrix
-import com.github.vbmacher.spark_lp.fs.dvector.vector.LinopMatrixSpark
-import com.github.vbmacher.spark_lp.fs.vector.dvector.LinopMatrix
+import com.github.vbmacher.spark_lp.dmatrix.DMatrix
+import com.github.vbmacher.spark_lp.dmatrix.implicits._
+import com.github.vbmacher.spark_lp.dvector.DVector
+import com.github.vbmacher.spark_lp.dvector.implicits._
+import com.github.vbmacher.spark_lp.vector_space.VectorSpace
+import com.github.vbmacher.spark_lp.vector_space.implicits._
 import com.typesafe.scalalogging.LazyLogging
 import org.apache.spark.SparkContext
 import org.apache.spark.internal_access.CholeskyDecomposition
@@ -52,8 +52,6 @@ object LP extends LazyLogging {
     * @param tol     convergence tolerance.
     * @param maxIter maximum number of iterations if it did not converge.
     * @param sc      a SparkContext instance.
-    * @param row     implicit for distributed computations.
-    * @param col     implicit for local computations.
     * @return optimal value and the corresponding solution vector.
     */
   def solve(c: DVector,
@@ -61,43 +59,42 @@ object LP extends LazyLogging {
     b: DenseVector,
     tol: Double = 1e-8,
     maxIter: Int = 50,
-    @transient sc: SparkContext)(
-    implicit row: VectorSpace[DVector],
-    col: VectorSpace[DenseVector]): (Double, DVector) = {
+    @transient sc: SparkContext): (Double, DVector) = {
+
+    val row = implicitly[VectorSpace[DVector]]
+    val col = implicitly[VectorSpace[DenseVector]]
 
     // cache distributed vector in memory
     row.cache(c)
 
     // run initialization
-    val initLocal = Initialize.initWithSlack(c, rows, b)
+    val init = Initialize.init(c, rows, b)
 
     // set initial x
-    var x: DVector = initLocal._1
+    var x: DVector = init.x
     row.cache(x)
 
     println("x = " + x.collect().mkString(","))
 
     // set initial lambda
-    var lambda: DenseVector = initLocal._2
+    var lambda: DenseVector = init.lambda
 
     // set initial lambda as broadcast variable
     var lambdaBroadcast = sc.broadcast(lambda)
 
     // set initial s
-    var s: DVector = initLocal._3
+    var s: DVector = init.s
     row.cache(s)
 
     println("s = " + s.collect().mkString(","))
 
     println()
 
-    val slack = initLocal._4
-
     // set number of unknown in lp
-    val n = initLocal._5
+    val n = init.rows
 
     // set number of equations in lp
-    val m = initLocal._6
+    val m = init.cols
 
     // duality gap parameter
     val mu: Double = x.dot(s) / n
@@ -108,12 +105,6 @@ object LP extends LazyLogging {
 
     // initial objective value
     var cTx: Double = Double.PositiveInfinity
-
-    // create LinonMatrix once (this is necessary to reduce the object creation overhead)
-    val dmat = new LinopMatrix(rows)
-
-    // create LinonMatrixAdjoin once
-    val dmatT = new LinopMatrixSpark(rows)
 
     // step size shrinkage value
     val etaIter = 0.999
@@ -135,10 +126,10 @@ object LP extends LazyLogging {
       //var rc: DVector = row.combine(1.0, dmat(lambdaBroadcast.value), 1.0, s.diff(c))
       
       // B^T * x - b
-      var rb: DenseVector = col.combine(1.0, dmatT(x), -1.0, b)
+      var rb: DenseVector = col.combine(1.0, rows.adjointProduct(x), -1.0, b)
 
       // B * lambda + s - c
-      var rc: DVector = row.combine(1.0, dmat(lambdaBroadcast.value), 1.0, s.diff(c))
+      var rc: DVector = row.combine(1.0, rows.product(lambdaBroadcast.value), 1.0, s.diff(c))
       row.cache(rc)
       //rc.localCheckpoint()
 
@@ -167,12 +158,11 @@ object LP extends LazyLogging {
       //D2.localCheckpoint()
       // solve (14.30) for (dxAff, dLambdaAff, dsAff)
       // 1) solve for BTD2B dLambdaAff = -rb + BT * (-D^2 * rc + x)
-      val DB: DMatrix = (new SpLinopMatrix(D))(rows)
-      val DBRowMat: LPRowMatrix = new LPRowMatrix(DB, n, m)
+      val DB: DMatrix = D.diagonalProduct(rows)
 
       // compute Gramian matrix B^TB
-      val BTD2B: BDV[Double] = DBRowMat.computeGramianMatrixColumn(m, depth = 2)
-      val BTD2rcx = dmatT(x.diff(row.entrywiseProd(D2, rc)))
+      val BTD2B: BDV[Double] = DB.gramianMatrix(m, depth = 2)
+      val BTD2rcx = rows.adjointProduct(x.diff(row.entrywiseProd(D2, rc)))
       val dLambdaAffRightSide: Vector = col.combine(1.0, BTD2rcx, -1.0, rb)
       val upTriArray: Array[Double] = BTD2B.data
       // capturing side effects:
@@ -186,7 +176,7 @@ object LP extends LazyLogging {
       CholeskyDecomposition.solve(upTriArrayCopy, dLambdaAffArray) // inplace dLambdaAffArray
       val dLambdaAff: DenseVector = new DenseVector(dLambdaAffArray)
       // 2) dsAff = -rc - B * dLambdaAff
-      val dsAff: DVector = row.combine(-1.0, rc, -1.0, dmat(dLambdaAff))
+      val dsAff: DVector = row.combine(-1.0, rc, -1.0, rows.product(dLambdaAff))
       // 3) dxAff = -x - D^2 * dsAff
       val dxAff: DVector = row.combine(-1.0, x, -1.0, row.entrywiseProd(D2, dsAff))
       // Calculate following Doubles alphaPriAff, alphaDualAff, muAff (14.32), (14.33)
@@ -197,6 +187,7 @@ object LP extends LazyLogging {
         val ns: DVector = row.combine(1.0, s, alphaDualAff, dsAff)
         row.dot(nx, ns) / n
       }
+
       val sigma: Double = math.pow(muAff / mu, 3) // heuristic
       println("sigma = " + sigma)
       // Solve (14.35) for (dx, dLambda, ds)
@@ -212,7 +203,7 @@ object LP extends LazyLogging {
         -1.0,
         rb,
         1.0,
-        dmatT(
+        rows.adjointProduct(
           row.entrywiseProd(D2,
             row.combine(
               1.0,
@@ -227,7 +218,7 @@ object LP extends LazyLogging {
       val dLambdaArray: Array[Double] = CholeskyDecomposition.solve(upTriArray, dLambdaRightSide.toArray)
       val dLambda: DenseVector = new DenseVector(dLambdaArray)
       // 2) ds = -rc - B * dLambda
-      val ds: DVector = row.combine(-1.0, rc, -1.0, dmat(dLambda))
+      val ds: DVector = row.combine(-1.0, rc, -1.0, rows.product(dLambda))
       // 3) dx = -D^2 dS e - x - S^(-1) dXAff dSAff e + sigma mu S^(-1) e
       val sinv: DVector = s.mapElements {
        // case a if math.abs(a) < eps => math.signum(a) * cap
@@ -262,8 +253,8 @@ object LP extends LazyLogging {
       s = row.combine(1.0, s, alphaDualIter, ds)
       //s.checkpoint()
       s.localCheckpoint()
-      rb = col.combine(1.0, dmatT(x), -1.0, b)
-      rc = row.combine(1.0, dmat(lambdaBroadcast.value), 1.0, s.diff(c))
+      rb = col.combine(1.0, rows.adjointProduct(x), -1.0, b)
+      rc = row.combine(1.0, rows.product(lambdaBroadcast.value), 1.0, s.diff(c))
       cTx = c.dot(x)
       val bTlambda = col.dot(b, lambdaBroadcast.value)
       val covg1 = math.sqrt(col.dot(rb, rb)) / (1 + math.sqrt(col.dot(b, b)))

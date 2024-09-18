@@ -1,36 +1,15 @@
 package com.github.vbmacher.spark_lp
 
-import com.github.vbmacher.spark_lp.VectorSpace.{DMatrix, DVector}
-import com.github.vbmacher.spark_lp.vs.dvector.DVectorSpace
-import com.github.vbmacher.spark_lp.vs.vector.DenseVectorSpace
-import org.apache.spark.internal_access.{BLAS, XORShiftRandom}
+import com.github.vbmacher.spark_lp.dmatrix.DMatrix
+import com.github.vbmacher.spark_lp.dvector.DVector
 import org.apache.spark.mllib.linalg.{DenseVector, Vectors}
-import org.apache.spark.mllib.random.RandomDataGenerator
 import org.apache.spark.{SparkConf, SparkContext}
-
-import scala.util.Random
-
-/**
-  * Helper class for generating sparse standard normal values.
-  *
-  * @param density The density of non-sparse values.
-  */
-private class SparseStandardNormalGenerator(density: Double) extends RandomDataGenerator[Double] {
-
-  private val random = XORShiftRandom()
-
-  override def nextValue(): Double = if (random.nextDouble < density) random.nextGaussian else 0.0
-
-  override def setSeed(seed: Long): Unit = random.setSeed(seed)
-
-  override def copy(): SparseStandardNormalGenerator = new SparseStandardNormalGenerator(density)
-}
 
 /**
   * This example generates a random linear programming problem and solves it using LP.solve
   *
   * The example can be executed as follows:
-  * sbt 'test:run-main org.apache.spark.mllib.optimization.lp.examples.TestLPSolver'
+  * sbt 'test:run-main com.github.vbmacher.spark_lp.TestLPSolver'
   */
 object TestLPSolver {
 

@@ -1,4 +1,4 @@
-package com.github.vbmacher.spark_lp.vector_space
+package com.github.vbmacher.spark_lp.linalg.vs
 
 import org.apache.spark.internal_access.BLAS
 import org.apache.spark.mllib.linalg.DenseVector
@@ -6,7 +6,7 @@ import org.apache.spark.mllib.linalg.DenseVector
 /**
   * Vector space operations for local computations
   */
-object LocalVectorSpace extends VectorSpace[DenseVector] {
+object DenseVectorSpace extends VectorSpace[DenseVector] {
 
   override def combine(alpha: Double,
     a: DenseVector,

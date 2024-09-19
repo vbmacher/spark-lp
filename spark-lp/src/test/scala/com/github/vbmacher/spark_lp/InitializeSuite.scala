@@ -1,12 +1,10 @@
 package com.github.vbmacher.spark_lp
 
 import breeze.linalg.{DenseMatrix => BDM, DenseVector => BDV, _}
-import com.github.vbmacher.spark_lp.vector_space.VectorSpace._
+import com.github.vbmacher.spark_lp.linalg.{DMatrix, DVector}
 import com.github.vbmacher.spark_lp.util.MLlibTestSparkContext
-import com.github.vbmacher.spark_lp.vs.dvector.DVectorSpace
-import com.github.vbmacher.spark_lp.vs.vector.DenseVectorSpace
-import org.apache.spark.mllib.linalg.{DenseVector, Vectors}
 import com.github.vbmacher.spark_lp.util.TestingUtils._
+import org.apache.spark.mllib.linalg.{DenseVector, Vectors}
 import org.scalatest.funsuite.AnyFunSuite
 
 class InitializeSuite extends AnyFunSuite with MLlibTestSparkContext {
@@ -62,11 +60,11 @@ class InitializeSuite extends AnyFunSuite with MLlibTestSparkContext {
 
     val result = Initialize.init(c, rows, b)
     //println(LP.solve(c, rows, b, 1e-4, 1).collect())
-    assert(Vectors.dense(expectedx.toArray) ~= Vectors.dense(result._1.flatMap(_.toArray).collect()) relTol 1e-6,
+    assert(Vectors.dense(expectedx.toArray) ~= Vectors.dense(result.x.flatMap(_.toArray).collect()) relTol 1e-6,
       "Initialize.init x0 is not computed correctly.")
-    assert(Vectors.dense(lambdaTilda.toArray) ~= Vectors.dense(result._2.toArray) relTol 1e-6,
+    assert(Vectors.dense(lambdaTilda.toArray) ~= Vectors.dense(result.lambda.toArray) relTol 1e-6,
       "Initialize.init lambda0 is not computed correctly.")
-    assert(Vectors.dense(expecteds.toArray) ~= Vectors.dense(result._3.flatMap(_.toArray).collect()) relTol 1e-6,
+    assert(Vectors.dense(expecteds.toArray) ~= Vectors.dense(result.s.flatMap(_.toArray).collect()) relTol 1e-6,
       "Initialize.init s0 should return the correct answer.")
   }
 }

@@ -1,9 +1,16 @@
 package com.github.vbmacher.spark_lp
 
-import org.apache.spark.mllib.linalg.Vector
+import org.apache.spark.mllib.linalg.{DenseVector, Vector}
 import org.apache.spark.rdd.RDD
 
-package object dmatrix {
+package object linalg {
+
+  /**
+    * A distributed one dimensional vector stored as an RDD of mllib.linalg DenseVectors, where each
+    * RDD partition contains a single DenseVector. This representation provides improved performance
+    * over RDD[Double], which requires that each element be unboxed during elementwise operations.
+    */
+  type DVector = RDD[DenseVector]
 
   /**
     * A distributed two-dimensional matrix stored as an RDD of mllib.linalg Vectors, where each

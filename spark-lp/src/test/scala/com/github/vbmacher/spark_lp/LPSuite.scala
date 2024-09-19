@@ -1,12 +1,8 @@
 package com.github.vbmacher.spark_lp
 
-import breeze.linalg.DenseMatrix
 import com.github.vbmacher.spark_lp.util.MLlibTestSparkContext
-import com.github.vbmacher.spark_lp.vs.dvector.DVectorSpace
-import com.github.vbmacher.spark_lp.vs.vector.DenseVectorSpace
-import org.apache.spark.mllib.linalg.{DenseVector, Vectors}
 import com.github.vbmacher.spark_lp.util.TestingUtils._
-import org.apache.spark.mllib.linalg
+import org.apache.spark.mllib.linalg.{DenseVector, Vectors}
 import org.apache.spark.rdd.RDD
 import org.scalatest.funsuite.AnyFunSuite
 
@@ -25,7 +21,7 @@ class LPSuite extends AnyFunSuite with MLlibTestSparkContext {
   val bArray: Array[Double] = Array(120.0, 120.0, 120.0, 15.0, 15.0)
 
   lazy val c: RDD[DenseVector] = sc.parallelize(cArray, numPartitions).glom.map(new DenseVector(_))
-  lazy val rows: RDD[linalg.Vector] = sc.parallelize(BArray, numPartitions).map(Vectors.dense)
+  lazy val rows: RDD[org.apache.spark.mllib.linalg.Vector] = sc.parallelize(BArray, numPartitions).map(Vectors.dense)
   lazy val b = new DenseVector(bArray)
 
   test("LP solve is implemented properly") {
@@ -37,12 +33,5 @@ class LPSuite extends AnyFunSuite with MLlibTestSparkContext {
     println(s"$xx")
     println("optimal min value: " + v)
     assert(xx ~== expectedSol absTol 1e-6, "LP.solve x should return the correct answer.")
-  }
-
-  test("transpose works") {
-    val result = Util.transpose(rows)
-    println(rows.collect().mkString(", "))
-    println(result.collect().mkString(", "))
-
   }
 }

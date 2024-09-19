@@ -1,7 +1,6 @@
 package com.github.vbmacher.spark_lp
 
-import com.github.vbmacher.spark_lp.dmatrix.DMatrix
-import com.github.vbmacher.spark_lp.dvector.DVector
+import com.github.vbmacher.spark_lp.linalg.{DMatrix, DVector}
 import com.joptimizer.optimizers.LPStandardConverter
 import com.joptimizer.util.MPSParser
 import org.apache.spark.mllib.linalg.{DenseVector, Vector, Vectors}

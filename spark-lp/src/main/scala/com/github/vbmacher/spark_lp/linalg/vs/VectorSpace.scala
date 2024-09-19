@@ -1,4 +1,4 @@
-package com.github.vbmacher.spark_lp.vector_space
+package com.github.vbmacher.spark_lp.linalg.vs
 
 /**
   * A vector space trait with support for computing linear combinations and inner products.
@@ -70,13 +70,6 @@ trait VectorSpace[X] {
     * @return The computed minimum value.
     */
   def min(a: X): Double
-
-  /**
-    * Cache a vector for efficient access later.
-    *
-    * @param a The vector to cache.
-    */
-  def cache(a: X): Unit = {}
 }
 
 object VectorSpace {

@@ -1,7 +1,7 @@
 package com.github.vbmacher.spark_lp
 
-import com.github.vbmacher.spark_lp.dmatrix.DMatrix
-import com.github.vbmacher.spark_lp.dvector.DVector
+import com.github.vbmacher.spark_lp.linalg.breeze_ops.matrixRank
+import com.github.vbmacher.spark_lp.linalg.{DMatrix, DVector}
 import org.apache.spark.mllib.linalg.{DenseVector, Vectors}
 import org.apache.spark.{SparkConf, SparkContext}
 
@@ -17,15 +17,7 @@ object TestLPSolver {
     val sparkConf = new SparkConf().setMaster("local[2]").setAppName("TestLPSolver")
     val sc = new SparkContext(sparkConf)
 
-
     sc.setLogLevel("ERROR")
-
-    // minimize cT x
-    //  Z = c1*x1 + c2*x2 + ... + cN*xN
-    //  c - coefficients
-    //  x - variables  <--- this I want
-    //
-    // subject to Ax <= b, x >= 0
 
     // For example, minimize function:
     // Z = 4*x1 + 3*x2
@@ -35,38 +27,31 @@ object TestLPSolver {
     // x1      ≤ 3
     // x1, x2  ≥ 0
 
-    // Transformed to inputs:
+    // Pulp gives:
+    // x1 = 0.0, x2 = 5.0
+    // Z = 15.0
 
-    // Vector c = [4, 3]
-    // Matrix A (for Ax <= b):
-    // A= [
-    //      -1, -1
-    //      1, 0
-    //    ]
-    // Because the rows should be linearly independent vectors!
 
-    // Vector b = [-5, 3]
 
-    // Answer:
-    // x1 = 4, x2 = 1
-    // Min value: Z = 3*4 + 5*1 = 12 + 5 = 17.
+    val cArray = Array(4.0, 3.0, 0.0, 0.0)
+//    val AArray = Array(
+//      Array(-1.0, 1.0),
+//      Array(-1.0, 0.0))
 
-    // Ax =b
-    // (-1) * x1 + (-1) * x2 = -3 - 2 = -5
-    // (1) * x1 + (0) * x2 = 3
-
-    val cArray = Array(4.0, 3.0)
     val AArray = Array(
       Array(-1.0, 1.0),
-      Array(-1.0, 0.0)
+      Array(-1.0, 0.0),
+      Array(1.0, 0.0),
+      Array(0.0, 1.0)
     )
+
     val bArray = Array(-5.0, 3.0)
 
-    val aRank = Util.matrixRank(AArray)
+    val aRank = matrixRank(AArray)
     println(s"Matrix A rank: " + aRank)
 
-    require(aRank == AArray.length, "Requirement failed: rank(A) = m")
-    require(AArray.length <= AArray(0).length, "Requirement failed: m <= n")
+//    require(aRank == AArray.length, s"Requirement failed: rank(A) = $aRank should equal to ${AArray.length}")
+//    require(AArray.length <= AArray(0).length, "Requirement failed: m <= n")
 
 
     val numPartitions = 2

@@ -1,26 +1,42 @@
-name := "spark-lp"
+import SparkLibs._
 
-version := "1.0-SNAPSHOT"
+// https://github.com/sbt/sbt/issues/5849
+Global / lintUnusedKeysOnLoad := false
 
-scalaVersion := "2.10.4"
+ThisBuild / name := "spark-lp"
+ThisBuild / organization := "com.github.ehsanmok"
+ThisBuild / version := "spark_3.5-1.0-SNAPSHOT"
 
-sparkVersion := "1.6.2"
-
-sparkComponents += "mllib"
+ThisBuild / scalaVersion := "2.12.18"
+ThisBuild / autoAPIMappings := true
 
 licenses += "Apache-2.0" -> url("http://opensource.org/licenses/Apache-2.0")
 
-libraryDependencies ++= Seq(
-  "com.joptimizer" % "joptimizer" % "3.4.0",
-  "org.scalatest" %% "scalatest" % "2.1.5" % Test
-)
+lazy val spark = SPARK_3_5_0
 
-parallelExecution in Test := false
+lazy val `spark-lp` = project
+        .settings(
+          scalacOptions ++= Seq("-target:jvm-1.8", "-Xlint:_", "-language:experimental.macros", "-feature"),
+          javacOptions ++= Seq("-source", "1.8", "-target", "1.8", "-Xlint"),
+          javaOptions ++= Seq("-Xms4G", "-Xmx4G"),
+          fork := true,
+          assembly / assemblyMergeStrategy := {
+            case PathList("META-INF", "services", _*) => MergeStrategy.concat
+            case PathList("META-INF", _*) => MergeStrategy.discard
+            case _ => MergeStrategy.first
+          },
+          libraryDependencies ++= spark.sparkLibs.flatMap(r => Seq(r % Test, r % Provided)) ++ Libs.scalaTestLibs ++ Seq(
+            spark.sparkTestingBaseLib,
+            Libs.netlib,
+            Libs.scalaLogging,
+            Libs.log4jImpl % Test),
+          Test / parallelExecution := false
+        )
 
-// META-INF discarding
-mergeStrategy in assembly <<= (mergeStrategy in assembly) { (old) =>
-   {
-    case PathList("META-INF", xs @ _*) => MergeStrategy.discard
-    case x => MergeStrategy.last
-   }
-}
+lazy val examples = project
+        .settings(
+          libraryDependencies ++= spark.sparkLibs ++ Seq(Libs.jOptimizer))
+        .dependsOn(`spark-lp`)
+
+lazy val root = (project in file("."))
+        .aggregate(`spark-lp`, examples)

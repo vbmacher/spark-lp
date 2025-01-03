@@ -7,7 +7,7 @@ object Libs {
 
   // Logging
   val scalaLogging = "com.typesafe.scala-logging" %% "scala-logging" % "3.9.5" exclude("log4j", "*")
-  val log4jImpl = "org.apache.logging.log4j" % "log4j-slf4j-impl" % "2.23.1"
+  val log4jImpl = "org.apache.logging.log4j" % "log4j-slf4j-impl" % "2.24.3"
 
   // Testing
   val scalaTestLibs: Seq[ModuleID] = Seq(

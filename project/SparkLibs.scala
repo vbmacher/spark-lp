@@ -1,11 +1,12 @@
 import sbt.*
 
+case class SparkAxis(idSuffix: String, directorySuffix: String) extends VirtualAxis.WeakAxis
 
 case class SparkLibs(
-                      sparkFull: String,
-                      sparkShort: String,
-                      sparkTestingBase: String,
-                    ) {
+  sparkFull: String,
+  sparkShort: String,
+  sparkTestingBase: String,
+) {
 
   lazy val sparkLibs: Seq[ModuleID] = Seq(
     "org.apache.spark" %% "spark-core" % sparkFull,
@@ -17,24 +18,15 @@ case class SparkLibs(
 
 object SparkLibs {
 
-  lazy val SPARK_3_3_0: SparkLibs = SparkLibs(
-    sparkFull = "3.3.0",
-    sparkShort = "3.3",
-    sparkTestingBase = "3.3.0_1.4.3")
+  lazy val sparkVersions: Seq[SparkLibs] = Seq("2.4.8", "3.0.2", "3.1.3", "3.2.4", "3.3.2", "3.4.2", "3.5.3")
+    .map(version => SparkLibs(
+      sparkFull = version,
+      sparkShort = version.split('.').take(2).mkString("."),
+      sparkTestingBase = s"${version}_2.0.1"
+    ))
 
-  lazy val SPARK_3_3_2: SparkLibs = SparkLibs(
-    sparkFull = "3.3.2",
-    sparkShort = "3.3",
-    sparkTestingBase = "3.3.2_1.4.3")
-
-  lazy val SPARK_3_4_1: SparkLibs = SparkLibs(
-    sparkFull = "3.4.1",
-    sparkShort = "3.4",
-    sparkTestingBase = "3.4.1_1.4.7")
-
-  lazy val SPARK_3_5_0: SparkLibs = SparkLibs(
-    sparkFull = "3.5.0",
-    sparkShort = "3.5",
-    sparkTestingBase = "3.5.0_1.4.7")
+  lazy val sparkAxes: Seq[(SparkLibs, SparkAxis)] = sparkVersions
+    .map(v => (v, SparkAxis(
+      idSuffix = "Spark_" + v.sparkShort.replace(".", "_"),
+      directorySuffix = "spark_" + v.sparkShort)))
 }
-

@@ -12,6 +12,13 @@ To use the library in your project, add the following dependency to your `build.
 libraryDependencies += "com.github.vbmacher" %% "spark-lp" % "x.y.z"
 ```
 
+On your cluster (or host where you run the example), install native LAPACK and BLAS libraries. For example, on Ubuntu, you can install them using the following command:
+
+```bash
+sudo apt-get install liblapack-dev libblas-dev
+```
+
+
 ## Usage
 
 Linear programming has the following standard form:
@@ -32,8 +39,11 @@ import org.apache.spark.mllib.optimization.lp.vs.dvector.DVectorSpace
 import org.apache.spark.mllib.optimization.lp.vs.vector.DenseVectorSpace
 import org.apache.spark.mllib.optimization.lp.LP
 
-val sparkConf = new SparkConf().setMaster("local[2]").setAppName("TestLPSolver")
-val sc = new SparkContext(sparkConf)
+implicit val spark: SparkSession = SparkSession.builder
+        .appName("ExampleRandomLP")
+        .master("local[2]")
+        .getOrCreate()
+
 val numPartitions = 2
 val cArray = Array(2.0, 1.5, 0.0, 0.0, 0.0, 0.0, 0.0)
 val BArray = Array(

@@ -4,17 +4,14 @@ import SparkLibs._
 Global / lintUnusedKeysOnLoad := false
 
 ThisBuild / name := "spark-lp"
-ThisBuild / organization := "com.github.ehsanmok"
-ThisBuild / version := "spark_3.5-1.0-SNAPSHOT"
+ThisBuild / organization := "com.github.vbmacher"
 
 ThisBuild / scalaVersion := "2.12.18"
 ThisBuild / autoAPIMappings := true
 
-licenses += "Apache-2.0" -> url("http://opensource.org/licenses/Apache-2.0")
+licenses += "Apache-2.0" -> url("https://opensource.org/license/apache-2-0")
 
-lazy val spark = SPARK_3_5_0
-
-lazy val `spark-lp` = project
+lazy val `spark-lp` = sparkAxes.foldLeft(projectMatrix
         .settings(
           scalacOptions ++= Seq("-target:jvm-1.8", "-Xlint:_", "-language:experimental.macros", "-feature"),
           javacOptions ++= Seq("-source", "1.8", "-target", "1.8", "-Xlint"),
@@ -25,18 +22,34 @@ lazy val `spark-lp` = project
             case PathList("META-INF", _*) => MergeStrategy.discard
             case _ => MergeStrategy.first
           },
-          libraryDependencies ++= spark.sparkLibs.flatMap(r => Seq(r % Test, r % Provided)) ++ Libs.scalaTestLibs ++ Seq(
-            spark.sparkTestingBaseLib,
+          libraryDependencies ++= Libs.scalaTestLibs ++ Seq(
             Libs.netlib,
             Libs.scalaLogging,
             Libs.log4jImpl % Test),
           Test / parallelExecution := false
-        )
+        )) {
 
-lazy val examples = project
-        .settings(
-          libraryDependencies ++= spark.sparkLibs ++ Seq(Libs.jOptimizer))
+  case (matrix, ax) =>
+    matrix.customRow(
+      autoScalaLibrary = true,
+      axisValues = Seq(ax._2, VirtualAxis.jvm),
+      _.settings(
+        libraryDependencies ++= ax._1.sparkLibs.flatMap(r => Seq(r % Test, r % Provided)) ++ Seq(ax._1.sparkTestingBaseLib),
+        name := "spark-lp",
+        version := {
+          val sparkVersion = ax._2.directorySuffix
+          s"${sparkVersion}_1.0-SNAPSHOT"
+        }
+      ))
+}
+
+lazy val examples = projectMatrix
         .dependsOn(`spark-lp`)
+        .settings(
+          name := "examples",
+          libraryDependencies += Libs.jOptimizer
+        )
+        .jvmPlatform(true)
 
 lazy val root = (project in file("."))
-        .aggregate(`spark-lp`, examples)
+        .aggregate(`spark-lp`.projectRefs ++ examples.projectRefs: _*)

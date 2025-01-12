@@ -5,7 +5,7 @@
 
 Originally, this project is a fork of Ehsan M. Kermani's project [spark-lp](https://github.com/ehsanmok/spark-lp), as part of his thesis [Distributed linear programming with Apache Spark](https://open.library.ubc.ca/cIRcle/collections/ubctheses/24/items/1.0340337). The project was developed using Spark 1.6.0 and Scala 2.10.6.
 
-It is a library for solving large-scale [linear programming](https://en.wikipedia.org/wiki/Linear_programming) problems using Apache Spark, implementation of [Mehrohra's predictor-corrector interior point algorithm](https://en.wikipedia.org/wiki/Mehrotra_predictor%E2%80%93corrector_method). 
+It is a library for solving large-scale [linear programming](https://en.wikipedia.org/wiki/Linear_programming) problems using Apache Spark, implementation of [Mehrotra's predictor-corrector interior point algorithm](https://en.wikipedia.org/wiki/Mehrotra_predictor%E2%80%93corrector_method). 
 
 It is built for multiple Apache Spark versions, and it is published to Maven Central.
 
@@ -88,3 +88,21 @@ Detailed descriptions of our design is described in chapter 4 of the [thesis](ht
 * Add infeasibility detection.
 * Extend to QP solver.
 * Add GPU support, as described in page 47 [here](https://open.library.ubc.ca/cIRcle/collections/ubctheses/24/items/1.0340337), using INDArray provided in [ND4J](http://nd4j.org/) library.
+
+
+## For Developers / Maintainers
+
+In order to publish a new version of the library to Maven Central, you need to have a GPG key and a Sonatype account.
+Open SBT shell, and type:
+
+```
+> sonatypePrepare
+...
+2025-01-12 11:33:22.201+0100  info [SonatypeClient] Creating a staging repository in profile com.github.vbmacher with a description key: [sbt-sonatype] root 0.1.0-SNAPSHOT  - (SonatypeClient.scala:135)
+2025-01-12 11:33:33.563+0100  info [SonatypeClient] Created successfully: comgithubvbmacher-1027  - (SonatypeClient.scala:148)
+
+> publishSigned
+...
+```
+
+Then, log in to Nexus Repository, click on "Close" the staging repository, and promote the release to central.

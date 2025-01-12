@@ -1,8 +1,13 @@
 # spark-lp
 
-This is a fork of Ehsan M. Kermani's project [spark-lp](https://github.com/ehsanmok/spark-lp). It is a library for solving large-scale [linear programming](https://en.wikipedia.org/wiki/Linear_programming) problems using Apache Spark, implementation of [Mehrohra's predictor-corrector interior point algorithm](https://en.wikipedia.org/wiki/Mehrotra_predictor%E2%80%93corrector_method). The original project was developed as part of Ehsan's thesis [Distributed linear programming with Apache Spark](https://open.library.ubc.ca/cIRcle/collections/ubctheses/24/items/1.0340337).
+![Build Status](https://github.com/vbmacher/spark-lp/actions/workflows/scala.yml/badge.svg)
+[![License: Apache 2.0](https://img.shields.io/badge/license-Apache%202.0-blue)](https://opensource.org/license/apache-2-0)
 
-The original project was developed using Spark 1.6.0 and Scala 2.10.6. This fork updates the project to use multiple versions of Spark and Scala, and it is released to Maven Central.
+Originally, this project is a fork of Ehsan M. Kermani's project [spark-lp](https://github.com/ehsanmok/spark-lp), as part of his thesis [Distributed linear programming with Apache Spark](https://open.library.ubc.ca/cIRcle/collections/ubctheses/24/items/1.0340337). Original project was developed using Spark 1.6.0 and Scala 2.10.6.
+
+It is a library for solving large-scale [linear programming](https://en.wikipedia.org/wiki/Linear_programming) problems using Apache Spark, implementation of [Mehrohra's predictor-corrector interior point algorithm](https://en.wikipedia.org/wiki/Mehrotra_predictor%E2%80%93corrector_method). 
+
+It is built for multiple Apache Spark versions, and it is published to Maven Central.
 
 ## Installation
 
@@ -26,7 +31,7 @@ Linear programming has the following standard form:
 	minimize c^T x 
 	subject to Ax=b and x >= 0
 
-where `c, b` are given vectors ((.)^T is the traspose operation), `A` is a given `m` by `n` matrix and `x` is the objective vector. We assume that in `A` the number of rows (equations) is
+where `c, b` are given vectors ((.)^T is the transpose operation), `A` is a given `m` by `n` matrix and `x` is the objective vector. We assume that in `A` the number of rows (equations) is
 at most equal to the number of columns (unknowns) (`m <= n`) and `A` has full row rank, thus `AA^T` is invertible.
 
 The library provides a simple API to solve linear programming problems. The following example demonstrates how to use the library to solve a simple linear programming problem in parallel with 2 cores and 2 partitions:
@@ -46,7 +51,7 @@ implicit val spark: SparkSession = SparkSession.builder
 
 val numPartitions = 2
 val cArray = Array(2.0, 1.5, 0.0, 0.0, 0.0, 0.0, 0.0)
-val BArray = Array(
+val AArray = Array(
     Array(12.0, 16.0, 30.0, 1.0, 0.0),
     Array(24.0, 16.0, 12.0, 0.0, 1.0),
     Array(-1.0, 0.0, 0.0, 0.0, 0.0),
@@ -57,12 +62,12 @@ val BArray = Array(
 val bArray = Array(120.0, 120.0, 120.0, 15.0, 15.0)
 
 val c: DVector = sc.parallelize(cArray, numPartitions).glom.map(new DenseVector(_))
-val rows: DMatrix = sc.parallelize(BArray, numPartitions).map(Vectors.dense(_))
+val rows: DMatrix = sc.parallelize(AArray, numPartitions).map(Vectors.dense(_))
 val b: DenseVector = new DenseVector(bArray)
 
-val (v, x): (Double, DVector) = LP.solve(c, rows, b, sc=sc)
+val (v, x): (Double, DVector) = LP.solve(c, rows, b)
 val xx = Vectors.dense(x.flatMap(_.toArray).collect())
-println(s"optimial vector is $xx")
+println(s"optimal vector is $xx")
 println("optimal min value: " + v)
 ```
 

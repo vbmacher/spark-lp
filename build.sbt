@@ -45,11 +45,14 @@ lazy val `spark-lp` = sparkAxes.foldLeft(projectMatrix
 
 lazy val examples = projectMatrix
         .dependsOn(`spark-lp`)
-        .settings(
-          name := "examples",
-          libraryDependencies += Libs.jOptimizer
+        .customRow(
+          autoScalaLibrary = true,
+          axisValues = Seq(sparkAxes.last._2, VirtualAxis.jvm),
+          _.settings(
+            name := "examples",
+            libraryDependencies ++= Libs.jOptimizer+: sparkAxes.last._1.sparkLibs.map(_ % Provided),
+          )
         )
-        .jvmPlatform(true)
 
 lazy val root = (project in file("."))
         .aggregate(`spark-lp`.projectRefs ++ examples.projectRefs: _*)

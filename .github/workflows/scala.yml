@@ -1,4 +1,4 @@
-name: Spark-LP Build
+name: Build
 
 on:
   push:

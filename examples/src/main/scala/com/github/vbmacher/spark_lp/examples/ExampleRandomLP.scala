@@ -17,48 +17,45 @@ import scala.util.Random
   * The example can be executed as follows:
   * sbt 'test:run-main com.github.vbmacher.spark_lp.examples.ExampleRandomLP'
   */
-object ExampleRandomLP {
+object ExampleRandomLP extends App {
 
-  def main(args: Array[String]): Unit = {
+  implicit val spark: SparkSession = SparkSession.builder
+    .appName("ExampleRandomLP")
+    .master("local[2]")
+    .getOrCreate()
 
-    implicit val spark: SparkSession = SparkSession.builder
-      .appName("ExampleRandomLP")
-      .master("local[2]")
-      .getOrCreate()
+  val rnd = new Random(12345)
 
-    val rnd = new Random(12345)
+  val n = 1000 // Transpose constraint matrix row count.
+  val m = 100 // Transpose constraint matrix column count.
+  val numPartitions = 2
 
-    val n = 1000 // Transpose constraint matrix row count.
-    val m = 100 // Transpose constraint matrix column count.
-    val numPartitions = 2
+  // Generate the starting vector from uniform distribution U(3.0, 5.0)
+  println("generate x")
+  val x0 = RandomRDDs.uniformRDD(spark.sparkContext, n, numPartitions).map(v => 3.0 + 2.0 * v).glom.map(new DenseVector(_))
 
-    // Generate the starting vector from uniform distribution U(3.0, 5.0)
-    println("generate x")
-    val x0 = RandomRDDs.uniformRDD(spark.sparkContext, n, numPartitions).map(v => 3.0 + 2.0 * v).glom.map(new DenseVector(_))
+  // Generate the transpose constraint matrix 'A' using sparse uniformly generated values.
+  println("generate A")
+  val A: DMatrix = RandomVectorRDD(
+    n,
+    m,
+    numPartitions,
+    SparseGaussianGenerator(0.1),
+    rnd.nextLong)
 
-    // Generate the transpose constraint matrix 'A' using sparse uniformly generated values.
-    println("generate A")
-    val A: DMatrix = RandomVectorRDD(
-      n,
-      m,
-      numPartitions,
-      SparseGaussianGenerator(0.1),
-      rnd.nextLong)
+  // Generate the cost vector 'c' using uniformly generated values.
+  println("generate c")
+  val c = RandomRDDs.uniformRDD(spark.sparkContext, n, numPartitions, rnd.nextLong).glom.map(new DenseVector(_))
 
-    // Generate the cost vector 'c' using uniformly generated values.
-    println("generate c")
-    val c = RandomRDDs.uniformRDD(spark.sparkContext, n, numPartitions, rnd.nextLong).glom.map(new DenseVector(_))
+  // Compute 'b' using the starting 'x' vector.
+  println("generate b")
+  val b = A.adjointProduct(x0)
 
-    // Compute 'b' using the starting 'x' vector.
-    println("generate b")
-    val b = A.adjointProduct(x0)
+  // Solve the linear program using LP.solve, finding the optimal x vector 'optimalX'.
+  println("Start solving ...")
+  val (optimalVal, optimalX) = LP.solve(c, A, b)
+  println("optimalVal: " + optimalVal)
+  println("optimalX: " + optimalX.collect().mkString(", "))
 
-    // Solve the linear program using LP.solve, finding the optimal x vector 'optimalX'.
-    println("Start solving ...")
-    val (optimalVal, optimalX) = LP.solve(c, A, b)
-    println("optimalVal: " + optimalVal)
-    println("optimalX: " + optimalX.collect().mkString(", "))
-
-    spark.stop()
-  }
+  spark.stop()
 }

@@ -1,9 +1,9 @@
 package com.github.vbmacher.spark_lp.examples
 
+import com.github.vbmacher.spark_lp.LP
 import com.joptimizer.optimizers.LPStandardConverter
 import com.joptimizer.util.MPSParser
 import org.apache.spark.mllib.linalg.{DenseVector, Vector, Vectors}
-import org.apache.spark.mllib.optimization.lp.VectorSpace.{DMatrix, DVector}
 import org.apache.spark.sql.SparkSession
 
 import java.io.File
@@ -40,18 +40,18 @@ object ExampleMPS {
 
     // Convert the parameters of the linear program to spark lp compatible formats.
     val numPartitions = 2
-    val c: DVector = spark.sparkContext
+    val c = spark.sparkContext
       .parallelize(converter.getStandardC.toArray, numPartitions)
       .glom.map(new DenseVector(_))
 
-    val B: DMatrix = spark.sparkContext
+    val A = spark.sparkContext
       .parallelize(converter.getStandardA.toArray.transpose.map(Vectors.dense(_).toSparse: Vector), numPartitions)
 
     val b = new DenseVector(converter.getStandardB.toArray)
     println("Start solving ... ")
-    val (optimalVal, _) = LP.solve(c, B, b)
+    val (optimalVal, optimalX) = LP.solve(c, A, b)
     println("optimalVal: " + optimalVal)
-    //println("optimalX: " + optimalX.collectElements.mkString(", "))
+    println("optimalX: " + optimalX.collect().mkString(", "))
 
     spark.stop()
   }

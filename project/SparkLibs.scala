@@ -1,6 +1,6 @@
 import sbt.*
 
-case class SparkAxis(idSuffix: String, directorySuffix: String) extends VirtualAxis.WeakAxis
+case class SparkAxis(idSuffix: String, directorySuffix: String, sparkVersion: String) extends VirtualAxis.WeakAxis
 
 case class SparkLibs(
   sparkFull: String,
@@ -28,5 +28,7 @@ object SparkLibs {
   lazy val sparkAxes: Seq[(SparkLibs, SparkAxis)] = sparkVersions
     .map(v => (v, SparkAxis(
       idSuffix = "Spark_" + v.sparkShort.replace(".", "_"),
-      directorySuffix = "spark_" + v.sparkShort)))
+      directorySuffix = "spark_" + v.sparkShort,
+      sparkVersion = v.sparkFull
+    )))
 }

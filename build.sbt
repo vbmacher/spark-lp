@@ -5,11 +5,46 @@ Global / lintUnusedKeysOnLoad := false
 
 ThisBuild / name := "spark-lp"
 ThisBuild / organization := "com.github.vbmacher"
+ThisBuild / homepage := Some(url("https://github.com/vbmacher/spark-lp"))
+ThisBuild / versionScheme := Some("semver-spec")
 
-ThisBuild / scalaVersion := "2.12.18"
+// CHANGE VERSION HERE:
+lazy val productVersion = "1.0.0"
+ThisBuild / version := productVersion // needs to be defined at root, so isSnapshot setting is properly set
+
+lazy val scalaLibVersion = "2.12.18"
+ThisBuild / scalaVersion := scalaLibVersion
 ThisBuild / autoAPIMappings := true
 
-licenses += "Apache-2.0" -> url("https://opensource.org/license/apache-2-0")
+ThisBuild / description := "Library for solving large-scale linear programming using Apache Spark."
+ThisBuild / licenses += "Apache-2.0" -> url("https://opensource.org/license/apache-2-0")
+
+ThisBuild / scmInfo := Some(
+  ScmInfo(
+    url("https://github.com/vbmacher/spark-lp"),
+    "scm:git@github.com:vbmacher/spark-lp.git"))
+
+ThisBuild / developers := List(
+  Developer(
+    id = "vbmacher",
+    name = "Peter Jakubčo",
+    email = "pjakubco@gmail.com",
+    url = url("https://github.com/vbmacher")),
+
+  Developer(
+    id = "ehsanmok",
+    name = "Ehsan Mohyedin Kermani",
+    email = "ehsanmo1367@gmail.com",
+    url = url("https://github.com/ehsanmok")))
+
+ThisBuild / pomIncludeRepository := { _ => false }
+ThisBuild / sonatypeCredentialHost := "oss.sonatype.org"
+ThisBuild / sonatypeRepository := "https://oss.sonatype.org/service/local"
+ThisBuild / publishTo := sonatypePublishToBundle.value
+ThisBuild / publishMavenStyle := true
+
+credentials += Credentials(Path.userHome / ".sbt" / "sonatype.sbt")
+
 
 lazy val `spark-lp` = sparkAxes.foldLeft(projectMatrix
         .settings(
@@ -31,15 +66,15 @@ lazy val `spark-lp` = sparkAxes.foldLeft(projectMatrix
 
   case (matrix, ax) =>
     matrix.customRow(
-      autoScalaLibrary = true,
+      scalaVersions = Seq(scalaLibVersion),
       axisValues = Seq(ax._2, VirtualAxis.jvm),
       _.settings(
         libraryDependencies ++= ax._1.sparkLibs.flatMap(r => Seq(r % Test, r % Provided)) ++ Seq(ax._1.sparkTestingBaseLib),
         name := "spark-lp",
         version := {
-          val sparkVersion = ax._2.directorySuffix
-          s"${sparkVersion}_1.0-SNAPSHOT"
-        }
+          val sparkVersion = ax._2.sparkVersion
+          s"${sparkVersion}_$productVersion"
+        },
       ))
 }
 
@@ -51,8 +86,8 @@ lazy val examples = projectMatrix
           _.settings(
             name := "examples",
             libraryDependencies ++= Libs.jOptimizer +: sparkAxes.last._1.sparkLibs,
-          )
-        )
+            publishArtifact := false))
 
 lazy val root = (project in file("."))
         .aggregate(`spark-lp`.projectRefs ++ examples.projectRefs: _*)
+        .settings(publishArtifact := false)

@@ -1,11 +1,12 @@
 # spark-lp
 
 ![Build Status](https://github.com/vbmacher/spark-lp/actions/workflows/scala.yml/badge.svg)
+![Maven Central Version](https://img.shields.io/maven-central/v/com.github.vbmacher/spark-lp_2.12)
 [![License: Apache 2.0](https://img.shields.io/badge/license-Apache%202.0-blue)](https://opensource.org/license/apache-2-0)
 
 Originally, this project is a fork of Ehsan M. Kermani's project [spark-lp](https://github.com/ehsanmok/spark-lp), as part of his thesis [Distributed linear programming with Apache Spark](https://open.library.ubc.ca/cIRcle/collections/ubctheses/24/items/1.0340337). The project was developed using Spark 1.6.0 and Scala 2.10.6.
 
-It is a library for solving large-scale [linear programming](https://en.wikipedia.org/wiki/Linear_programming) problems using Apache Spark, implementation of [Mehrohra's predictor-corrector interior point algorithm](https://en.wikipedia.org/wiki/Mehrotra_predictor%E2%80%93corrector_method). 
+It is a library for solving large-scale [linear programming](https://en.wikipedia.org/wiki/Linear_programming) problems using Apache Spark, implementation of [Mehrotra's predictor-corrector interior point algorithm](https://en.wikipedia.org/wiki/Mehrotra_predictor%E2%80%93corrector_method). 
 
 It is built for multiple Apache Spark versions, and it is published to Maven Central.
 
@@ -14,15 +15,36 @@ It is built for multiple Apache Spark versions, and it is published to Maven Cen
 To use the library in your project, add the following dependency to your `build.sbt` file:
 
 ```scala
-libraryDependencies += "com.github.vbmacher" %% "spark-lp" % "x.y.z"
+libraryDependencies += "com.github.vbmacher" %% "spark-lp" % "[spark_version]_1.0.0"
 ```
 
-On your cluster (or host where you run the example), install native LAPACK and BLAS libraries. For example, on Ubuntu, you can install them using the following command:
+Where `[spark_version]` is the version of Apache Spark you are using. Look at Maven Central for supported versions.
+
+### Install LAPACK and BLAS libraries
+
+On your cluster (or host where you run the example), install native LAPACK and BLAS libraries.
+
+#### Linux 
 
 ```bash
+# Ubuntu
 sudo apt-get install liblapack-dev libblas-dev
+
+# Fedora
+sudo dnf install lapack blas
+
+# Arch
+sudo pacman -S lapack blas
 ```
 
+#### MacOS
+
+On MacOS, you can install them using Homebrew:
+
+```bash
+brew install openblas
+brew install lapack
+```
 
 ## Usage
 
@@ -88,3 +110,24 @@ Detailed descriptions of our design is described in chapter 4 of the [thesis](ht
 * Add infeasibility detection.
 * Extend to QP solver.
 * Add GPU support, as described in page 47 [here](https://open.library.ubc.ca/cIRcle/collections/ubctheses/24/items/1.0340337), using INDArray provided in [ND4J](http://nd4j.org/) library.
+
+
+## For Developers / Maintainers
+
+In order to publish a new version of the library to Maven Central, you need to have a GPG key and a Sonatype account.
+Open SBT shell, and type:
+
+```
+> publishSigned
+[info] Wrote /Users/vbmacher/projects/spark-lp/spark-lp/target/spark_3.4-jvm-2.12/spark-lp_2.12-3.4.2_1.0.0.pom
+[info] Wrote /Users/vbmacher/projects/spark-lp/spark-lp/target/spark_3.3-jvm-2.12/spark-lp_2.12-3.3.2_1.0.0.pom
+...
+
+> sonatypeBundleRelease
+2025-01-13 10:49:16.573+0100  info [SonatypeService] sbt-sonatype version: 3.11.2  - (SonatypeService.scala:25)
+2025-01-13 10:49:16.574+0100  info [SonatypeService] sonatypeRepository  : https://oss.sonatype.org/service/local  - (SonatypeService.scala:26)
+2025-01-13 10:49:16.574+0100  info [SonatypeService] sonatypeProfileName : com.github.vbmacher  - (SonatypeService.scala:27)
+...
+```
+
+Then, log in to Nexus Repository, click on "Close" the staging repository, and promote the release (click "Release") to Maven central.

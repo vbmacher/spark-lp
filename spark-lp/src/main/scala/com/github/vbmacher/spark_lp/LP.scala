@@ -41,7 +41,6 @@ object LP extends LazyLogging {
 
     // run initialization
     val init = Initialize.init(c, A, b)
-    logger.info(s"Initial solution: $init")
 
     var x = init.x
     x.cacheIfNoStorageLevel()
@@ -70,9 +69,6 @@ object LP extends LazyLogging {
     while (!converged && iter <= maxIter) {
       println("-----------------------------")
       println(s"iteration $iter")
-
-      //var rb: DenseVector = col.combine(1.0, dmatT(x), 1.0, dmatT(s), -1.0, b)
-      //var rc: DVector = row.combine(1.0, dmat(lambdaBroadcast.value), 1.0, s.diff(c))
 
       // A^T * x - b
       var rb = A.adjointProduct(x).combine(1.0, -1.0, b)
@@ -137,7 +133,7 @@ object LP extends LazyLogging {
       }
 
       val sigma = math.pow(muAff / mu, 3) // heuristic
-      println("sigma = " + sigma)
+      println(s"sigma = $sigma")
 
       // Solve (14.35) for (dx, dLambda, ds)
       // 1) A^T D2 A dLambda = -rb + A^T * D2 *(-rc + s + X^(-1) dXAff dSAff e - sigma mu X^(-1)e)

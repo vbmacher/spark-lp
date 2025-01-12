@@ -1,8 +1,10 @@
 package com.github.vbmacher.spark_lp.examples
 
-import com.github.vbmacher.spark_lp.{LP, SparseGaussianGenerator}
+import com.github.vbmacher.spark_lp.LP
+import com.github.vbmacher.spark_lp.random.SparseGaussianGenerator
+import com.github.vbmacher.spark_lp.vectors.DMatrix
+import com.github.vbmacher.spark_lp.vectors.dmatrix.implicits._
 import org.apache.spark.mllib.linalg.DenseVector
-import org.apache.spark.mllib.optimization.lp.fs.dvector.vector.LinopMatrixAdjoint
 import org.apache.spark.mllib.random.RandomRDDs
 import org.apache.spark.mllib.wrappers.RandomVectorRDD
 import org.apache.spark.sql.SparkSession
@@ -34,9 +36,9 @@ object ExampleRandomLP {
     println("generate x")
     val x0 = RandomRDDs.uniformRDD(spark.sparkContext, n, numPartitions).map(v => 3.0 + 2.0 * v).glom.map(new DenseVector(_))
 
-    // Generate the transpose constraint matrix 'B' using sparse uniformly generated values.
-    println("generate B")
-    val B = RandomVectorRDD(
+    // Generate the transpose constraint matrix 'A' using sparse uniformly generated values.
+    println("generate A")
+    val A: DMatrix = RandomVectorRDD(
       n,
       m,
       numPartitions,
@@ -49,13 +51,13 @@ object ExampleRandomLP {
 
     // Compute 'b' using the starting 'x' vector.
     println("generate b")
-    val b = (new LinopMatrixAdjoint(B))(x0)
+    val b = A.adjointProduct(x0)
 
     // Solve the linear program using LP.solve, finding the optimal x vector 'optimalX'.
     println("Start solving ...")
-    val (optimalVal, _) = LP.solve(c, B, b)
+    val (optimalVal, optimalX) = LP.solve(c, A, b)
     println("optimalVal: " + optimalVal)
-    //println("optimalX: " + optimalX.collectElements.mkString(", "))
+    println("optimalX: " + optimalX.collect().mkString(", "))
 
     spark.stop()
   }

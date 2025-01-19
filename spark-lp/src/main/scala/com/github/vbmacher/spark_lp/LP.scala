@@ -15,7 +15,7 @@ object LP extends LazyLogging {
     * Computes the optimal value and the corresponding vector for a LP problem.
     *
     * @param c         the objective coefficient DVector.
-    * @param A         the constraint DMatrix.
+    * @param AT        the constraint DMatrix (transposed).
     * @param b         the constraint values.
     * @param tolerance convergence tolerance.
     * @param maxIter   maximum number of iterations if it did not converge.
@@ -27,7 +27,7 @@ object LP extends LazyLogging {
     */
   def solve(
     c: DVector,
-    A: DMatrix,
+    AT: DMatrix,
     b: DenseVector,
     tolerance: Double = 1e-8,
     maxIter: Int = 50,
@@ -40,7 +40,7 @@ object LP extends LazyLogging {
     c.cacheIfNoStorageLevel()
 
     // run initialization
-    val init = Initialize.init(c, A, b)
+    val init = Initialize.init(c, AT, b)
 
     var x = init.x
     x.cacheIfNoStorageLevel()
@@ -67,14 +67,13 @@ object LP extends LazyLogging {
     var iter = 1
 
     while (!converged && iter <= maxIter) {
-      println("-----------------------------")
-      println(s"iteration $iter")
+      logger.info(s"LP iteration: $iter")
 
       // A^T * x - b
-      var rb = A.adjointProduct(x).combine(1.0, -1.0, b)
+      var rb = AT.adjointProduct(x).combine(1.0, -1.0, b)
 
       // A * lambda + s - c
-      var rc = A.product(lambdaBroadcast).combine(1.0, 1.0, s.diff(c))
+      var rc = AT.product(lambdaBroadcast).combine(1.0, 1.0, s.diff(c))
       rc.cacheIfNoStorageLevel()
 
       // D = X^(1/2) * S^(-1/2)
@@ -98,11 +97,11 @@ object LP extends LazyLogging {
 
       // solve (14.30) for (dxAff, dLambdaAff, dsAff)
       // 1) solve for A^T D2 A dLambdaAff = -rb + A^T * (-D^2 * rc + x)
-      val DA = D.diagonalProduct(A)
+      val DA = D.diagonalProduct(AT)
 
       // compute Gramian matrix A^T A
       val ATD2A = DA.gramianMatrix(equations)
-      val ATD2rcx = A.adjointProduct(x.diff(D2.entrywiseProd(rc)))
+      val ATD2rcx = AT.adjointProduct(x.diff(D2.entrywiseProd(rc)))
 
       val dLambdaAffRightSide = ATD2rcx.combine(1.0, -1.0, rb)
       val dLambdaAffArray = dLambdaAffRightSide.toArray
@@ -118,7 +117,7 @@ object LP extends LazyLogging {
       val dLambdaAffBroadcast = spark.sparkContext.broadcast(dLambdaAff)
 
       // 2) dsAff = -rc - A * dLambdaAff
-      val dsAff = rc.combine(-1.0, -1.0, A.product(dLambdaAffBroadcast))
+      val dsAff = rc.combine(-1.0, -1.0, AT.product(dLambdaAffBroadcast))
 
       // 3) dxAff = -x - D^2 * dsAff
       val dxAff = x.combine(-1.0, -1.0, D2.entrywiseProd(dsAff))
@@ -133,7 +132,7 @@ object LP extends LazyLogging {
       }
 
       val sigma = math.pow(muAff / mu, 3) // heuristic
-      println(s"sigma = $sigma")
+      logger.info(s"sigma = $sigma")
 
       // Solve (14.35) for (dx, dLambda, ds)
       // 1) A^T D2 A dLambda = -rb + A^T * D2 *(-rc + s + X^(-1) dXAff dSAff e - sigma mu X^(-1)e)
@@ -146,7 +145,7 @@ object LP extends LazyLogging {
       val xInvdXAffdsAff = xInv.entrywiseProd(dxAff.entrywiseProd(dsAff))
       val dLambdaRightSide = rb.combine(
         -1.0, 1.0,
-        A.adjointProduct(
+        AT.adjointProduct(
           D2.entrywiseProd(
             s.diff(rc)
               .combine(1.0, 1.0, xInvdXAffdsAff)
@@ -157,7 +156,7 @@ object LP extends LazyLogging {
       val dLambdaBroadcast = spark.sparkContext.broadcast(dLambda)
 
       // 2) ds = -rc - A * dLambda
-      val ds = rc.combine(-1.0, -1.0, A.product(dLambdaBroadcast))
+      val ds = rc.combine(-1.0, -1.0, AT.product(dLambdaBroadcast))
 
       // 3) dx = -D^2 dS e - x - S^(-1) dXAff dSAff e + sigma mu S^(-1) e
       val sInv = s.mapElements {
@@ -189,8 +188,8 @@ object LP extends LazyLogging {
       s = s.combine(1.0, alphaDualIter, ds)
       s.localCheckpoint()
 
-      rb = A.adjointProduct(x).combine(1.0, -1.0, b)
-      rc = A.product(lambdaBroadcast).combine(1.0, 1.0, s.diff(c))
+      rb = AT.adjointProduct(x).combine(1.0, -1.0, b)
+      rc = AT.product(lambdaBroadcast).combine(1.0, 1.0, s.diff(c))
       cTx = c.dot(x)
 
       val bTlambda = b.dot(lambdaBroadcast.value)
@@ -200,11 +199,12 @@ object LP extends LazyLogging {
 
       converged = (covg1 < tolerance) && (covg2 < tolerance) && (covg3 < tolerance)
 
-      println(s"1. convergence condition: $covg1")
-      println(s"2. convergence condition: $covg2")
-      println(s"3. convergence condition: $covg3")
-      println(s"cTx: $cTx")
-      println(s"b dot lambda: $bTlambda")
+      logger.info(s"\n1. convergence condition: $covg1" +
+        s"\n2. convergence condition: $covg2" +
+        s"\n3. convergence condition: $covg3" +
+        s"\nConverged = $converged\n" +
+        s"\ncTx: $cTx" +
+        s"\nb dot lambda: $bTlambda")
       iter += 1
     }
 

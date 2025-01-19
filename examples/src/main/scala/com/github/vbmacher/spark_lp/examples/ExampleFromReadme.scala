@@ -14,7 +14,7 @@ object ExampleFromReadme extends App {
 
   val numPartitions = 2
   val cArray = Array(2.0, 1.5, 0.0, 0.0, 0.0, 0.0, 0.0)
-  val AArray = Array(
+  val ATArray = Array(
     Array(12.0, 16.0, 30.0, 1.0, 0.0),
     Array(24.0, 16.0, 12.0, 0.0, 1.0),
     Array(-1.0, 0.0, 0.0, 0.0, 0.0),
@@ -25,7 +25,7 @@ object ExampleFromReadme extends App {
   val bArray = Array(120.0, 120.0, 120.0, 15.0, 15.0)
 
   val c = spark.sparkContext.parallelize(cArray, numPartitions).glom.map(new DenseVector(_))
-  val rows = spark.sparkContext.parallelize(AArray, numPartitions).map(Vectors.dense)
+  val rows = spark.sparkContext.parallelize(ATArray, numPartitions).map(Vectors.dense)
   val b = new DenseVector(bArray)
 
   val (v, x): (Double, DVector) = LP.solve(c, rows, b)

@@ -42,12 +42,12 @@ object ExampleMPS extends App {
     .parallelize(converter.getStandardC.toArray, numPartitions)
     .glom.map(new DenseVector(_))
 
-  val A = spark.sparkContext
+  val AT = spark.sparkContext
     .parallelize(converter.getStandardA.toArray.transpose.map(Vectors.dense(_).toSparse: Vector), numPartitions)
 
   val b = new DenseVector(converter.getStandardB.toArray)
   println("Start solving ... ")
-  val (optimalVal, optimalX) = LP.solve(c, A, b)
+  val (optimalVal, optimalX) = LP.solve(c, AT, b)
   println("optimalVal: " + optimalVal)
   println("optimalX: " + optimalX.collect().mkString(", "))
 

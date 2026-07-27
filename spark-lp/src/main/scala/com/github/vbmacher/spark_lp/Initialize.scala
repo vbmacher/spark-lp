@@ -49,8 +49,8 @@ object Initialize extends LazyLogging {
     // NOTE: BTBInv and BTBInv * b are local matrix and vector
     val xTilda = A.product(BTBInv.multiply(b))
 
-    // deltax = max(1.5 * xTilda.max(), 0)
-    val deltax: Double = math.max(1.5 * xTilda.maxValue, 0)
+    // deltax = max(-1.5 * xTilda.min(), 0)
+    val deltax: Double = math.max(-1.5 * xTilda.minValue, 0)
 
     // xHat = xTilda + deltax * e
     val xHat: DVector = xTilda.mapElements(a => a + deltax)
@@ -61,9 +61,8 @@ object Initialize extends LazyLogging {
     // sTilda = c - B * lambdaTilda
     val sTilda: DVector = c.diff(A.product(lambdaTilda))
 
-    // val deltas: Double = math.max(-1.5 * row.min(sTilda), 0) // TODO: check this
-    // deltas = max(1.5 * sTilda.max(), 0)
-    val deltas: Double = math.max(1.5 * sTilda.maxValue, 0)
+    // deltas = max(-1.5 * sTilda.min(), 0)
+    val deltas: Double = math.max(-1.5 * sTilda.minValue, 0)
 
     // sHat = sTilda + deltas * e
     val sHat: DVector = sTilda.mapElements(a => a + deltas)

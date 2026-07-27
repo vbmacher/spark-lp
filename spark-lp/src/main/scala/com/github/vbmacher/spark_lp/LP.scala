@@ -5,9 +5,12 @@ import com.github.vbmacher.spark_lp.vectors.dmatrix.implicits._
 import com.github.vbmacher.spark_lp.vectors.dvector.implicits._
 import com.github.vbmacher.spark_lp.vectors.{DMatrix, DVector}
 import com.typesafe.scalalogging.LazyLogging
+import org.apache.spark.broadcast.Broadcast
 import org.apache.spark.mllib.linalg.DenseVector
 import org.apache.spark.sql.SparkSession
 import org.apache.spark.wrappers.CholeskyDecomposition
+
+import scala.reflect.ClassTag
 
 object LP extends LazyLogging {
 
@@ -66,6 +69,9 @@ object LP extends LazyLogging {
     var converged = false
     var iter = 1
 
+    var dLambdaAffBroadcast: Broadcast[DenseVector] = null
+    var dLambdaBroadcast: Broadcast[DenseVector] = null
+
     while (!converged && iter <= maxIter) {
       logger.info(s"LP iteration: $iter")
 
@@ -114,10 +120,12 @@ object LP extends LazyLogging {
       //   x^T A x > 0    where x != 0
       CholeskyDecomposition.solve(upTriArrayCopy, dLambdaAffArray) // inplace dLambdaAffArray
       val dLambdaAff = new DenseVector(dLambdaAffArray)
-      val dLambdaAffBroadcast = spark.sparkContext.broadcast(dLambdaAff)
+      dLambdaAffBroadcast = rebroadcast(dLambdaAffBroadcast, dLambdaAff)
 
       // 2) dsAff = -rc - A * dLambdaAff
-      val dsAff = rc.combine(-1.0, -1.0, AT.product(dLambdaAffBroadcast))
+      val jj = AT.product(dLambdaAffBroadcast).cache()
+      jj.count()
+      val dsAff = rc.combine(-1.0, -1.0,jj)
 
       // 3) dxAff = -x - D^2 * dsAff
       val dxAff = x.combine(-1.0, -1.0, D2.entrywiseProd(dsAff))
@@ -153,10 +161,12 @@ object LP extends LazyLogging {
 
       val dLambdaArray = CholeskyDecomposition.solve(upTriArray, dLambdaRightSide.toArray)
       val dLambda = new DenseVector(dLambdaArray)
-      val dLambdaBroadcast = spark.sparkContext.broadcast(dLambda)
+      dLambdaBroadcast = rebroadcast(dLambdaBroadcast, dLambda)
 
       // 2) ds = -rc - A * dLambda
-      val ds = rc.combine(-1.0, -1.0, AT.product(dLambdaBroadcast))
+      val jj1 = AT.product(dLambdaBroadcast).cache()
+      jj1.count()
+      val ds = rc.combine(-1.0, -1.0, jj1)
 
       // 3) dx = -D^2 dS e - x - S^(-1) dXAff dSAff e + sigma mu S^(-1) e
       val sInv = s.mapElements {
@@ -182,22 +192,31 @@ object LP extends LazyLogging {
 
       // lambda = lambda + alphaDualIter * dLambda
       lambda = new DenseVector((lambdaBroadcast.value.toBreeze + alphaDualIter * dLambda.toBreeze).toArray)
-      lambdaBroadcast = spark.sparkContext.broadcast(lambda)
+      lambdaBroadcast = rebroadcast(lambdaBroadcast, lambda)
 
       // s = s + alphaDualIter * ds
       s = s.combine(1.0, alphaDualIter, ds)
       s.localCheckpoint()
 
       rb = AT.adjointProduct(x).combine(1.0, -1.0, b)
-      rc = AT.product(lambdaBroadcast).combine(1.0, 1.0, s.diff(c))
+      val previousRc = rc
+      rc = AT.product(lambdaBroadcast).combine(1.0, 1.0, s.diff(c)).cache()
+      rc.count()
       cTx = c.dot(x)
 
-      val bTlambda = b.dot(lambdaBroadcast.value)
+      previousRc.unpersist(blocking = false)
+      jj.unpersist(blocking = false)
+      jj1.unpersist(blocking = false)
+      D2.unpersist(blocking = false)
+
+      val bTlambda = b.dot(lambda)
       val covg1 = math.sqrt(rb.dot(rb)) / (1 + math.sqrt(b.dot(b)))
       val covg2 = math.sqrt(rc.dot(rc)) / (1 + math.sqrt(c.dot(c)))
       val covg3 = math.abs(cTx - bTlambda) / (1 + math.abs(bTlambda))
 
       converged = (covg1 < tolerance) && (covg2 < tolerance) && (covg3 < tolerance)
+
+      rc.unpersist(blocking = false)
 
       logger.info(s"\n1. convergence condition: $covg1" +
         s"\n2. convergence condition: $covg2" +
@@ -208,6 +227,15 @@ object LP extends LazyLogging {
       iter += 1
     }
 
+    if (dLambdaAffBroadcast != null) dLambdaAffBroadcast.unpersist(blocking = false)
+    if (dLambdaBroadcast != null) dLambdaBroadcast.unpersist(blocking = false)
+    lambdaBroadcast.unpersist(blocking = false)
+
     (cTx, x)
+  }
+
+  def rebroadcast[T: ClassTag](old: Broadcast[T], v: T)(implicit spark: SparkSession): Broadcast[T] = {
+    if (old != null) old.unpersist(blocking = false)
+    spark.sparkContext.broadcast(v)
   }
 }

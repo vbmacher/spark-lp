@@ -134,8 +134,9 @@ object dvector {
         if (alpha == 1.0 && beta == 1.0) {
           vector.zip(b).map {
             case (aPart, bPart) =>
-              BLAS.axpy(1.0, aPart, bPart) // bPart += aPart
-              bPart
+              val result = bPart.copy
+              BLAS.axpy(1.0, aPart, result)
+              result
           }
         } else {
           vector.zip(b).map {

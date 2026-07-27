@@ -89,11 +89,19 @@ object ExampleWhiskas extends App {
     .master("local[2]")
     .getOrCreate()
 
+
+  // Ingredient   Protein   Fat   Fibre   Salt
+  // Chicken        0.100   0.080  0.001  0.002
+  // Beef           0.200   0.100  0.005  0.005
+  // Mutton         0.150   0.110  0.003  0.007
+  // Rice           0.000   0.010  0.100  0.002
+  // Wheat          0.040   0.010  0.150  0.008
+  // Gel            0.000   0.000  0.000  0.000
   val numPartitions = 2
   val cArray = Array(0.013, 0.008, 0.0, 0.0, 0.0, 0.0) // 0.013*x1 + 0.008*x2
   val ATArray = Array(
-    Array(1.000, 0.100, 0.080, 0.001, 0.002),
-    Array(1.000, 0.200, 0.100, 0.005, 0.005),
+    Array(1.000, 0.100, 0.080, 0.001, 0.002), // chicken
+    Array(1.000, 0.200, 0.100, 0.005, 0.005), // beef
     Array(0.000, -1.000, 0.000, 0.000, 0.000),
     Array(0.000, 0.000, -1.000, 0.000, 0.000),
     Array(0.000, 0.000, 0.000, 1.000, 0.000),

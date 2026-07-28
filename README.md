@@ -129,6 +129,13 @@ solution.constraints.select("name", "activity", "sense", "rhs", "slack").show()
 See `examples/.../ExampleWhiskasDsl.scala` for the runnable version, and
 `docs/dataframe-dsl-design.md` for the full API and semantics.
 
+`solution.status` reports `Optimal`, `IterationLimit`, or one of the certificate-backed
+infeasibility statuses: `Infeasible` (a Farkas ray proves no feasible point exists),
+`Unbounded` (an unbounded ray plus a primal-feasible iterate; `objectiveValue` is the
+signed infinity matching the objective sense), or `InfeasibleOrUnbounded` (a dual
+certificate without a primal-feasible iterate — the two cases are indistinguishable).
+The acceptance threshold is `SolveConfig.infeasibilityTolerance` (default `1e-8`).
+
 **Scale limits are constraint-side, not variable-side.** The *variable* count is the distributed
 dimension and can be large. Constraint rows are driver-local: for `m` equality-form rows
 (user constraints + inequalities + upper-bound rows) the driver holds roughly `16*m*m` bytes of
@@ -149,7 +156,6 @@ Detailed descriptions of our design is described in chapter 4 of the [thesis](ht
 ## Future plans:
 
 * Add preprocessing to capture more general LP formats.
-* Add infeasibility detection.
 * Extend to QP solver.
 * Add GPU support, as described in page 47 [here](https://open.library.ubc.ca/cIRcle/collections/ubctheses/24/items/1.0340337), using INDArray provided in [ND4J](http://nd4j.org/) library.
 

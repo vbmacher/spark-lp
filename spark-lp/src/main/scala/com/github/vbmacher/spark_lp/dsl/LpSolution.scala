@@ -8,12 +8,21 @@ import org.apache.spark.sql.DataFrame
   *
   * An interior-point method returns values like `33.999999999`, not `34.0`; round at the point of
   * use — `values` does not round on the caller's behalf.
+  *
+  * At [[LpStatus.Infeasible]] and [[LpStatus.InfeasibleOrUnbounded]] the `objectiveValue` is `NaN`;
+  * at [[LpStatus.Unbounded]] it is the signed infinity of the objective sense (`-Infinity` for
+  * [[Minimize]], `+Infinity` for [[Maximize]]). `values(...)` and `constraints` keep exposing the
+  * last iterate for these statuses, as with [[LpStatus.IterationLimit]] — for
+  * [[LpStatus.Infeasible]] the `slack` column is exactly the tool to locate the conflicting
+  * constraints.
   */
 final class LpSolution private[dsl](
   val status: LpStatus,
 
   /** Objective value in the user's sense: solver optimum plus all constant terms (explicit
-    * expression constants and the bound-shift contributions), with the sign restored for Maximize. */
+    * expression constants and the bound-shift contributions), with the sign restored for Maximize.
+    * `NaN` at [[LpStatus.Infeasible]]/[[LpStatus.InfeasibleOrUnbounded]], signed infinity at
+    * [[LpStatus.Unbounded]]. */
   val objectiveValue: Double,
   val iterations: Int,
   val residuals: LpResiduals,
@@ -22,8 +31,10 @@ final class LpSolution private[dsl](
     * Per-constraint diagnostics: `name`, `group` (when present), `activity`, `sense`, `rhs`,
     * `slack` (the distance to the bound in the constraint's own direction: `rhs - activity` for
     * `<=`, `activity - rhs` for `>=`), `dual` (reserved, always NULL) and `note` (presolve notes).
-    * At [[LpStatus.IterationLimit]] the iterate need not be primal-feasible, so slack may be
-    * materially negative and equality rows may be violated; `residuals.primal` quantifies this.
+    * At [[LpStatus.IterationLimit]] and the infeasibility-related statuses the iterate need not be
+    * primal-feasible, so slack may be materially negative and equality rows may be violated;
+    * `residuals.primal` quantifies this, and at [[LpStatus.Infeasible]] the negative slacks locate
+    * the conflicting constraints.
     */
   val constraints: DataFrame,
   private val problem: LpProblem,

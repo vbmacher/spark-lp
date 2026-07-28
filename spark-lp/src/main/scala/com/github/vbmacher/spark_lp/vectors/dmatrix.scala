@@ -10,6 +10,53 @@ import org.apache.spark.storage.StorageLevel
 
 object dmatrix {
 
+  object functions extends LazyLogging  {
+    /**
+      * Computes the Gramian matrix `A^T A`. Note that this cannot be computed on matrices with more than 65535 columns.
+      *
+      * A Gramian matrix is a symmetric positive semi-definite matrix. It is symmetric because A^T A is symmetric,
+      * and positive semi-definite because for any vector x, the dot product x^T (A^T A) x = (Ax)^T (Ax) >= 0.
+      *
+      * It is positive definite if the columns of A are linearly independent.
+      *
+      * @param ncol  number of columns
+      * @param depth to control the depth in treeAggregate. Higher number, more stages in Spark - does not have impact on result.
+      */
+    def gramianMatrix(matrix: DMatrix, ncol: Int, depth: Int = 2): BDV[Double] = {
+
+      checkNumColumns(ncol)
+      // Computes n*(n+1)/2, avoiding overflow in the multiplication.
+      // This succeeds when n <= 65535, which is checked above
+      val nt =
+        if (ncol % 2 == 0) (ncol / 2) * (ncol + 1)
+        else ncol * ((ncol + 1) / 2)
+
+      // Compute the upper triangular part of the gram matrix.
+      val GU = matrix.treeAggregate(new BDV[Double](nt))(
+        seqOp = (U, v) => {
+          BLAS.spr(1.0, v, U.data)
+          //NativeBLAS.dspr("U", ncol, 1.0, v, 1, U) //symmetric rk 1 update included in BLAS netlib-java
+          U
+        }, combOp = (U1, U2) => U1 += U2, depth)
+      GU // column major == BLAS packed columnwise format
+    }
+
+    /**
+      * Check if the number of columns exceed 65535 to avoid Array overflow
+      *
+      * @param cols The number of columns
+      */
+    private def checkNumColumns(cols: Int): Unit = {
+      if (cols > 65535) {
+        throw new IllegalArgumentException(s"Argument with more than 65535 cols: $cols")
+      }
+      if (cols > 10000) {
+        val memMB = (cols.toLong * cols) / 125000
+        logger.warn(s"$cols columns will require at least $memMB megabytes of memory!")
+      }
+    }
+  }
+
   object implicits {
 
     implicit class DMatrixOps(matrix: DMatrix) extends LazyLogging {
@@ -52,22 +99,7 @@ object dmatrix {
         * @param depth to control the depth in treeAggregate. Higher number, more stages in Spark - does not have impact on result.
         */
       def gramianMatrix(ncol: Int, depth: Int = 2): BDV[Double] = {
-
-        checkNumColumns(ncol)
-        // Computes n*(n+1)/2, avoiding overflow in the multiplication.
-        // This succeeds when n <= 65535, which is checked above
-        val nt =
-          if (ncol % 2 == 0) (ncol / 2) * (ncol + 1)
-          else ncol * ((ncol + 1) / 2)
-
-        // Compute the upper triangular part of the gram matrix.
-        val GU = matrix.treeAggregate(new BDV[Double](nt))(
-          seqOp = (U, v) => {
-            BLAS.spr(1.0, v, U.data)
-            //NativeBLAS.dspr("U", ncol, 1.0, v, 1, U) //symmetric rk 1 update included in BLAS netlib-java
-            U
-          }, combOp = (U1, U2) => U1 += U2, depth)
-        GU // column major == BLAS packed columnwise format
+        functions.gramianMatrix(matrix, ncol, depth)
       }
 
       /**
@@ -115,8 +147,7 @@ object dmatrix {
             // Add the intermediate sum vectors.
             BLAS.axpy(1.0, sum2, sum1)
             sum1
-          }
-          , depth
+          }, depth
         )
       }
 
@@ -142,24 +173,8 @@ object dmatrix {
       def product(x: DenseVector): DVector = {
         // Take the dot product of each matrix row with x.
         // NOTE A DenseVector result is assumed here (not sparse safe).
-        val brX = matrix.sparkContext.broadcast(x)
         matrix.mapPartitions(partitionRows =>
-          Iterator.single(new DenseVector(partitionRows.map(row => BLAS.dot(row, brX.value)).toArray)))
-      }
-
-      /**
-        * Check if the number of columns exceed 65535 to avoid Array overflow
-        *
-        * @param cols The number of columns
-        */
-      private def checkNumColumns(cols: Int): Unit = {
-        if (cols > 65535) {
-          throw new IllegalArgumentException(s"Argument with more than 65535 cols: $cols")
-        }
-        if (cols > 10000) {
-          val memMB = (cols.toLong * cols) / 125000
-          logger.warn(s"$cols columns will require at least $memMB megabytes of memory!")
-        }
+          Iterator.single(new DenseVector(partitionRows.map(row => BLAS.dot(row, x)).toArray)))
       }
     }
   }

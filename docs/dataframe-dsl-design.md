@@ -23,9 +23,11 @@ This removes the need for callers to hand-build slack columns or to keep the pos
 ## Non-goals for the first release
 
 - Replacing the numerical solver or its `LP.solve(c, AT, b)` API.
-- Mixed-integer optimisation. The API reserves `category`, but only `Continuous` is accepted in the first release.
 - Claiming that arbitrary, infeasible, or rank-deficient LPs can be solved. Existing solver preconditions remain explicit.
 - Making a driver-sized right-hand-side vector disappear. The present solver uses a local `DenseVector` for `b`; the compiler must reject a model whose constraint rows cannot safely be collected on the driver.
+
+Mixed-integer optimisation is part of the DSL: `Integer` and `Binary` are ordinary variable
+categories and `solve()` chooses the appropriate internal solve path automatically.
 
 ## Public API
 
@@ -46,8 +48,8 @@ case object Maximize extends ObjectiveSense
 
 sealed trait VariableCategory
 case object Continuous extends VariableCategory
-case object Integer extends VariableCategory // reserved; rejected in v1
-case object Binary extends VariableCategory  // reserved; rejected in v1
+case object Integer extends VariableCategory // integral values within declared finite bounds
+case object Binary extends VariableCategory  // domain {0,1} ∩ declared bounds
 
 sealed trait LpStatus
 object LpStatus {
@@ -349,7 +351,7 @@ Validation happens during `solve`, after Spark has materialised the lightweight 
 - missing or duplicate RHS rows for a bulk constraint group, or a zero-term group row with a non-zero RHS;
 - `lowerBound > upperBound`;
 - a finite `upperBound` combined with `lowerBound = -inf` (rejected in v1: the free-variable split has no single shifted variable to bound; support for `x <= u` alone can be added later as `u - x >= 0`);
-- unsupported integer/binary categories;
+- an `Integer` variable without finite bounds, or integral bounds enclosing no integer;
 - an empty model (no constraints), which `Initialize.init` already rejects;
 - duplicate coefficient rows: merged when the RHS also matches, an `LpModelException` naming both constraints when it does not (see "Open decisions — resolved"); and
 - more than `maxLocalConstraints` expanded rows. General rank deficiency (beyond exact duplicates) is *not* validated up front: it surfaces when Cholesky fails and is reported as `LpNumericalException` naming the full-row-rank precondition.
@@ -360,6 +362,16 @@ Infeasibility and unboundedness are detected through Farkas certificates, never 
 - **Dual infeasibility** — a ray `z = x / |c^T x|` with `z >= 0`, `c^T z = -1`, and `‖A z‖_∞ / |c^T x| <= ε_inf` proves that the dual is infeasible, i.e. the primal is unbounded *if* it is feasible at all.
 
 `ε_inf` is `SolveConfig.infeasibilityTolerance` (default `1e-8`); setting it to a negative value disables detection. The DSL maps the solver's terminations to statuses as follows: a primal certificate is always `Infeasible`; a dual certificate is `Unbounded` when the final iterate is primal-feasible within `SolveConfig.tolerance` (a feasible point plus an unbounded ray is conclusive) and `InfeasibleOrUnbounded` otherwise, because a dual certificate alone genuinely cannot distinguish the two cases. `objectiveValue` is `NaN` at `Infeasible` and `InfeasibleOrUnbounded`, and the signed infinity matching the objective sense at `Unbounded` (`+inf` for `Maximize`, `-inf` for `Minimize`). The same certificate test runs on the last successful iterate before an `LpNumericalException` would be thrown — infeasible instances often degenerate the Cholesky step, and a certificate is a better answer than an exception — but when no certificate exists the exception is preserved unchanged: reclassifying a numerical failure without proof would be a false claim. A LIPSOL-style divergence backstop additionally stops runs whose residuals grow uncontrollably, reporting plain `IterationLimit` since divergence is a heuristic, not a certificate. Certificate rays are kept internal to the solver summary in v1; only statuses, residuals, and diagnostics are public. The specific pair `x === 1` and `x === 2` never reaches the solver at all — the two rows have identical coefficients, so exact-duplicate row hashing (see "Open decisions — resolved") catches them and fails with an `LpModelException` naming both constraints as inconsistent duplicates.
+
+## Integer and Binary variables
+
+`Integer` and `Binary` are ordinary variable categories. `model.solve()` honours their domains automatically; callers never select a solver or opt into a separate mode. Purely continuous models keep the unchanged single-solve path.
+
+Domains: a `Binary` variable ranges over `{0, 1}` intersected with its declared bounds (so `lowerBound = 1` pins it to `1`, and bounds excluding both `0` and `1` are rejected as holding no integral value). An `Integer` variable requires a finite `lowerBound` and an explicit finite `upperBound`; the declared range is tightened to the enclosed integral range (`ceil`/`floor`, absorbing floating-point fuzz within the solver tolerance), and an empty integral range is rejected at compile time.
+
+The compiler builds the relaxation once and keeps the discrete search internal. Candidate solves reuse the shared distributed cost vector and constraint matrix and differ only in the driver-local RHS. Per integral column the driver holds bounds, cost, and constraint-row coefficients, so the practical number of integral columns remains much smaller than the distributed LP dimension.
+
+Statuses stay truthful across the discrete search: a candidate is discarded as infeasible only on a Farkas certificate; `Optimal` is claimed only when every candidate is resolved and no better integral solution remains; `Unbounded` requires a dual-infeasibility certificate together with a primal-feasible integral iterate; `Infeasible` means every leaf was certificate-pruned (`InfeasibleOrUnbounded` when some candidate held only a dual certificate). Anything unresolved — the internal search limit, a candidate ending at `IterationLimit` with nothing left to branch on, or a numerical failure in a non-root candidate — degrades the result to `IterationLimit`, reporting the best integer-feasible incumbent found so far (with `NaN` objective when there is none). A numerical failure at the root propagates as `LpNumericalException`, matching the continuous path. Reported integer and binary values are exact integers, and `LpSolution.values` preserves the original domain join in the caller's units.
 
 ## Compilation contract
 

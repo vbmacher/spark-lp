@@ -1,10 +1,12 @@
 package com.github.vbmacher.spark_lp
 
+import com.github.vbmacher.spark_lp.dsl.LpNumericalException
 import com.github.vbmacher.spark_lp.vectors.dense_vector.implicits.DenseVectorOps
 import com.github.vbmacher.spark_lp.vectors.dmatrix.implicits._
 import com.github.vbmacher.spark_lp.vectors.dvector.implicits._
 import com.github.vbmacher.spark_lp.vectors.{DMatrix, DVector}
 import com.typesafe.scalalogging.LazyLogging
+import org.apache.spark.SparkException
 import org.apache.spark.broadcast.Broadcast
 import org.apache.spark.mllib.linalg.DenseVector
 import org.apache.spark.sql.SparkSession
@@ -13,6 +15,26 @@ import org.apache.spark.wrappers.CholeskyDecomposition
 import scala.reflect.ClassTag
 
 object LP extends LazyLogging {
+
+  /**
+    * Detailed result of one solver run.
+    *
+    * @param objectiveValue final objective value `c^T x` of the returned iterate.
+    * @param x              the returned (last) iterate; primal-feasible only if `converged` is true.
+    * @param iterations     the number of completed iterations.
+    * @param converged      whether all three convergence conditions were met within tolerance.
+    * @param primalResidual final `||A x - b|| / (1 + ||b||)`.
+    * @param dualResidual   final `||A^T lambda + s - c|| / (1 + ||c||)`.
+    * @param dualityGap     final `|c^T x - b^T lambda| / (1 + |b^T lambda|)`.
+    */
+  private[spark_lp] case class SolveSummary(
+    objectiveValue: Double,
+    x: DVector,
+    iterations: Int,
+    converged: Boolean,
+    primalResidual: Double,
+    dualResidual: Double,
+    dualityGap: Double)
 
   /**
     * Computes the optimal value and the corresponding vector for a LP problem.
@@ -38,12 +60,38 @@ object LP extends LazyLogging {
     valueCap: Double = 1e20,
     eps: Double = 1e-20
   )(implicit spark: SparkSession): (Double, DVector) = {
+    val summary = solveSummary(c, AT, b, tolerance, maxIter, etaIter, valueCap, eps)
+    (summary.objectiveValue, summary.x)
+  }
+
+  /**
+    * Solve variant that also reports the iteration count, the final convergence flag and the final
+    * residuals the solver computes each iteration. Numerical failures (a non-positive-definite
+    * Gramian during initialization or an iteration's Cholesky step, or a zero iterate element) are
+    * wrapped in [[com.github.vbmacher.spark_lp.dsl.LpNumericalException]] naming the phase and the
+    * count of completed iterations.
+    */
+  private[spark_lp] def solveSummary(
+    c: DVector,
+    AT: DMatrix,
+    b: DenseVector,
+    tolerance: Double = 1e-8,
+    maxIter: Int = 50,
+    etaIter: Double = 0.999,
+    valueCap: Double = 1e20,
+    eps: Double = 1e-20
+  )(implicit spark: SparkSession): SolveSummary = {
     val valueCapSquareRoot = math.sqrt(valueCap)
 
     c.cacheIfNoStorageLevel()
 
     // run initialization
-    val init = Initialize.init(c, AT, b)
+    val init =
+      try {
+        Initialize.init(c, AT, b)
+      } catch {
+        case e if isNumericalFailure(e) => throw numericalFailure("initialization", 0, e)
+      }
 
     var x = init.x
     x.cacheIfNoStorageLevel()
@@ -69,12 +117,17 @@ object LP extends LazyLogging {
     var converged = false
     var iter = 1
 
+    var primalResidual = Double.NaN
+    var dualResidual = Double.NaN
+    var dualityGap = Double.NaN
+
     var dLambdaAffBroadcast: Broadcast[DenseVector] = null
     var dLambdaBroadcast: Broadcast[DenseVector] = null
 
     while (!converged && iter <= maxIter) {
       logger.info(s"LP iteration: $iter")
 
+      try {
       // A^T * x - b
       var rb = AT.adjointProduct(x).combine(1.0, -1.0, b)
 
@@ -214,6 +267,10 @@ object LP extends LazyLogging {
       val covg2 = math.sqrt(rc.dot(rc)) / (1 + math.sqrt(c.dot(c)))
       val covg3 = math.abs(cTx - bTlambda) / (1 + math.abs(bTlambda))
 
+      primalResidual = covg1
+      dualResidual = covg2
+      dualityGap = covg3
+
       converged = (covg1 < tolerance) && (covg2 < tolerance) && (covg3 < tolerance)
 
       rc.unpersist(blocking = false)
@@ -224,6 +281,10 @@ object LP extends LazyLogging {
         s"\nConverged = $converged\n" +
         s"\ncTx: $cTx" +
         s"\nb dot lambda: $bTlambda")
+
+      } catch {
+        case e if isNumericalFailure(e) => throw numericalFailure(s"iteration $iter", iter - 1, e)
+      }
       iter += 1
     }
 
@@ -231,7 +292,33 @@ object LP extends LazyLogging {
     if (dLambdaBroadcast != null) dLambdaBroadcast.unpersist(blocking = false)
     lambdaBroadcast.unpersist(blocking = false)
 
-    (cTx, x)
+    SolveSummary(
+      objectiveValue = cTx,
+      x = x,
+      iterations = iter - 1,
+      converged = converged,
+      primalResidual = primalResidual,
+      dualResidual = dualResidual,
+      dualityGap = dualityGap)
+  }
+
+  /** Failure modes of the linear algebra underneath the solver, possibly wrapped by Spark. */
+  private def isNumericalFailure(e: Throwable): Boolean = e match {
+    case _: MatchError | _: IllegalArgumentException | _: IllegalStateException | _: AssertionError => true
+    case e: SparkException => e.getCause != null && isNumericalFailure(e.getCause)
+    case _ => false
+  }
+
+  private def numericalFailure(phase: String, completedIterations: Int, cause: Throwable): LpNumericalException = {
+    val detail = Option(cause.getMessage).getOrElse(cause.toString)
+    new LpNumericalException(
+      phase = phase,
+      completedIterations = completedIterations,
+      message = s"Numerical failure during $phase (completed iterations: $completedIterations): $detail. " +
+        "The solver requires a constraint matrix with full row rank (linearly independent constraint rows) " +
+        "and strictly interior iterates; a non-positive-definite Gramian or a zero iterate element " +
+        "indicates this precondition is violated.",
+      cause = cause)
   }
 
   def rebroadcast[T: ClassTag](old: Broadcast[T], v: T)(implicit spark: SparkSession): Broadcast[T] = {

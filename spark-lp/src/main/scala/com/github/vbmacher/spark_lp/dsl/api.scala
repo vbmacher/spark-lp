@@ -5,20 +5,32 @@ sealed trait ObjectiveSense
 case object Minimize extends ObjectiveSense
 case object Maximize extends ObjectiveSense
 
-/** Category of a decision variable. Only [[Continuous]] is accepted in this release. */
+/** Category of a decision variable. The solver honours every category selected by the model. */
 sealed trait VariableCategory
 case object Continuous extends VariableCategory
 
-/** Reserved; rejected in this release. */
+/**
+  * Integral decision variable. Its effective domain is the integral values within its declared
+  * finite bounds.
+  */
 case object Integer extends VariableCategory
 
-/** Reserved; rejected in this release. */
+/**
+  * `{0, 1}` decision variable, intersected with any declared bounds (e.g. `lowerBound = 1` pins
+  * the variable to 1).
+  */
 case object Binary extends VariableCategory
 
 /**
   * Truthful outcome of one solve. `Infeasible` and the two unboundedness-related members are
   * claimed only when a Farkas certificate backs them (see each member); everything else that did
   * not converge is reported as [[LpStatus.IterationLimit]].
+  *
+  * For models containing [[Integer]] or [[Binary]] variables, the same members retain their
+  * truthful meaning across the discrete search: [[LpStatus.Optimal]] requires every candidate
+  * subproblem to be resolved; [[LpStatus.Infeasible]] requires every leaf to be certificate-pruned;
+  * and an unresolved subproblem degrades the result to [[LpStatus.IterationLimit]], never to a
+  * stronger claim.
   */
 sealed trait LpStatus
 

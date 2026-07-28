@@ -36,7 +36,7 @@ class LpDslSolverSuite extends AnyFunSuite with DataFrameSuiteBase {
     val b = new DenseVector(bArray)
 
     val summary = LP.solveSummary(c, at, b)
-    assert(summary.converged)
+    assert(summary.termination == LP.Termination.Converged)
     assert(summary.iterations > 0 && summary.iterations <= 50)
     assert(summary.primalResidual < 1e-8)
     assert(summary.dualResidual < 1e-8)

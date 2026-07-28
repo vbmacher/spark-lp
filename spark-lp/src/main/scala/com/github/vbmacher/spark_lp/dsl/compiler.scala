@@ -129,7 +129,8 @@ private[dsl] final class LpCompiler(problem: LpProblem, config: SolveConfig) {
       maxIter = config.maxIterations,
       etaIter = config.etaIteration,
       valueCap = config.valueCap,
-      eps = config.epsilon)
+      eps = config.epsilon,
+      infeasibilityTolerance = config.infeasibilityTolerance)
     buildSolution(compiled, summary)
   }
 
@@ -813,8 +814,21 @@ private[dsl] final class LpCompiler(problem: LpProblem, config: SolveConfig) {
     }
     val constraintsDf = spark.createDataFrame(sc.parallelize(rows, 1), schema)
 
-    val status: LpStatus = if (summary.converged) LpStatus.Optimal else LpStatus.IterationLimit
-    val objectiveValue = compiled.senseMult * summary.objectiveValue + compiled.objConstant
+    val status: LpStatus = summary.termination match {
+      case LP.Termination.Converged => LpStatus.Optimal
+      case LP.Termination.IterationLimit => LpStatus.IterationLimit
+      case LP.Termination.PrimalInfeasible => LpStatus.Infeasible
+      case LP.Termination.DualInfeasible =>
+        // a dual-infeasibility ray proves unboundedness only together with a primal-feasible point
+        if (summary.primalResidual < config.tolerance) LpStatus.Unbounded
+        else LpStatus.InfeasibleOrUnbounded
+    }
+    val objectiveValue = status match {
+      case LpStatus.Infeasible | LpStatus.InfeasibleOrUnbounded => Double.NaN
+      // the solver minimizes, so an unbounded objective diverges to -inf in solver form
+      case LpStatus.Unbounded => compiled.senseMult * Double.NegativeInfinity
+      case _ => compiled.senseMult * summary.objectiveValue + compiled.objConstant
+    }
 
     new LpSolution(
       status = status,

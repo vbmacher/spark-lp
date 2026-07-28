@@ -93,6 +93,56 @@ println(s"optimal vector is $xx")
 println("optimal min value: " + v)
 ```
 
+## Modelling DSL for DataFrames and Datasets
+
+Instead of hand-crafting the standard-form matrix and slack variables, models can be written
+declaratively against Spark data with the `com.github.vbmacher.spark_lp.dsl` package
+(PuLP-style, with `<=`/`>=`/`===` constraints, named constraints, lower/upper bounds, free
+variables, maximization, and per-group bulk constraints via `lpSumBy`). The compiler introduces
+slack variables, validates the model, and reports a truthful status with residuals:
+
+```scala
+import com.github.vbmacher.spark_lp.dsl._
+import com.github.vbmacher.spark_lp.dsl.implicits._
+
+val ingredients = Seq(
+  ("chicken", 0.013, 0.100, 0.080, 0.001, 0.002),
+  ("beef",    0.008, 0.200, 0.100, 0.005, 0.005)
+).toDF("ingredient", "cost", "protein", "fat", "fibre", "salt")
+
+val model = LpProblem("Whiskas", Minimize)
+val amount = model.variables("amount", domain = ingredients, key = $"ingredient")
+
+model += lpSum(amount * $"cost")
+model += (lpSum(amount) === 100.0).named("total_weight")
+model += (lpSum(amount * $"protein") >= 8.0).named("protein_min")
+model += (lpSum(amount * $"fat")     >= 6.0).named("fat_min")
+model += (lpSum(amount * $"fibre")   <= 2.0).named("fibre_max")
+model += (lpSum(amount * $"salt")    <= 0.4).named("salt_max")
+
+val solution = model.solve()
+require(solution.status == LpStatus.Optimal)
+solution.values(amount).select("ingredient", "lp_value").show()
+solution.constraints.select("name", "activity", "sense", "rhs", "slack").show()
+```
+
+See `examples/.../ExampleWhiskasDsl.scala` for the runnable version, and
+`docs/dataframe-dsl-design.md` for the full API and semantics.
+
+`solution.status` reports `Optimal`, `IterationLimit`, or one of the certificate-backed
+infeasibility statuses: `Infeasible` (a Farkas ray proves no feasible point exists),
+`Unbounded` (an unbounded ray plus a primal-feasible iterate; `objectiveValue` is the
+signed infinity matching the objective sense), or `InfeasibleOrUnbounded` (a dual
+certificate without a primal-feasible iterate — the two cases are indistinguishable).
+The acceptance threshold is `SolveConfig.infeasibilityTolerance` (default `1e-8`).
+
+**Scale limits are constraint-side, not variable-side.** The *variable* count is the distributed
+dimension and can be large. Constraint rows are driver-local: for `m` equality-form rows
+(user constraints + inequalities + upper-bound rows) the driver holds roughly `16*m*m` bytes of
+Gramian-related allocations per solve plus an `O(m^3)` Cholesky factorization per iteration.
+The DSL therefore caps expanded rows at `SolveConfig.maxLocalConstraints` (default 5000, ~400 MB);
+raising it is an explicit, informed act.
+
 ## Software Architecture Overview
 
 Detailed descriptions of our design is described in chapter 4 of the [thesis](https://open.library.ubc.ca/cIRcle/collections/ubctheses/24/items/1.0340337).
@@ -105,9 +155,7 @@ Detailed descriptions of our design is described in chapter 4 of the [thesis](ht
 
 ## Future plans:
 
-* Implement a DSL for LP problems easily usable with DataFrames and DataSets.
 * Add preprocessing to capture more general LP formats.
-* Add infeasibility detection.
 * Extend to QP solver.
 * Add GPU support, as described in page 47 [here](https://open.library.ubc.ca/cIRcle/collections/ubctheses/24/items/1.0340337), using INDArray provided in [ND4J](http://nd4j.org/) library.
 

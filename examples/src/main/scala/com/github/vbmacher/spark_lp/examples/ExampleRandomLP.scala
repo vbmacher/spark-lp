@@ -36,7 +36,7 @@ object ExampleRandomLP extends App {
 
   // Generate the transpose constraint matrix 'A' using sparse uniformly generated values.
   println("generate A")
-  val A: DMatrix = RandomVectorRDD(
+  val AT: DMatrix = RandomVectorRDD(
     n,
     m,
     numPartitions,
@@ -49,11 +49,11 @@ object ExampleRandomLP extends App {
 
   // Compute 'b' using the starting 'x' vector.
   println("generate b")
-  val b = A.adjointProduct(x0)
+  val b = AT.adjointProduct(x0)
 
   // Solve the linear program using LP.solve, finding the optimal x vector 'optimalX'.
   println("Start solving ...")
-  val (optimalVal, optimalX) = LP.solve(c, A, b)
+  val (optimalVal, optimalX) = LP.solve(c, AT, b)
   println("optimalVal: " + optimalVal)
   println("optimalX: " + optimalX.collect().mkString(", "))
 

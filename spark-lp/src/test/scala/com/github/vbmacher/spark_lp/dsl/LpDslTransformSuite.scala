@@ -161,16 +161,4 @@ class LpDslTransformSuite extends AnyFunSuite with DataFrameSuiteBase {
     assert(failing(0.0, Some(Double.NaN)).getMessage.contains("upper bound"))
     assert(failing(0.0, Some(Double.PositiveInfinity)).getMessage.contains("upper bound"))
   }
-
-  test("Integer and Binary categories are rejected in this release") {
-    implicit val ss: SparkSession = spark
-    for (category <- Seq(Integer, Binary)) {
-      val model = LpProblem("cat", Minimize)
-      val x = model.variable("x", category = category)
-      model += lpSum(x)
-      model += (x >= 1.0).named("floor")
-      val e = intercept[LpModelException](model.solve())
-      assert(e.getMessage.contains("Continuous"))
-    }
-  }
 }

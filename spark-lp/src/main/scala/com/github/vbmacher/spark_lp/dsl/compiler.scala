@@ -44,7 +44,8 @@ private[dsl] object LpCompiler {
     val handle: VarSetHandle,
     val keys: RDD[(String, Seq[String])],
     val count: Long,
-    val kind: PlanKind) {
+    val kind: PlanKind,
+    val integral: Boolean) {
 
     var offset: Long = 0L
 
@@ -86,6 +87,23 @@ private[dsl] object LpCompiler {
     cost: Double,
     vector: MLVector)
 
+  /**
+    * Driver-local description of one integral (Integer/Binary) solver column, everything the
+    * discrete solver needs to retarget the equality-form RHS when the column's integral
+    * bounds are tightened. `rowCoeffs` maps emitted constraint-row indices to the column's
+    * coefficients; `boundRow` is the column's upper-bound row (`y + s = upper - lower`), which
+    * every integral column has by construction.
+    */
+  private[dsl] final case class IntColumn(
+    g: Long,
+    setIndex: Int,
+    enc: String,
+    rootLower: Double,
+    rootUpper: Double,
+    cost: Double,
+    boundRow: Int,
+    rowCoeffs: Map[Int, Double])
+
   /** Everything the solver call and the solution reconstruction need. */
   private[dsl] final class Compiled(
     val c: DVector,
@@ -98,7 +116,8 @@ private[dsl] object LpCompiler {
     val plans: IndexedSeq[SetPlan],
     val objConstant: Double,
     val senseMult: Double,
-    val userTermsAgg: RDD[((Int, String, Int), Double)])
+    val userTermsAgg: RDD[((Int, String, Int), Double)],
+    val intCols: IndexedSeq[IntColumn])
 }
 
 /**
@@ -121,17 +140,21 @@ private[dsl] final class LpCompiler(problem: LpProblem, config: SolveConfig) {
 
   def solve(): LpSolution = {
     val compiled = compile()
-    val summary = LP.solveSummary(
-      c = compiled.c,
-      AT = compiled.AT,
-      b = compiled.b,
-      tolerance = config.tolerance,
-      maxIter = config.maxIterations,
-      etaIter = config.etaIteration,
-      valueCap = config.valueCap,
-      eps = config.epsilon,
-      infeasibilityTolerance = config.infeasibilityTolerance)
-    buildSolution(compiled, summary)
+    if (compiled.intCols.isEmpty) {
+      val summary = LP.solveSummary(
+        c = compiled.c,
+        AT = compiled.AT,
+        b = compiled.b,
+        tolerance = config.tolerance,
+        maxIter = config.maxIterations,
+        etaIter = config.etaIteration,
+        valueCap = config.valueCap,
+        eps = config.epsilon,
+        infeasibilityTolerance = config.infeasibilityTolerance)
+      continuousSolution(compiled, summary)
+    } else {
+      new BranchAndBound(this, compiled, config).solve()
+    }
   }
 
   // -------------------------------------------------------------------------------------------
@@ -426,6 +449,42 @@ private[dsl] final class LpCompiler(problem: LpProblem, config: SolveConfig) {
     cVec.count()
     AT.count()
 
+    // --- driver-local layout of integral columns for the discrete solver
+    val intCols: IndexedSeq[IntColumn] = {
+      val intPlans = plans.filter(p => p.integral && p.columns > 0)
+      if (intPlans.isEmpty) IndexedSeq.empty
+      else {
+        val boundRowBase = boundBlocks.map(bb => bb.plan.handle.setIndex -> bb.rowBase).toMap
+        val partial = intPlans.flatMap { p =>
+          val si = p.handle.setIndex
+          val (shift, upper) = p.kind match {
+            case ShiftedKind(s, Some(u)) => (s, u)
+            case other =>
+              throw new IllegalStateException(s"integral plan of '${p.handle.name}' has unexpected kind $other")
+          }
+          val off = p.offset
+          val rowBase = boundRowBase(si)
+          // constraint-row coefficients per key; merged/presolved rows are absent from rowRemap
+          val coeffRows: Map[String, Map[Int, Double]] = solverTerms
+            .filter { case ((s, _, _), _) => s == si }
+            .flatMap { case ((_, enc, r), coeff) => rowRemap.value.get(r).map(fr => (enc, (fr, coeff))) }
+            .collect()
+            .groupBy(_._1)
+            .map { case (enc, entries) => enc -> entries.map(_._2).toMap }
+          p.sortedKeys.collect().map { case (enc, (i, _)) =>
+            IntColumn(off + i, si, enc, shift, upper, 0.0, rowBase + i.toInt,
+              coeffRows.getOrElse(enc, Map.empty))
+          }
+        }
+        val gSet = sc.broadcast(partial.map(_.g).toSet)
+        val costByG = sortedCols
+          .filter { case (g, _) => gSet.value.contains(g) }
+          .map { case (g, colData) => (g, colData.cost) }
+          .collect().toMap
+        partial.map(ic => ic.copy(cost = costByG(ic.g))).sortBy(_.g).toIndexedSeq
+      }
+    }
+
     new Compiled(
       c = cVec,
       AT = AT,
@@ -437,7 +496,8 @@ private[dsl] final class LpCompiler(problem: LpProblem, config: SolveConfig) {
       plans = plans,
       objConstant = objConstant,
       senseMult = senseMult,
-      userTermsAgg = userTermsAgg)
+      userTermsAgg = userTermsAgg,
+      intCols = intCols)
   }
 
   // -------------------------------------------------------------------------------------------
@@ -446,20 +506,25 @@ private[dsl] final class LpCompiler(problem: LpProblem, config: SolveConfig) {
 
   private def buildPlan(handle: VarSetHandle): SetPlan = {
     val where = s"variable '${handle.name}'"
-    if (handle.category != Continuous) {
-      fail(s"$where: category ${handle.category} is not supported in this release; only Continuous is accepted")
-    }
-    val lb = handle.lowerBound
-    if (lb.isNaN || lb == Double.PositiveInfinity) {
-      fail(s"$where: lower bound must not be NaN or +inf (got $lb); Double.NegativeInfinity means a free variable")
+    val declaredLb = handle.lowerBound
+    if (declaredLb.isNaN || declaredLb == Double.PositiveInfinity) {
+      fail(s"$where: lower bound must not be NaN or +inf (got $declaredLb); Double.NegativeInfinity means a free variable")
     }
     handle.upperBound.foreach { ub =>
       if (ub.isNaN || ub.isInfinite) {
         fail(s"$where: upper bound must be finite when defined (got $ub); unbounded is expressed as None")
       }
-      if (lb == Double.NegativeInfinity) {
-        fail(s"$where: a finite upper bound combined with a -inf lower bound is not supported in this release")
-      }
+    }
+
+    val (lb, upperOpt, integral) = handle.category match {
+      case Continuous => (declaredLb, handle.upperBound, false)
+      case category => integralBounds(handle, category, where)
+    }
+
+    if (upperOpt.isDefined && lb == Double.NegativeInfinity) {
+      fail(s"$where: a finite upper bound combined with a -inf lower bound is not supported in this release")
+    }
+    upperOpt.foreach { ub =>
       if (lb > ub) {
         fail(s"$where: lowerBound ($lb) > upperBound ($ub)")
       }
@@ -483,10 +548,42 @@ private[dsl] final class LpCompiler(problem: LpProblem, config: SolveConfig) {
     }
 
     val kind =
-      if (handle.upperBound.contains(lb)) FixedKind(lb)
+      if (upperOpt.contains(lb)) FixedKind(lb)
       else if (lb == Double.NegativeInfinity) SplitKind
-      else ShiftedKind(lb, handle.upperBound)
-    new SetPlan(handle, keys, count, kind)
+      else ShiftedKind(lb, upperOpt)
+    new SetPlan(handle, keys, count, kind, integral)
+  }
+
+  /**
+    * Effective integral bounds of an [[Integer]] or [[Binary]] variable: the declared bounds
+    * (intersected with `{0, 1}` for Binary) tightened to the enclosed integral range. The result
+    * always has finite bounds, so every integral column owns an upper-bound row that the solver can
+    * retarget while exploring the discrete model.
+    */
+  private def integralBounds(
+    handle: VarSetHandle,
+    category: VariableCategory,
+    where: String): (Double, Option[Double], Boolean) = {
+
+    val (lo, hi) = category match {
+      case Binary =>
+        (math.max(handle.lowerBound, 0.0), math.min(handle.upperBound.getOrElse(1.0), 1.0))
+      case _ =>
+        if (handle.lowerBound == Double.NegativeInfinity) {
+          fail(s"$where: an Integer variable requires a finite lower bound")
+        }
+        val ub = handle.upperBound.getOrElse(
+          fail(s"$where: an Integer variable requires a finite upper bound; declare upperBound explicitly"))
+        (handle.lowerBound, ub)
+    }
+    val tol = BranchAndBound.IntegralityTolerance
+    val lower = math.ceil(lo - tol)
+    val upper = math.floor(hi + tol)
+    if (lower > upper) {
+      val detail = if (category == Binary) " after intersecting the declared bounds with the Binary domain {0, 1}" else ""
+      fail(s"$where: no integral values within bounds [$lo, $hi]$detail")
+    }
+    (lower, Some(upper), true)
   }
 
   // -------------------------------------------------------------------------------------------
@@ -755,23 +852,66 @@ private[dsl] final class LpCompiler(problem: LpProblem, config: SolveConfig) {
   // Solution reconstruction
   // -------------------------------------------------------------------------------------------
 
-  private def buildSolution(compiled: Compiled, summary: LP.SolveSummary): LpSolution = {
+  /**
+    * Maps a continuous solver summary to the public status/objective pair and reconstructs the
+    * solution — the unchanged single-solve path used whenever the model has no integral columns.
+    */
+  private def continuousSolution(compiled: Compiled, summary: LP.SolveSummary): LpSolution = {
+    val status: LpStatus = summary.termination match {
+      case LP.Termination.Converged => LpStatus.Optimal
+      case LP.Termination.IterationLimit => LpStatus.IterationLimit
+      case LP.Termination.PrimalInfeasible => LpStatus.Infeasible
+      case LP.Termination.DualInfeasible =>
+        // a dual-infeasibility ray proves unboundedness only together with a primal-feasible point
+        if (summary.primalResidual < config.tolerance) LpStatus.Unbounded
+        else LpStatus.InfeasibleOrUnbounded
+    }
+    val objectiveValue = status match {
+      case LpStatus.Infeasible | LpStatus.InfeasibleOrUnbounded => Double.NaN
+      // the solver minimizes, so an unbounded objective diverges to -inf in solver form
+      case LpStatus.Unbounded => compiled.senseMult * Double.NegativeInfinity
+      case _ => compiled.senseMult * summary.objectiveValue + compiled.objConstant
+    }
+    buildSolution(compiled, summary.x, status, objectiveValue, summary.iterations,
+      LpResiduals(summary.primalResidual, summary.dualResidual, summary.dualityGap), Map.empty)
+  }
+
+  /**
+    * Reconstructs user-facing values and diagnostics from a solver iterate. `integerOverrides`
+    * carries exact user-unit values (already rounded to integers) for integral solver columns,
+    * keyed by the global column index; an empty map reproduces the plain continuous
+    * reconstruction.
+    */
+  private[dsl] def buildSolution(
+    compiled: Compiled,
+    x: DVector,
+    status: LpStatus,
+    objectiveValue: Double,
+    iterations: Int,
+    residuals: LpResiduals,
+    integerOverrides: Map[Long, Double]): LpSolution = {
+
     // per-column primal values, aligned with the compiled column order
-    val xValues: RDD[(ColData, Double)] = compiled.sortedCols.zipPartitions(summary.x) { (colsIt, xIt) =>
+    val overrides = sc.broadcast(integerOverrides)
+    val xValues: RDD[(Long, ColData, Double)] = compiled.sortedCols.zipPartitions(x) { (colsIt, xIt) =>
       if (!xIt.hasNext) Iterator.empty
       else {
         val values = xIt.next().values
-        colsIt.zipWithIndex.map { case ((_, colData), i) => (colData, values(i)) }
+        colsIt.zipWithIndex.map { case ((g, colData), i) => (g, colData, values(i)) }
       }
     }
 
     // undo bound shifts and free-variable splits; drop slacks
-    val varValues = xValues.flatMap { case (colData, v) =>
-      colData.kind match {
-        case 0 => Some(((colData.setIndex, colData.enc), colData.shift + v))
-        case 1 => Some(((colData.setIndex, colData.enc), v))
-        case 2 => Some(((colData.setIndex, colData.enc), -v))
-        case _ => None
+    val varValues = xValues.flatMap { case (g, colData, v) =>
+      overrides.value.get(g) match {
+        case Some(exact) => Some(((colData.setIndex, colData.enc), exact))
+        case None =>
+          colData.kind match {
+            case 0 => Some(((colData.setIndex, colData.enc), colData.shift + v))
+            case 1 => Some(((colData.setIndex, colData.enc), v))
+            case 2 => Some(((colData.setIndex, colData.enc), -v))
+            case _ => None
+          }
       }
     }.reduceByKey(_ + _)
 
@@ -814,27 +954,11 @@ private[dsl] final class LpCompiler(problem: LpProblem, config: SolveConfig) {
     }
     val constraintsDf = spark.createDataFrame(sc.parallelize(rows, 1), schema)
 
-    val status: LpStatus = summary.termination match {
-      case LP.Termination.Converged => LpStatus.Optimal
-      case LP.Termination.IterationLimit => LpStatus.IterationLimit
-      case LP.Termination.PrimalInfeasible => LpStatus.Infeasible
-      case LP.Termination.DualInfeasible =>
-        // a dual-infeasibility ray proves unboundedness only together with a primal-feasible point
-        if (summary.primalResidual < config.tolerance) LpStatus.Unbounded
-        else LpStatus.InfeasibleOrUnbounded
-    }
-    val objectiveValue = status match {
-      case LpStatus.Infeasible | LpStatus.InfeasibleOrUnbounded => Double.NaN
-      // the solver minimizes, so an unbounded objective diverges to -inf in solver form
-      case LpStatus.Unbounded => compiled.senseMult * Double.NegativeInfinity
-      case _ => compiled.senseMult * summary.objectiveValue + compiled.objConstant
-    }
-
     new LpSolution(
       status = status,
       objectiveValue = objectiveValue,
-      iterations = summary.iterations,
-      residuals = LpResiduals(summary.primalResidual, summary.dualResidual, summary.dualityGap),
+      iterations = iterations,
+      residuals = residuals,
       constraints = constraintsDf,
       problem = problem,
       userValues = userValues)

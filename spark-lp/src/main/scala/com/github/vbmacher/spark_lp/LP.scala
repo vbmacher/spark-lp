@@ -223,7 +223,6 @@ object LP extends LazyLogging {
     var dLambdaBroadcast: Broadcast[DenseVector] = null
 
     while (!converged && earlyTermination.isEmpty && iter <= maxIter) {
-      logger.info(s"LP iteration: $iter")
 
       // the last completed iterate, for certificate-based reclassification of numerical failures
       val x0 = x
@@ -276,7 +275,6 @@ object LP extends LazyLogging {
       }
 
       val sigma = math.pow(muAff / mu, 3) // heuristic
-      logger.info(s"sigma = $sigma")
 
       // Solve (14.35) for (dx, dLambda, ds)
       // 1) A^T D2 A dLambda = -rb + A^T * D2 *(-rc + s + X^(-1) dXAff dSAff e - sigma mu X^(-1)e)
@@ -397,12 +395,16 @@ object LP extends LazyLogging {
 
       rc.unpersist(blocking = false)
 
-      logger.info(s"\n1. convergence condition: $covg1" +
-        s"\n2. convergence condition: $covg2" +
-        s"\n3. convergence condition: $covg3" +
-        s"\nConverged = $converged\n" +
-        s"\ncTx: $cTx" +
-        s"\nb dot lambda: $bTlambda")
+      if (iter <= 3 || converged || earlyTermination.nonEmpty || iter == maxIter) {
+        logger.info(s"LP iteration: $iter" +
+          s"\nsigma = $sigma" +
+          s"\n1. convergence condition: $covg1" +
+          s"\n2. convergence condition: $covg2" +
+          s"\n3. convergence condition: $covg3" +
+          s"\nConverged = $converged\n" +
+          s"\ncTx: $cTx" +
+          s"\nb dot lambda: $bTlambda")
+      }
 
       completedIterations = iter
 

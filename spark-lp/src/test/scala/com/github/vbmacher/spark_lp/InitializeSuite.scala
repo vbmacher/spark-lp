@@ -67,6 +67,16 @@ class InitializeSuite extends AnyFunSuite with DataFrameSuiteBase {
       "Initialize.init s0 should return the correct answer.")
   }
 
+  test("Initialize.init with the matrix-free CG solver matches the direct computation") {
+    val result = Initialize.init(c, A, b, new newton.CgFactory(1e-12, 0)(spark))
+    assert(Vectors.dense(expectedX.toArray) ~= Vectors.dense(result.x.flatMap(_.toArray).collect()) relTol 1e-6,
+      "Initialize.init x0 is not computed correctly with the CG solver.")
+    assert(Vectors.dense(lambdaTilda.toArray) ~= Vectors.dense(result.lambda.toArray) relTol 1e-6,
+      "Initialize.init lambda0 is not computed correctly with the CG solver.")
+    assert(Vectors.dense(expectedS.toArray) ~= Vectors.dense(result.s.flatMap(_.toArray).collect()) relTol 1e-6,
+      "Initialize.init s0 should return the correct answer with the CG solver.")
+  }
+
   test("Initialize.init creates strictly positive primal and slack vectors") {
     val c = sc.parallelize(Array(0.0, 1.0), 1).glom.map(new DenseVector(_))
     val A = sc.parallelize(Array(Vectors.dense(1.0), Vectors.dense(2.0)), 1)

@@ -86,7 +86,10 @@ private[dsl] final class BranchAndBound(
           etaIter = config.etaIteration,
           valueCap = config.valueCap,
           eps = config.epsilon,
-          infeasibilityTolerance = config.infeasibilityTolerance)
+          infeasibilityTolerance = config.infeasibilityTolerance,
+          solver = config.resolvedNewtonSolver(compiled.numRows),
+          cgTolerance = config.cgTolerance,
+          cgMaxIterations = config.cgMaxIterations)
       } catch {
         case e: LpNumericalException =>
           if (isRoot) throw e

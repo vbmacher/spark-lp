@@ -18,9 +18,7 @@ trait LpKeyEncoder[K] extends Serializable {
 
 object LpKeyEncoder {
 
-  def instance[K](f: K => Seq[Any]): LpKeyEncoder[K] = new LpKeyEncoder[K] {
-    override def parts(key: K): Seq[Any] = f(key)
-  }
+  def instance[K](f: K => Seq[Any]): LpKeyEncoder[K] = (key: K) => f(key)
 
   implicit val stringKey: LpKeyEncoder[String] = instance(k => Seq(k))
   implicit val intKey: LpKeyEncoder[Int] = instance(k => Seq(k))
@@ -54,7 +52,7 @@ object LpKeyEncoder {
   */
 private[dsl] object KeyCodec {
 
-  val Separator = "\u001F"
+  private val Separator = "\u001F"
 
   /** Flattens nested structs into their leaf parts. */
   def flatParts(value: Any): Seq[Any] = value match {
@@ -78,14 +76,14 @@ private[dsl] object KeyCodec {
   /** Encodes a sequence of (already flattened or flattenable) parts; `null` if any part is null. */
   def encodeParts(parts: Seq[Any]): String = {
     val flat = parts.flatMap(flatParts)
-    if (flat.isEmpty || flat.exists(_ == null)) null
+    if (flat.isEmpty || flat.contains(null)) null
     else flat.map(encodePart).mkString(Separator)
   }
 
   /** Encodes one column value (may be a struct for multi-part keys); `null` if any part is null. */
   def encodeValue(value: Any): String = encodeParts(Seq(value))
 
-  def displayParts(value: Any): Seq[String] = flatParts(value).map(String.valueOf(_))
+  def displayParts(value: Any): Seq[String] = flatParts(value).map(String.valueOf)
 
   /** Escapes `,`, `[`, `]` and `\` inside a display part with `\`. */
   def escapePart(part: String): String = part.flatMap {

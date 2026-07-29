@@ -150,7 +150,10 @@ private[dsl] final class LpCompiler(problem: LpProblem, config: SolveConfig) {
         etaIter = config.etaIteration,
         valueCap = config.valueCap,
         eps = config.epsilon,
-        infeasibilityTolerance = config.infeasibilityTolerance)
+        infeasibilityTolerance = config.infeasibilityTolerance,
+        solver = config.resolvedNewtonSolver(compiled.numRows),
+        cgTolerance = config.cgTolerance,
+        cgMaxIterations = config.cgMaxIterations)
       continuousSolution(compiled, summary)
     } else {
       new BranchAndBound(this, compiled, config).solve()
@@ -837,14 +840,18 @@ private[dsl] final class LpCompiler(problem: LpProblem, config: SolveConfig) {
   }
 
   private def checkRowBudget(rows: Long, what: String): Unit = {
-    if (rows > config.maxLocalConstraints) {
+    // Only the driver-local Cholesky solver is bounded by maxLocalConstraints; NewtonSolver.Auto
+    // switches to the matrix-free conjugate-gradient solver beyond it, and an explicit
+    // ConjugateGradient never touches the budget.
+    if (config.newtonSolver == NewtonSolver.Cholesky && rows > config.maxLocalConstraints) {
       val mb = 16.0 * rows * rows / 1e6
       fail(f"Model needs at least $rows equality-form constraint rows ($what), exceeding " +
-        f"maxLocalConstraints = ${config.maxLocalConstraints}. Every constraint row is driver-local: " +
-        f"the solver holds roughly 16*m*m bytes of Gramian-related driver allocations per solve " +
-        f"(~$mb%.0f MB at m = $rows) plus an O(m^3) Cholesky factorization per iteration. The variable " +
-        "count is the distributed dimension and can be large; the constraint count is not. Raise " +
-        "maxLocalConstraints in SolveConfig only if the driver heap is provisioned for it.")
+        f"maxLocalConstraints = ${config.maxLocalConstraints} with newtonSolver = Cholesky. With the " +
+        f"Cholesky solver every constraint row is driver-local: the solver holds roughly 16*m*m bytes " +
+        f"of Gramian-related driver allocations per solve (~$mb%.0f MB at m = $rows) plus an O(m^3) " +
+        "factorization per iteration. Either raise maxLocalConstraints (only if the driver heap is " +
+        "provisioned for it) or use NewtonSolver.Auto/ConjugateGradient, which avoids the " +
+        "driver-local m x m Gramian but may use bounded O(m * rank) preconditioner storage.")
     }
   }
 

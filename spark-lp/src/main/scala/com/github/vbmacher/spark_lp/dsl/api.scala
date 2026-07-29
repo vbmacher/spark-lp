@@ -76,7 +76,8 @@ final class LpModelException private[spark_lp](message: String) extends LpExcept
 
 /**
   * Numerical failure inside the solver: a non-positive-definite Gramian during initialization or an
-  * iteration's Cholesky step, or a zero iterate element. Names the phase (initialization or
+  * iteration's normal-equations solve (a Cholesky breakdown or a stalled conjugate-gradient run),
+  * or a zero iterate element. Names the phase (initialization or
   * iteration k) and the count of completed iterations. No iterate values are exposed — a
   * numerically failed run has no iterate with meaningful convergence semantics.
   *
@@ -100,11 +101,24 @@ final class LpNumericalException private[spark_lp](
   *                               [[LpStatus.Infeasible]], [[LpStatus.Unbounded]] and
   *                               [[LpStatus.InfeasibleOrUnbounded]]: a certificate is claimed only
   *                               when its normalized residual is at or below this value.
-  * @param maxLocalConstraints upper limit on the number of equality-form constraint rows. Every
-  *                            constraint row is driver-local: for `m` rows the driver holds roughly
-  *                            `16 * m * m` bytes of Gramian-related allocations per solve, plus an
-  *                            `O(m^3)` Cholesky factorization per iteration. The variable count is
-  *                            the distributed dimension and can be large; the constraint count is not.
+  * @param maxLocalConstraints threshold on the number of equality-form constraint rows `m` up to
+  *                            which the driver-local Cholesky normal-equations solver is used.
+  *                            With Cholesky, every constraint row is driver-local: the driver
+  *                            holds roughly `16 * m * m` bytes of Gramian-related allocations per
+  *                            solve, plus an `O(m^3)` factorization per iteration. Models with
+  *                            more rows are handled according to `newtonSolver`: the default
+  *                            [[NewtonSolver.Auto]] switches to the matrix-free conjugate-gradient
+  *                            solver. It avoids the driver-local `m x m` Gramian; its optional
+  *                            partial-Cholesky preconditioner uses bounded `O(m * rank)` driver
+  *                            and task-local storage. An explicit [[NewtonSolver.Cholesky]]
+  *                            rejects them.
+  * @param newtonSolver how the per-iteration `m x m` normal-equations systems are solved (see
+  *                     [[NewtonSolver]]). [[NewtonSolver.Auto]] picks Cholesky while
+  *                     `m <= maxLocalConstraints` and the matrix-free conjugate gradient beyond.
+  * @param cgTolerance relative residual at which one conjugate-gradient solve is accepted
+  *                    (matrix-free solver only).
+  * @param cgMaxIterations conjugate-gradient step limit per normal-equations solve; values < 1
+  *                        select `min(max(100, 2m), 1000)` (matrix-free solver only).
   */
 final case class SolveConfig(
   tolerance: Double = 1e-8,
@@ -113,7 +127,18 @@ final case class SolveConfig(
   etaIteration: Double = 0.999,
   valueCap: Double = 1e20,
   epsilon: Double = 1e-20,
-  maxLocalConstraints: Long = 5000L)
+  maxLocalConstraints: Long = 5000L,
+  newtonSolver: NewtonSolver = NewtonSolver.Auto,
+  cgTolerance: Double = 1e-10,
+  cgMaxIterations: Int = 0) {
+
+  /** The concrete normal-equations solver for a model with `m` equality-form rows. */
+  private[dsl] def resolvedNewtonSolver(m: Long): NewtonSolver = newtonSolver match {
+    case NewtonSolver.Auto =>
+      if (m <= maxLocalConstraints) NewtonSolver.Cholesky else NewtonSolver.ConjugateGradient
+    case s => s
+  }
+}
 
 /**
   * Final residuals of the returned iterate, in the solver's minimization form:

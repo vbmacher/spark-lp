@@ -79,6 +79,38 @@ class LpDslSolverSuite extends AnyFunSuite with DataFrameSuiteBase {
     assert(solution.constraints.count() == 3)
   }
 
+  test("Auto switches to the matrix-free CG solver beyond maxLocalConstraints") {
+    implicit val ss: SparkSession = spark
+    val ssLocal = spark
+    import ssLocal.implicits._
+    val domain = Seq("alpha", "bravo").toDF("k")
+    val model = LpProblem("cg-auto", Minimize)
+    val v = model.variables("v", domain, $"k")
+    model += lpSum(v)
+    model += (lpSum(v) >= 4.0).named("floor")
+
+    // maxLocalConstraints = 0: every model exceeds the Cholesky budget, so Auto must go matrix-free
+    val solution = model.solve(SolveConfig(maxLocalConstraints = 0))
+    assert(solution.status == LpStatus.Optimal)
+    assert(solution.objectiveValue ~== 4.0 absTol 1e-6)
+  }
+
+  test("explicit Cholesky still enforces maxLocalConstraints") {
+    implicit val ss: SparkSession = spark
+    val ssLocal = spark
+    import ssLocal.implicits._
+    val domain = Seq("alpha", "bravo").toDF("k")
+    val model = LpProblem("cho-budget", Minimize)
+    val v = model.variables("v", domain, $"k")
+    model += lpSum(v)
+    model += (lpSum(v) >= 4.0).named("floor")
+
+    val e = intercept[LpModelException](
+      model.solve(SolveConfig(maxLocalConstraints = 0, newtonSolver = NewtonSolver.Cholesky)))
+    assert(e.getMessage.contains("maxLocalConstraints"))
+    assert(e.getMessage.contains("ConjugateGradient"))
+  }
+
   test("linearly dependent constraint rows raise LpNumericalException naming the precondition") {
     implicit val ss: SparkSession = spark
     val model = LpProblem("singular", Minimize)

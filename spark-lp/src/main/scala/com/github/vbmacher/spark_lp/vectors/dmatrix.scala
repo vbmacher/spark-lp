@@ -5,7 +5,7 @@ import com.github.vbmacher.spark_lp.collections.implicits.IteratorOps
 import com.typesafe.scalalogging.LazyLogging
 import org.apache.spark.broadcast.Broadcast
 import org.apache.spark.wrappers.BLAS
-import org.apache.spark.mllib.linalg.{DenseVector, Vectors}
+import org.apache.spark.mllib.linalg.{DenseVector, Vector, Vectors}
 import org.apache.spark.storage.StorageLevel
 
 object dmatrix {
@@ -175,6 +175,110 @@ object dmatrix {
         // NOTE A DenseVector result is assumed here (not sparse safe).
         matrix.mapPartitions(partitionRows =>
           Iterator.single(new DenseVector(partitionRows.map(row => BLAS.dot(row, x)).toArray)))
+      }
+
+      /**
+        * Compute the diagonal of the (optionally weighted) Gramian `A^T diag(w) A` of this DMatrix,
+        * i.e. `diag_j = sum_i w_i * A_ij^2`, in a single distributed pass with `O(ncol)` driver
+        * memory. Unlike [[gramianMatrix]], this never materialises the `ncol x ncol` Gramian and
+        * is therefore not limited to 65535 columns.
+        *
+        * When a weight DVector is supplied it must be partitioned consistently with this DMatrix
+        * (see the DMatrix NOTE about consistent partitioning).
+        *
+        * @param w     optional per-row weights; `None` computes the diagonal of `A^T A`.
+        * @param depth to control the depth in treeAggregate.
+        */
+      def gramianDiagonal(w: Option[DVector] = None, depth: Int = 2): DenseVector = {
+        val n = columns
+        val perPartition = w match {
+          case Some(weights) =>
+            matrix.zipPartitions(weights)((matrixPartition, wPartition) => {
+              val acc = new Array[Double](n)
+              matrixPartition.checkedZip(wPartition.next().values.toIterator).foreach {
+                case (row, wi) => row.foreachActive((j, v) => acc(j) += wi * v * v)
+              }
+              Iterator.single(new DenseVector(acc))
+            })
+          case None =>
+            matrix.mapPartitions(matrixPartition => {
+              val acc = new Array[Double](n)
+              matrixPartition.foreach(row => row.foreachActive((j, v) => acc(j) += v * v))
+              Iterator.single(new DenseVector(acc))
+            })
+        }
+        perPartition.treeAggregate(Vectors.zeros(n).toDense)(
+          seqOp = (sum1, sum2) => {
+            BLAS.axpy(1.0, sum2, sum1)
+            sum1
+          },
+          combOp = (sum1, sum2) => {
+            BLAS.axpy(1.0, sum2, sum1)
+            sum1
+          }, depth
+        )
+      }
+
+      /**
+        * Compute selected columns of the (optionally weighted) Gramian `A^T diag(w) A`, i.e. the
+        * `ncol x k` submatrix `G[:, indices]`, in a single distributed pass. The result is
+        * column-major: entry `(i, s)` of the submatrix is at `s * ncol + i`.
+        *
+        * Driver and per-partition memory are `O(ncol * k)`; unlike [[gramianMatrix]] the full
+        * Gramian is never materialised, so this is not limited to 65535 columns.
+        *
+        * When a weight DVector is supplied it must be partitioned consistently with this DMatrix
+        * (see the DMatrix NOTE about consistent partitioning).
+        *
+        * @param indices the Gramian columns to compute, in the order they appear in the result.
+        * @param w       optional per-row weights; `None` computes columns of `A^T A`.
+        * @param depth   to control the depth in treeAggregate.
+        */
+      def gramianColumns(indices: Array[Int], w: Option[DVector] = None, depth: Int = 2): Array[Double] = {
+        val n = columns
+        val k = indices.length
+        val slots = Array.fill(n)(-1)
+        indices.zipWithIndex.foreach { case (column, s) => slots(column) = s }
+
+        // Each row contributes the rank-1 update `weight * row * row^T`; only the columns with a
+        // slot are accumulated. foreachActive keeps the pass sparse-safe.
+        def accumulate(acc: Array[Double], row: Vector, weight: Double): Unit = {
+          row.foreachActive { (i, v) =>
+            val s = slots(i)
+            if (s >= 0 && v != 0.0) {
+              val coefficient = weight * v
+              val offset = s * n
+              row.foreachActive((j, u) => acc(offset + j) += coefficient * u)
+            }
+          }
+        }
+
+        val perPartition = w match {
+          case Some(weights) =>
+            matrix.zipPartitions(weights)((matrixPartition, wPartition) => {
+              val acc = new Array[Double](n * k)
+              matrixPartition.checkedZip(wPartition.next().values.toIterator).foreach {
+                case (row, wi) => accumulate(acc, row, wi)
+              }
+              Iterator.single(acc)
+            })
+          case None =>
+            matrix.mapPartitions(matrixPartition => {
+              val acc = new Array[Double](n * k)
+              matrixPartition.foreach(row => accumulate(acc, row, 1.0))
+              Iterator.single(acc)
+            })
+        }
+        perPartition.treeAggregate(new Array[Double](n * k))(
+          seqOp = (sum1, sum2) => {
+            new BDV(sum1) += new BDV(sum2)
+            sum1
+          },
+          combOp = (sum1, sum2) => {
+            new BDV(sum1) += new BDV(sum2)
+            sum1
+          }, depth
+        )
       }
     }
   }

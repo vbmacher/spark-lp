@@ -196,7 +196,7 @@ class LpDslValidationSuite extends AnyFunSuite with DataFrameSuiteBase {
     assert(e2.getMessage.contains("right-hand side"))
   }
 
-  test("exceeding maxLocalConstraints names the constraint-side asymmetry and the memory estimate") {
+  test("exceeding maxLocalConstraints with explicit Cholesky names the asymmetry and the way out") {
     implicit val ss: SparkSession = spark
     val model = LpProblem("tooMany", Minimize)
     val x = model.variable("x")
@@ -205,11 +205,12 @@ class LpDslValidationSuite extends AnyFunSuite with DataFrameSuiteBase {
     model += (x <= 5.0).named("c2")
     model += (x <= 6.0).named("c3")
 
-    val e = intercept[LpModelException](model.solve(SolveConfig(maxLocalConstraints = 2)))
+    val e = intercept[LpModelException](
+      model.solve(SolveConfig(maxLocalConstraints = 2, newtonSolver = NewtonSolver.Cholesky)))
     assert(e.getMessage.contains("maxLocalConstraints"))
     assert(e.getMessage.contains("driver-local"))
     assert(e.getMessage.contains("16*m*m"))
-    assert(e.getMessage.contains("distributed dimension"))
+    assert(e.getMessage.contains("ConjugateGradient"))
   }
 
   test("bound rows count against maxLocalConstraints and name the responsible variable set") {
@@ -222,7 +223,8 @@ class LpDslValidationSuite extends AnyFunSuite with DataFrameSuiteBase {
     model += lpSum(v)
     model += (lpSum(v) >= 1.0).named("floor")
 
-    val e = intercept[LpModelException](model.solve(SolveConfig(maxLocalConstraints = 3)))
+    val e = intercept[LpModelException](
+      model.solve(SolveConfig(maxLocalConstraints = 3, newtonSolver = NewtonSolver.Cholesky)))
     assert(e.getMessage.contains("upper bound rows"))
     assert(e.getMessage.contains("'v'"))
   }

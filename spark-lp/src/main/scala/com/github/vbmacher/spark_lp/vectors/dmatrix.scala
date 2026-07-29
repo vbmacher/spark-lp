@@ -5,10 +5,57 @@ import com.github.vbmacher.spark_lp.collections.implicits.IteratorOps
 import com.typesafe.scalalogging.LazyLogging
 import org.apache.spark.broadcast.Broadcast
 import org.apache.spark.wrappers.BLAS
-import org.apache.spark.mllib.linalg.{DenseVector, Vectors}
+import org.apache.spark.mllib.linalg.{DenseVector, Vector, Vectors}
 import org.apache.spark.storage.StorageLevel
 
 object dmatrix {
+
+  object functions extends LazyLogging  {
+    /**
+      * Computes the Gramian matrix `A^T A`. Note that this cannot be computed on matrices with more than 65535 columns.
+      *
+      * A Gramian matrix is a symmetric positive semi-definite matrix. It is symmetric because A^T A is symmetric,
+      * and positive semi-definite because for any vector x, the dot product x^T (A^T A) x = (Ax)^T (Ax) >= 0.
+      *
+      * It is positive definite if the columns of A are linearly independent.
+      *
+      * @param ncol  number of columns
+      * @param depth to control the depth in treeAggregate. Higher number, more stages in Spark - does not have impact on result.
+      */
+    def gramianMatrix(matrix: DMatrix, ncol: Int, depth: Int = 2): BDV[Double] = {
+
+      checkNumColumns(ncol)
+      // Computes n*(n+1)/2, avoiding overflow in the multiplication.
+      // This succeeds when n <= 65535, which is checked above
+      val nt =
+        if (ncol % 2 == 0) (ncol / 2) * (ncol + 1)
+        else ncol * ((ncol + 1) / 2)
+
+      // Compute the upper triangular part of the gram matrix.
+      val GU = matrix.treeAggregate(new BDV[Double](nt))(
+        seqOp = (U, v) => {
+          BLAS.spr(1.0, v, U.data)
+          //NativeBLAS.dspr("U", ncol, 1.0, v, 1, U) //symmetric rk 1 update included in BLAS netlib-java
+          U
+        }, combOp = (U1, U2) => U1 += U2, depth)
+      GU // column major == BLAS packed columnwise format
+    }
+
+    /**
+      * Check if the number of columns exceed 65535 to avoid Array overflow
+      *
+      * @param cols The number of columns
+      */
+    private def checkNumColumns(cols: Int): Unit = {
+      if (cols > 65535) {
+        throw new IllegalArgumentException(s"Argument with more than 65535 cols: $cols")
+      }
+      if (cols > 10000) {
+        val memMB = (cols.toLong * cols) / 125000
+        logger.warn(s"$cols columns will require at least $memMB megabytes of memory!")
+      }
+    }
+  }
 
   object implicits {
 
@@ -52,22 +99,7 @@ object dmatrix {
         * @param depth to control the depth in treeAggregate. Higher number, more stages in Spark - does not have impact on result.
         */
       def gramianMatrix(ncol: Int, depth: Int = 2): BDV[Double] = {
-
-        checkNumColumns(ncol)
-        // Computes n*(n+1)/2, avoiding overflow in the multiplication.
-        // This succeeds when n <= 65535, which is checked above
-        val nt =
-          if (ncol % 2 == 0) (ncol / 2) * (ncol + 1)
-          else ncol * ((ncol + 1) / 2)
-
-        // Compute the upper triangular part of the gram matrix.
-        val GU = matrix.treeAggregate(new BDV[Double](nt))(
-          seqOp = (U, v) => {
-            BLAS.spr(1.0, v, U.data)
-            //NativeBLAS.dspr("U", ncol, 1.0, v, 1, U) //symmetric rk 1 update included in BLAS netlib-java
-            U
-          }, combOp = (U1, U2) => U1 += U2, depth)
-        GU // column major == BLAS packed columnwise format
+        functions.gramianMatrix(matrix, ncol, depth)
       }
 
       /**
@@ -115,8 +147,7 @@ object dmatrix {
             // Add the intermediate sum vectors.
             BLAS.axpy(1.0, sum2, sum1)
             sum1
-          }
-          , depth
+          }, depth
         )
       }
 
@@ -142,24 +173,112 @@ object dmatrix {
       def product(x: DenseVector): DVector = {
         // Take the dot product of each matrix row with x.
         // NOTE A DenseVector result is assumed here (not sparse safe).
-        val brX = matrix.sparkContext.broadcast(x)
         matrix.mapPartitions(partitionRows =>
-          Iterator.single(new DenseVector(partitionRows.map(row => BLAS.dot(row, brX.value)).toArray)))
+          Iterator.single(new DenseVector(partitionRows.map(row => BLAS.dot(row, x)).toArray)))
       }
 
       /**
-        * Check if the number of columns exceed 65535 to avoid Array overflow
+        * Compute the diagonal of the (optionally weighted) Gramian `A^T diag(w) A` of this DMatrix,
+        * i.e. `diag_j = sum_i w_i * A_ij^2`, in a single distributed pass with `O(ncol)` driver
+        * memory. Unlike [[gramianMatrix]], this never materialises the `ncol x ncol` Gramian and
+        * is therefore not limited to 65535 columns.
         *
-        * @param cols The number of columns
+        * When a weight DVector is supplied it must be partitioned consistently with this DMatrix
+        * (see the DMatrix NOTE about consistent partitioning).
+        *
+        * @param w     optional per-row weights; `None` computes the diagonal of `A^T A`.
+        * @param depth to control the depth in treeAggregate.
         */
-      private def checkNumColumns(cols: Int): Unit = {
-        if (cols > 65535) {
-          throw new IllegalArgumentException(s"Argument with more than 65535 cols: $cols")
+      def gramianDiagonal(w: Option[DVector] = None, depth: Int = 2): DenseVector = {
+        val n = columns
+        val perPartition = w match {
+          case Some(weights) =>
+            matrix.zipPartitions(weights)((matrixPartition, wPartition) => {
+              val acc = new Array[Double](n)
+              matrixPartition.checkedZip(wPartition.next().values.toIterator).foreach {
+                case (row, wi) => row.foreachActive((j, v) => acc(j) += wi * v * v)
+              }
+              Iterator.single(new DenseVector(acc))
+            })
+          case None =>
+            matrix.mapPartitions(matrixPartition => {
+              val acc = new Array[Double](n)
+              matrixPartition.foreach(row => row.foreachActive((j, v) => acc(j) += v * v))
+              Iterator.single(new DenseVector(acc))
+            })
         }
-        if (cols > 10000) {
-          val memMB = (cols.toLong * cols) / 125000
-          logger.warn(s"$cols columns will require at least $memMB megabytes of memory!")
+        perPartition.treeAggregate(Vectors.zeros(n).toDense)(
+          seqOp = (sum1, sum2) => {
+            BLAS.axpy(1.0, sum2, sum1)
+            sum1
+          },
+          combOp = (sum1, sum2) => {
+            BLAS.axpy(1.0, sum2, sum1)
+            sum1
+          }, depth
+        )
+      }
+
+      /**
+        * Compute selected columns of the (optionally weighted) Gramian `A^T diag(w) A`, i.e. the
+        * `ncol x k` submatrix `G[:, indices]`, in a single distributed pass. The result is
+        * column-major: entry `(i, s)` of the submatrix is at `s * ncol + i`.
+        *
+        * Driver and per-partition memory are `O(ncol * k)`; unlike [[gramianMatrix]] the full
+        * Gramian is never materialised, so this is not limited to 65535 columns.
+        *
+        * When a weight DVector is supplied it must be partitioned consistently with this DMatrix
+        * (see the DMatrix NOTE about consistent partitioning).
+        *
+        * @param indices the Gramian columns to compute, in the order they appear in the result.
+        * @param w       optional per-row weights; `None` computes columns of `A^T A`.
+        * @param depth   to control the depth in treeAggregate.
+        */
+      def gramianColumns(indices: Array[Int], w: Option[DVector] = None, depth: Int = 2): Array[Double] = {
+        val n = columns
+        val k = indices.length
+        val slots = Array.fill(n)(-1)
+        indices.zipWithIndex.foreach { case (column, s) => slots(column) = s }
+
+        // Each row contributes the rank-1 update `weight * row * row^T`; only the columns with a
+        // slot are accumulated. foreachActive keeps the pass sparse-safe.
+        def accumulate(acc: Array[Double], row: Vector, weight: Double): Unit = {
+          row.foreachActive { (i, v) =>
+            val s = slots(i)
+            if (s >= 0 && v != 0.0) {
+              val coefficient = weight * v
+              val offset = s * n
+              row.foreachActive((j, u) => acc(offset + j) += coefficient * u)
+            }
+          }
         }
+
+        val perPartition = w match {
+          case Some(weights) =>
+            matrix.zipPartitions(weights)((matrixPartition, wPartition) => {
+              val acc = new Array[Double](n * k)
+              matrixPartition.checkedZip(wPartition.next().values.toIterator).foreach {
+                case (row, wi) => accumulate(acc, row, wi)
+              }
+              Iterator.single(acc)
+            })
+          case None =>
+            matrix.mapPartitions(matrixPartition => {
+              val acc = new Array[Double](n * k)
+              matrixPartition.foreach(row => accumulate(acc, row, 1.0))
+              Iterator.single(acc)
+            })
+        }
+        perPartition.treeAggregate(new Array[Double](n * k))(
+          seqOp = (sum1, sum2) => {
+            new BDV(sum1) += new BDV(sum2)
+            sum1
+          },
+          combOp = (sum1, sum2) => {
+            new BDV(sum1) += new BDV(sum2)
+            sum1
+          }, depth
+        )
       }
     }
   }

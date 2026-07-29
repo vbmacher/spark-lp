@@ -43,8 +43,8 @@ class InitializeSuite extends AnyFunSuite with DataFrameSuiteBase {
 
   // sTilda = c - A * lambdaTilda
   val sTilda: BDV[Double] = cBrz - ABrz * lambdaTilda
-  val deltax: Double = Math.max(1.5 * max(xTilda), 0)
-  val deltas: Double = Math.max(1.5 * max(sTilda), 0)
+  val deltax: Double = Math.max(-1.5 * min(xTilda), 0)
+  val deltas: Double = Math.max(-1.5 * min(sTilda), 0)
   val xHat: BDV[Double] = xTilda + deltax
   val sHat: BDV[Double] = sTilda + deltas
   val deltaxHat: Double = 0.5 * (xHat.t * sHat) / sum(sHat)
@@ -65,5 +65,28 @@ class InitializeSuite extends AnyFunSuite with DataFrameSuiteBase {
       "Initialize.init lambda0 is not computed correctly.")
     assert(Vectors.dense(expectedS.toArray) ~= Vectors.dense(result.s.flatMap(_.toArray).collect()) relTol 1e-6,
       "Initialize.init s0 should return the correct answer.")
+  }
+
+  test("Initialize.init with the matrix-free CG solver matches the direct computation") {
+    val result = Initialize.init(c, A, b, new newton.CgFactory(1e-12, 0)(spark))
+    assert(Vectors.dense(expectedX.toArray) ~= Vectors.dense(result.x.flatMap(_.toArray).collect()) relTol 1e-6,
+      "Initialize.init x0 is not computed correctly with the CG solver.")
+    assert(Vectors.dense(lambdaTilda.toArray) ~= Vectors.dense(result.lambda.toArray) relTol 1e-6,
+      "Initialize.init lambda0 is not computed correctly with the CG solver.")
+    assert(Vectors.dense(expectedS.toArray) ~= Vectors.dense(result.s.flatMap(_.toArray).collect()) relTol 1e-6,
+      "Initialize.init s0 should return the correct answer with the CG solver.")
+  }
+
+  test("Initialize.init creates strictly positive primal and slack vectors") {
+    val c = sc.parallelize(Array(0.0, 1.0), 1).glom.map(new DenseVector(_))
+    val A = sc.parallelize(Array(Vectors.dense(1.0), Vectors.dense(2.0)), 1)
+    val b = new DenseVector(Array(-1.0))
+
+    val result = Initialize.init(c, A, b)
+
+    assert(result.x.flatMap(_.values).collect().forall(_ > 0.0),
+      "Initialize.init x0 should be strictly positive.")
+    assert(result.s.flatMap(_.values).collect().forall(_ > 0.0),
+      "Initialize.init s0 should be strictly positive.")
   }
 }

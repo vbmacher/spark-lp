@@ -37,6 +37,24 @@ class DVectorSuite extends AnyFunSuite with DataFrameSuiteBase {
       "combine should return the correct result.")
   }
 
+  test("combine with unit coefficients does not mutate its input") {
+    val a = sc.parallelize(Array(new DenseVector(Array(2.0, 3.0)), new DenseVector(Array(4.0))), 2)
+    val b = sc.parallelize(Array(new DenseVector(Array(5.0, 6.0)), new DenseVector(Array(7.0))), 2).cache()
+    val expectedB = Vectors.dense(5.0, 6.0, 7.0)
+
+    try {
+      b.count()
+      val combination = a.combine(1.0, 1.0, b)
+
+      assert(Vectors.dense(combination.collectElements) == Vectors.dense(7.0, 9.0, 11.0),
+        "combine should return the correct result.")
+      assert(Vectors.dense(b.collectElements) == expectedB,
+        "combine should not mutate b.")
+    } finally {
+      b.unpersist(blocking = false)
+    }
+  }
+
   test("dot is implemented properly") {
     val a = sc.parallelize(Array(new DenseVector(Array(2.0, 3.0)), new DenseVector(Array(4.0))), 2)
     val b = sc.parallelize(Array(new DenseVector(Array(5.0, 6.0)), new DenseVector(Array(7.0))), 2)

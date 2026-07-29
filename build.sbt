@@ -9,10 +9,10 @@ ThisBuild / homepage := Some(url("https://github.com/vbmacher/spark-lp"))
 ThisBuild / versionScheme := Some("semver-spec")
 
 // CHANGE VERSION HERE:
-lazy val productVersion = "1.0.0"
+lazy val productVersion = "1.1.0"
 ThisBuild / version := productVersion // needs to be defined at root, so isSnapshot setting is properly set
 
-lazy val scalaLibVersion = "2.12.18"
+lazy val scalaLibVersion = "2.12.20"
 ThisBuild / scalaVersion := scalaLibVersion
 ThisBuild / autoAPIMappings := true
 

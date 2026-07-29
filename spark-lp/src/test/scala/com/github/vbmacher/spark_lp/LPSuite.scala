@@ -5,6 +5,7 @@ import com.holdenkarau.spark.testing.DataFrameSuiteBase
 import org.apache.spark.mllib.linalg.{DenseVector, Vectors}
 import org.apache.spark.rdd.RDD
 import org.apache.spark.sql.SparkSession
+import org.apache.spark.wrappers.CholeskyDecomposition
 import org.scalatest.funsuite.AnyFunSuite
 
 class LPSuite extends AnyFunSuite with DataFrameSuiteBase {
@@ -36,5 +37,100 @@ class LPSuite extends AnyFunSuite with DataFrameSuiteBase {
     println(s"$xx")
     println("optimal min value: " + v)
     assert(xx ~== expectedSol absTol 1e-6, "LP.solve x should return the correct answer.")
+  }
+
+  test("LP solve with the matrix-free conjugate-gradient solver matches the direct solver") {
+    implicit val s: SparkSession = spark
+
+    val (v, x) = LP.solve(c, rows, b, solver = NewtonSolver.ConjugateGradient)
+    val expectedSol = Vectors.dense(
+      Array(1.66666667, 5.83333333, 40.0, 0.0, 0.0, 13.33333333, 9.16666667))
+    val xx = Vectors.dense(x.flatMap(_.toArray).collect())
+    assert(xx ~== expectedSol absTol 1e-6, "matrix-free LP.solve x should return the correct answer.")
+    assert(v ~== 12.083333333 absTol 1e-6, "matrix-free LP.solve should reach the same optimum.")
+  }
+
+  test("automatic CG preconditioner rank obeys its storage budget") {
+    assert(newton.autoMaxRank(1000000) == 8)
+    assert(newton.autoMaxRank(10000000) == 0)
+  }
+
+  test("capped normal-equations weights keep D squared equal to D2") {
+    val x = sc.parallelize(Array(0.5, 4.0), numPartitions).glom.map(new DenseVector(_))
+    val s = sc.parallelize(Array(0.25, 0.5), numPartitions).glom.map(new DenseVector(_))
+
+    val weights = LP.normalEquationWeights(x, s, eps = 1.0, valueCap = 100.0)
+    val d = weights.sqrt.flatMap(_.toArray).collect()
+    val d2 = weights.squared.flatMap(_.toArray).collect()
+
+    assert(Vectors.dense(d2) ~== Vectors.dense(50.0, 400.0) absTol 1e-12)
+    assert(Vectors.dense(d.map(value => value * value)) ~== Vectors.dense(d2) absTol 1e-12)
+  }
+
+  test("packed Cholesky factor serves multiple right-hand sides") {
+    val factor = CholeskyDecomposition.factor(Array(4.0, 1.0, 3.0), 2)
+
+    val first = CholeskyDecomposition.solveFactored(factor, 2, Array(1.0, 2.0))
+    val second = CholeskyDecomposition.solveFactored(factor, 2, Array(4.0, 3.0))
+
+    assert(Vectors.dense(first) ~== Vectors.dense(1.0 / 11.0, 7.0 / 11.0) absTol 1e-12)
+    assert(Vectors.dense(second) ~== Vectors.dense(9.0 / 11.0, 8.0 / 11.0) absTol 1e-12)
+  }
+
+  test("packed Cholesky identifies a non-positive-definite leading minor") {
+    val e = intercept[IllegalArgumentException](
+      CholeskyDecomposition.factor(Array(1.0, 0.0, -1.0), 2))
+
+    assert(e.getMessage.contains("not positive definite"))
+    assert(e.getMessage.contains("leading minor 2"))
+  }
+
+  test("core Auto resolves from the known equality-form row count") {
+    assert(LP.resolveNewtonSolver(NewtonSolver.Auto, NewtonSolver.AutoCholeskyLimit) == NewtonSolver.Cholesky)
+    assert(LP.resolveNewtonSolver(NewtonSolver.Auto, NewtonSolver.AutoCholeskyLimit + 1) ==
+      NewtonSolver.ConjugateGradient)
+  }
+
+  test("primal infeasible: conflicting constraints terminate with a Farkas certificate") {
+    implicit val s: SparkSession = spark
+    // x <= 1 and x >= 2 in equality form: x + s1 = 1, x - s2 = 2 (distinct rows, full row rank)
+    val cInf = sc.parallelize(Array(1.0, 0.0, 0.0), numPartitions).glom.map(new DenseVector(_))
+    val atInf = sc.parallelize(Seq(
+      Vectors.dense(1.0, 1.0), Vectors.dense(1.0, 0.0), Vectors.dense(0.0, -1.0)), numPartitions)
+    val bInf = new DenseVector(Array(1.0, 2.0))
+
+    val summary = LP.solveSummary(cInf, atInf, bInf)
+    assert(summary.termination == LP.Termination.PrimalInfeasible)
+    assert(summary.certificateResidual <= 1e-8)
+
+    // the same certificate must be found by the matrix-free solver
+    val cgSummary = LP.solveSummary(cInf, atInf, bInf, solver = NewtonSolver.ConjugateGradient)
+    assert(cgSummary.termination == LP.Termination.PrimalInfeasible)
+    assert(cgSummary.certificateResidual <= 1e-8)
+
+    // the normalized ray y satisfies its Farkas inequalities: b^T y = 1, A^T y <= eps componentwise
+    val y = summary.primalCertificate.get.toArray
+    assert(math.abs(1.0 * y(0) + 2.0 * y(1) - 1.0) < 1e-9, "certificate is normalized to b^T y = 1")
+    val aTy = Seq(y(0) + y(1), y(0), -y(1)) // columns x, s1, s2
+    aTy.foreach(v => assert(v <= 1e-8, s"A^T y must be <= tolerance componentwise, got $aTy"))
+  }
+
+  test("dual infeasible (unbounded): diverging primal iterate terminates with a Farkas certificate") {
+    implicit val s: SparkSession = spark
+    // minimize -x1 subject to x1 - x2 = 1: feasible at (1, 0), unbounded along the ray (1, 1)
+    val cUnb = sc.parallelize(Array(-1.0, 0.0), numPartitions).glom.map(new DenseVector(_))
+    val atUnb = sc.parallelize(Seq(Vectors.dense(1.0), Vectors.dense(-1.0)), numPartitions)
+    val bUnb = new DenseVector(Array(1.0))
+
+    val summary = LP.solveSummary(cUnb, atUnb, bUnb)
+    assert(summary.termination == LP.Termination.DualInfeasible)
+    assert(summary.certificateResidual <= 1e-8)
+    assert(summary.primalResidual < 1e-4, "the iterate stays near-feasible while diverging along the ray")
+
+    // the normalized ray z satisfies its Farkas conditions: z >= 0, c^T z = -1, ||A z||_inf <= eps
+    val z = summary.dualCertificate.get.flatMap(_.toArray).collect()
+    assert(z.forall(_ >= 0.0), "certificate ray must be nonnegative")
+    assert(math.abs(-z(0) + 1.0) < 1e-9, "certificate is normalized to c^T z = -1")
+    assert(math.abs(z(0) - z(1)) <= 1e-8, "||A z||_inf must be <= tolerance")
   }
 }

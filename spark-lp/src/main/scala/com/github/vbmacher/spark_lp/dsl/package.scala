@@ -2,6 +2,14 @@ package com.github.vbmacher.spark_lp
 
 package object dsl {
 
+  /**
+    * Strategy for solving the per-iteration normal-equations systems, re-exported from the core
+    * package for DSL users; see [[com.github.vbmacher.spark_lp.NewtonSolver]] and
+    * `SolveConfig.newtonSolver`.
+    */
+  type NewtonSolver = com.github.vbmacher.spark_lp.NewtonSolver
+  val NewtonSolver: com.github.vbmacher.spark_lp.NewtonSolver.type = com.github.vbmacher.spark_lp.NewtonSolver
+
   /** Sums a scalar variable into an expression, PuLP-style. */
   def lpSum(variable: LpVariable): LpExpr = variable.handle.toExpr(1.0)
 

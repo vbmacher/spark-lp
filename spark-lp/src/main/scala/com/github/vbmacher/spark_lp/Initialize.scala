@@ -1,6 +1,6 @@
 package com.github.vbmacher.spark_lp
 
-import com.github.vbmacher.spark_lp.vectors.breeze_ops.{symPosDefInverse, triuToFull}
+import com.github.vbmacher.spark_lp.newton.NewtonSystemFactory
 import com.github.vbmacher.spark_lp.vectors.dmatrix.implicits._
 import com.github.vbmacher.spark_lp.vectors.dvector.implicits._
 import com.github.vbmacher.spark_lp.vectors.{DMatrix, DVector}
@@ -27,7 +27,24 @@ object Initialize extends LazyLogging {
     * @param b the constraint values.
     * @return starting points (x, lambda, s) and the computed dimensions of rows DMatrix (n, m).
     */
-  def init(c: DVector, A: DMatrix, b: DenseVector): Initialization = {
+  def init(c: DVector, A: DMatrix, b: DenseVector): Initialization =
+    init(c, A, b, newton.CholeskyFactory)
+
+  /**
+    * Compute the heuristic starting points, solving the two `B^T B` systems with the supplied
+    * normal-equations solver (driver-local Cholesky or the matrix-free conjugate gradient).
+    *
+    * @param c       the objective coefficient DVector.
+    * @param A       the constraint DMatrix.
+    * @param b       the constraint values.
+    * @param factory the normal-equations solver to use for the `B^T B` systems.
+    * @return starting points (x, lambda, s) and the computed dimensions of rows DMatrix (n, m).
+    */
+  private[spark_lp] def init(
+    c: DVector,
+    A: DMatrix,
+    b: DenseVector,
+    factory: NewtonSystemFactory): Initialization = {
     require(!A.isEmpty(), "Matrix A (constraint matrix) must not be empty")
 
     c.cacheIfNoStorageLevel()
@@ -39,47 +56,46 @@ object Initialize extends LazyLogging {
     logger.info(s"Number of unknowns: $rows")
     logger.info(s"Number of equations: $columns")
 
-    val BTB = A.gramianMatrix(columns) // Returns symmetric positive-definite matrix, if A columns are linearly independent
-    val BTBtoArrayToInv = BTB.toArray
+    // Solver for B^T B systems (positive definite, if A columns are linearly independent)
+    val system = factory.build(A, columns, weights = None)
+    try {
+      // xTilda = B * (B^T B)^(-1) * b
+      val xTilda = A.product(system.solve(b))
 
-    symPosDefInverse(BTBtoArrayToInv, columns) // less space with managed side effect
-    val BTBInv = triuToFull(BTBtoArrayToInv, columns)
+      // deltax = max(-1.5 * xTilda.min(), 0)
+      val deltax: Double = math.max(-1.5 * xTilda.minValue, 0)
 
-    // xTilda = B^T * BTBInv * b
-    // NOTE: BTBInv and BTBInv * b are local matrix and vector
-    val xTilda = A.product(BTBInv.multiply(b))
+      // xHat = xTilda + deltax * e
+      val xHat: DVector = xTilda.mapElements(a => a + deltax)
 
-    // deltax = max(-1.5 * xTilda.min(), 0)
-    val deltax: Double = math.max(-1.5 * xTilda.minValue, 0)
+      // lambdaTilda = (B^T B)^(-1) * B^T * c
+      val lambdaTilda: DenseVector = system.solve(A.adjointProduct(c))
 
-    // xHat = xTilda + deltax * e
-    val xHat: DVector = xTilda.mapElements(a => a + deltax)
+      // sTilda = c - B * lambdaTilda
+      val sTilda: DVector = c.diff(A.product(lambdaTilda))
 
-    // lambdaTilda = BTBInv * B^T * c
-    val lambdaTilda: DenseVector = BTBInv.multiply(A.adjointProduct(c))
+      // deltas = max(-1.5 * sTilda.min(), 0)
+      val deltas: Double = math.max(-1.5 * sTilda.minValue, 0)
 
-    // sTilda = c - B * lambdaTilda
-    val sTilda: DVector = c.diff(A.product(lambdaTilda))
+      // sHat = sTilda + deltas * e
+      val sHat: DVector = sTilda.mapElements(a => a + deltas)
 
-    // deltas = max(-1.5 * sTilda.min(), 0)
-    val deltas: Double = math.max(-1.5 * sTilda.minValue, 0)
+      // deltaxHat = 0.5 * (xHat, sHat) / (e, sHat)
+      val deltaxHat: Double = 0.5 * (xHat.dot(sHat) / sHat.sum())
 
-    // sHat = sTilda + deltas * e
-    val sHat: DVector = sTilda.mapElements(a => a + deltas)
+      // deltasHat = 0.5 * (xHat, sHat) / (e, xHat)
+      val deltasHat: Double = 0.5 * (xHat.dot(sHat) / xHat.sum())
 
-    // deltaxHat = 0.5 * (xHat, sHat) / (e, sHat)
-    val deltaxHat: Double = 0.5 * (xHat.dot(sHat) / sHat.sum())
+      // x = xHat + deltaxHat * e
+      val x = xHat.mapElements(a => a + deltaxHat)
 
-    // deltasHat = 0.5 * (xHat, sHat) / (e, xHat)
-    val deltasHat: Double = 0.5 * (xHat.dot(sHat) / xHat.sum())
+      // lambda = lambdaTilda
+      // s = sHat + deltasHat * e
+      val s = sHat.mapElements(a => a + deltasHat)
 
-    // x = xHat + deltaxHat * e
-    val x = xHat.mapElements(a => a + deltaxHat)
-
-    // lambda = lambdaTilda
-    // s = sHat + deltasHat * e
-    val s = sHat.mapElements(a => a + deltasHat)
-
-    Initialization(x = x, lambda = lambdaTilda, s = s, rows = rows, cols = columns)
+      Initialization(x = x, lambda = lambdaTilda, s = s, rows = rows, cols = columns)
+    } finally {
+      system.release()
+    }
   }
 }

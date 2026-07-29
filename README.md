@@ -136,12 +136,24 @@ signed infinity matching the objective sense), or `InfeasibleOrUnbounded` (a dua
 certificate without a primal-feasible iterate — the two cases are indistinguishable).
 The acceptance threshold is `SolveConfig.infeasibilityTolerance` (default `1e-8`).
 
-**Scale limits are constraint-side, not variable-side.** The *variable* count is the distributed
-dimension and can be large. Constraint rows are driver-local: for `m` equality-form rows
-(user constraints + inequalities + upper-bound rows) the driver holds roughly `16*m*m` bytes of
-Gramian-related allocations per solve plus an `O(m^3)` Cholesky factorization per iteration.
-The DSL therefore caps expanded rows at `SolveConfig.maxLocalConstraints` (default 5000, ~400 MB);
-raising it is an explicit, informed act.
+**Both dimensions scale; the solver picks the right engine.** The *variable* count is the
+distributed dimension and can be large. For the `m` equality-form constraint rows
+(user constraints + inequalities + upper-bound rows) two normal-equations solvers exist,
+selected by `SolveConfig.newtonSolver`:
+
+* **Cholesky** (direct, exact): the weighted Gramian is aggregated to the driver — roughly
+  `16*m*m` bytes of related allocations per solve plus an `O(m^3)` factorization per iteration.
+  Fast for small `m`, but driver-bound.
+* **ConjugateGradient** (matrix-free): the Gramian is never materialised; each CG step applies
+  `A^T D^2 A` with the same distributed matrix-vector products used elsewhere. Its dense iteration
+  vectors use `O(m)` driver memory; the optional partial-Cholesky preconditioner uses `O(m * rank)`
+  driver and task-local storage. Automatic rank selection bounds that preconditioner storage to
+  256 MB and uses unpreconditioned CG when no rank fits. Constraint count is then
+  big-data-friendly too, at the cost of extra Spark jobs per iteration; `cgTolerance` and
+  `cgMaxIterations` tune the inner solves.
+* **Auto** (default): Cholesky while `m <= SolveConfig.maxLocalConstraints` (default 5000,
+  ~400 MB), matrix-free CG beyond it. Explicitly selecting Cholesky restores the old behaviour
+  of rejecting models above `maxLocalConstraints`.
 
 ## Software Architecture Overview
 

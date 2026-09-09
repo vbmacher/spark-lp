@@ -6,7 +6,6 @@ import com.typesafe.scalalogging.LazyLogging
 import org.apache.spark.broadcast.Broadcast
 import org.apache.spark.wrappers.BLAS
 import org.apache.spark.mllib.linalg.{DenseVector, Vector, Vectors}
-import org.apache.spark.storage.StorageLevel
 
 object dmatrix {
 
@@ -60,10 +59,6 @@ object dmatrix {
   object implicits {
 
     implicit class DMatrixOps(matrix: DMatrix) extends LazyLogging {
-
-      if (matrix.getStorageLevel == StorageLevel.NONE) {
-        matrix.cache()
-      }
 
       private lazy val columns = matrix.first().size
 

@@ -62,7 +62,7 @@ private[dsl] object KeyCodec {
 
   def encodePart(part: Any): String = part match {
     case null => null
-    case s: String => "s:" + s
+    case s: String => "s:" + s.replace("\\", "\\\\").replace(Separator, "\\u001f")
     case d: Double => "d:" + java.lang.Long.toHexString(java.lang.Double.doubleToLongBits(d))
     case f: Float => "d:" + java.lang.Long.toHexString(java.lang.Double.doubleToLongBits(f.toDouble))
     case i: Int => "i:" + i.toString

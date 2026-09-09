@@ -19,7 +19,7 @@ import scala.collection.mutable
   * most-fractional branching.
   *
   * Status truthfulness:
-  *   - a node is discarded as infeasible only on a Farkas certificate ([[LP.Termination.PrimalInfeasible]]);
+  *   - a node is discarded as infeasible only on contradictory row bounds or a Farkas certificate;
   *   - `Optimal` is claimed only when the tree is exhausted, every node was resolved exactly, and
   *     no better solution can exist beyond `gapTolerance`;
   *   - `Unbounded` is claimed only for a node with a dual-infeasibility certificate whose iterate
@@ -34,11 +34,23 @@ private[dsl] final class BranchAndBound(
   config: SolveConfig)(implicit spark: SparkSession) {
 
   import BranchAndBound._
+  import com.github.vbmacher.spark_lp.vectors.dense_vector.implicits._
+  import com.github.vbmacher.spark_lp.vectors.dmatrix.implicits._
 
   private val intCols = compiled.intCols
   private val n = intCols.size
   private val rootLower: Array[Double] = intCols.map(_.rootLower).toArray
   private val intGSet = spark.sparkContext.broadcast(intCols.map(_.g).toSet)
+  // Nonintegral columns (including slacks) have y >= 0. Record which row directions they can
+  // change without a bound; integer columns have explicit finite intervals at every node.
+  private lazy val unboundedDirections: Map[Int, (Boolean, Boolean)] = {
+    val integral = intGSet
+    compiled.sortedCols.filter { case (g, _) => !integral.value.contains(g) }.flatMap { case (_, col) =>
+      val v = col.vector.toSparse
+      v.indices.iterator.zip(v.values.iterator).filter(_._2 != 0.0)
+        .map { case (r, a) => (r, (a < 0.0, a > 0.0)) }
+    }.reduceByKey((a, b) => (a._1 || b._1, a._2 || b._2)).collect().toMap
+  }
 
   private var incumbent: Option[Candidate] = None
   private var unboundedProof: Option[Candidate] = None
@@ -50,14 +62,14 @@ private[dsl] final class BranchAndBound(
   private var solvedNodes = 0
   private var totalIterations = 0
 
-  def solve(): LpSolution = {
+  def solve(): LpSolution = try {
     val open = mutable.PriorityQueue.empty[Node](Ordering.by[Node, Double](_.bound).reverse)
     open.enqueue(Node(
       lower = intCols.map(_.rootLower).toArray,
       upper = intCols.map(_.rootUpper).toArray,
       bound = Double.NegativeInfinity))
 
-    while (open.nonEmpty && unboundedProof.isEmpty && solvedNodes < DefaultMaxNodes) {
+    while (open.nonEmpty && unboundedProof.isEmpty && solvedNodes < config.mip.maxNodes) {
       val node = open.dequeue()
       if (!prunable(node.bound)) {
         processNode(node, open)
@@ -67,14 +79,20 @@ private[dsl] final class BranchAndBound(
     // outstanding nodes below the incumbent bound do not compromise optimality
     val searchComplete = unboundedProof.isEmpty && open.forall(node => prunable(node.bound))
     assemble(searchComplete)
+  } finally {
+    (incumbent.map(_.x).toSeq ++ unboundedProof.map(_.x).toSeq ++ Option(rootX)).distinct
+      .foreach(_.unpersist(blocking = false))
+    intGSet.unpersist(blocking = false)
   }
 
   private def prunable(bound: Double): Boolean = incumbent.exists { inc =>
-    bound >= inc.objMin - GapTolerance * math.max(1.0, math.abs(inc.objMin))
+    bound >= inc.objMin - config.mip.gapTolerance * math.max(1.0, math.abs(inc.objMin))
   }
 
   private def processNode(node: Node, open: mutable.PriorityQueue[Node]): Unit = {
     val isRoot = solvedNodes == 0
+    if (!isRoot && inconsistentBounds(node)) return
+    solvedNodes += 1
     val summary =
       try {
         LP.solveSummary(
@@ -96,7 +114,6 @@ private[dsl] final class BranchAndBound(
           exact = false // the node stays unresolved; a better solution may hide in it
           return
       }
-    solvedNodes += 1
     totalIterations += summary.iterations
     if (isRoot) {
       rootX = summary.x
@@ -105,21 +122,26 @@ private[dsl] final class BranchAndBound(
 
     // full solver-form objective of the node iterate, comparable across nodes
     val objMin = summary.objectiveValue + shiftCost(node)
+    val lowerBound = summary.dualObjectiveValue + shiftCost(node)
 
     summary.termination match {
       case LP.Termination.Converged =>
-        if (!prunable(objMin)) {
+        if (!prunable(lowerBound)) {
           val vals = integerValues(node, summary.x)
           mostFractional(node, vals) match {
             case Some((j, v)) =>
-              branch(node, j, v, objMin, open)
+              branch(node, j, v, lowerBound, open)
             case None =>
               roundedValues(node, vals) match {
-                case Some(rounded) if incumbent.forall(objMin < _.objMin) =>
-                  incumbent.foreach(old => release(old.x))
-                  incumbent = Some(Candidate(objMin, summary.x, rounded, summary))
-                case Some(_) => () // integral but not better; node is exhausted
-                case None => exact = false // iterate neither fractional nor cleanly integral
+                case Some(rounded) if feasibleRounding(node, summary.x, vals, rounded) =>
+                  val roundedObjective = objMin + intCols.indices.map { j =>
+                    intCols(j).cost * (rounded(intCols(j).g) - node.lower(j) - vals(intCols(j).g))
+                  }.sum
+                  if (incumbent.forall(roundedObjective < _.objMin)) {
+                    incumbent.foreach(old => release(old.x))
+                    incumbent = Some(Candidate(roundedObjective, summary.x, rounded, summary))
+                  }
+                case _ => branchOrGiveUp(node, vals, open)
               }
           }
         }
@@ -130,10 +152,10 @@ private[dsl] final class BranchAndBound(
         val vals = integerValues(node, summary.x)
         if (summary.primalResidual < config.tolerance) {
           roundedValues(node, vals) match {
-            case Some(rounded) =>
+            case Some(rounded) if feasibleRounding(node, summary.x, vals, rounded) =>
               // primal-feasible integral iterate + dual-infeasibility certificate: unbounded
               unboundedProof = Some(Candidate(Double.NegativeInfinity, summary.x, rounded, summary))
-            case None => branchOrGiveUp(node, vals, open)
+            case _ => branchOrGiveUp(node, vals, open)
           }
         } else {
           branchOrGiveUp(node, vals, open)
@@ -144,6 +166,30 @@ private[dsl] final class BranchAndBound(
 
     if ((summary.x ne rootX) && !incumbent.exists(_.x eq summary.x) && !unboundedProof.exists(_.x eq summary.x)) {
       release(summary.x)
+    }
+  }
+
+  /** A row outside its attainable interval proves this node infeasible without a Newton solve. */
+  private def inconsistentBounds(node: Node): Boolean = {
+    val minimum = Array.fill(compiled.numRows)(0.0)
+    val maximum = Array.fill(compiled.numRows)(0.0)
+    unboundedDirections.foreach { case (r, (negative, positive)) =>
+      if (negative) minimum(r) = Double.NegativeInfinity
+      if (positive) maximum(r) = Double.PositiveInfinity
+    }
+    intCols.indices.foreach { j =>
+      val col = intCols(j)
+      val width = node.upper(j) - node.lower(j)
+      (col.rowCoeffs + (col.boundRow -> 1.0)).foreach { case (r, a) =>
+        minimum(r) += math.min(0.0, a * width)
+        maximum(r) += math.max(0.0, a * width)
+      }
+    }
+    val bounds = nodeRhs(node).values
+    bounds.indices.exists { r =>
+      val rhs = bounds(r)
+      val tolerance = config.tolerance * (1.0 + math.abs(rhs))
+      rhs < minimum(r) - tolerance || rhs > maximum(r) + tolerance
     }
   }
 
@@ -195,7 +241,7 @@ private[dsl] final class BranchAndBound(
   /** The unfixed column whose value is farthest from an integer, if any exceeds the tolerance. */
   private def mostFractional(node: Node, vals: Map[Long, Double]): Option[(Int, Double)] = {
     var best = -1
-    var bestFrac = IntegralityTolerance
+    var bestFrac = config.mip.integralityTolerance
     var bestV = 0.0
     var j = 0
     while (j < n) {
@@ -223,7 +269,8 @@ private[dsl] final class BranchAndBound(
     while (j < n) {
       val raw = node.lower(j) + vals(intCols(j).g)
       val r = math.rint(raw)
-      if (math.abs(raw - r) > IntegralityTolerance || r < node.lower(j) || r > node.upper(j)) {
+      if (raw.isNaN || raw.isInfinite || math.abs(raw - r) > config.mip.integralityTolerance ||
+        r < node.lower(j) || r > node.upper(j)) {
         return None
       }
       out(j) = r
@@ -232,12 +279,26 @@ private[dsl] final class BranchAndBound(
     Some(intCols.indices.map(j => intCols(j).g -> out(j)).toMap)
   }
 
+  /** Rounding an almost-integral value can still violate a row with a large coefficient. */
+  private def feasibleRounding(
+    node: Node, x: DVector, vals: Map[Long, Double], rounded: Map[Long, Double]): Boolean = {
+    val rhs = nodeRhs(node)
+    val residual = compiled.AT.adjointProduct(x).combine(1.0, -1.0, rhs).values
+    intCols.indices.foreach { j =>
+      val col = intCols(j)
+      val delta = rounded(col.g) - node.lower(j) - vals(col.g)
+      col.rowCoeffs.foreach { case (r, a) => residual(r) += a * delta }
+      residual(col.boundRow) += delta
+    }
+    math.sqrt(residual.map(v => v * v).sum) / (1.0 + math.sqrt(rhs.dot(rhs))) < config.tolerance
+  }
+
   /** Splits the node on column `j` around the fractional value `v` (both children are non-empty). */
   private def branch(node: Node, j: Int, v: Double, childBound: Double, open: mutable.PriorityQueue[Node]): Unit = {
     val upper = node.upper.clone()
     upper(j) = math.floor(v)
     val lower = node.lower.clone()
-    lower(j) = math.ceil(v)
+    lower(j) = math.floor(v) + 1.0
     open.enqueue(Node(node.lower, upper, childBound))
     open.enqueue(Node(lower, node.upper, childBound))
   }
@@ -255,8 +316,8 @@ private[dsl] final class BranchAndBound(
         val j = node.lower.indices.find(j => node.lower(j) < node.upper(j))
         j match {
           case Some(k) =>
-            val mid = math.floor((node.lower(k) + node.upper(k)) / 2.0)
-            branch(node, k, mid + 0.5, node.bound, open)
+            val mid = math.min(node.upper(k) - 1.0, math.floor(node.lower(k) / 2.0 + node.upper(k) / 2.0))
+            branch(node, k, mid, node.bound, open)
           case None => exact = false // fully fixed and still unresolved
         }
     }
@@ -315,10 +376,6 @@ private[dsl] final class BranchAndBound(
 }
 
 private[dsl] object BranchAndBound {
-
-  private[dsl] val DefaultMaxNodes = 1000
-  private[dsl] val IntegralityTolerance = 1e-6
-  private[dsl] val GapTolerance = 1e-9
 
   /** One open subproblem: integral bounds per column (aligned with `intCols`) and its best bound. */
   private final case class Node(lower: Array[Double], upper: Array[Double], bound: Double)

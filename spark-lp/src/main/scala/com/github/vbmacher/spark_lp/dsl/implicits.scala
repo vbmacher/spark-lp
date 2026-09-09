@@ -35,7 +35,7 @@ object implicits {
 
     /** Coefficient held in a Spark column, resolved against the set's own domain. */
     def *(coefficient: Column): LpExpr =
-      new LpExpr(Vector(ColumnCoeffTerm(x.handle, coefficient, 1.0)), 0.0)
+      x.sum(coefficient)
 
     def unary_- : LpExpr = x.handle.toExpr(-1.0)
 

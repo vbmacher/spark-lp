@@ -38,7 +38,10 @@ final class LpSolution private[dsl](
     */
   val constraints: DataFrame,
   private val problem: LpProblem,
-  private[dsl] val userValues: RDD[((Int, String), Double)]) {
+  private[dsl] val userValues: RDD[((Int, String), Double)]) extends AutoCloseable {
+
+  /** Releases the materialised result. Finish all Spark actions on values before closing. */
+  override def close(): Unit = userValues.unpersist(blocking = false)
 
   /** The original variable domain plus `lp_variable` (display name) and `lp_value` columns. */
   def values[K](variables: LpVariableSet[K]): DataFrame = {

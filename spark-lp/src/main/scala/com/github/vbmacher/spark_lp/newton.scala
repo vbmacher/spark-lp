@@ -60,9 +60,8 @@ private[spark_lp] object newton extends LazyLogging {
     * The scaling weights of one interior-point iteration, both partitioned consistently with the
     * constraint matrix. `sqrt` (the iteration's `D`) feeds the Cholesky path, which scales matrix
     * rows before aggregating the Gramian; `squared` (the iteration's `D2 = D^2`) feeds the
-    * matrix-free path, which applies the diagonal between the two products. The two are computed
-    * with their own value caps by the solver, hence both are carried instead of deriving one from
-    * the other.
+    * matrix-free path, which applies the diagonal between the two products. The solver derives
+    * `sqrt` from the validated squared weights so both systems use the same capped operator.
     */
   final case class Weights(sqrt: DVector, squared: DVector)
 

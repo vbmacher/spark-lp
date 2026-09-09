@@ -1,7 +1,7 @@
 package com.github.vbmacher.spark_lp.dsl
 
 import org.apache.spark.rdd.RDD
-import org.apache.spark.sql.functions.{col, struct}
+import org.apache.spark.sql.functions.{col, lit, struct}
 import org.apache.spark.sql.types.{DoubleType, StringType, StructField, StructType}
 import org.apache.spark.sql.{AnalysisException, Column, DataFrame, Dataset, Encoder, Encoders, Row, SparkSession}
 
@@ -132,7 +132,7 @@ private[dsl] final class ScalarDomain(spark: SparkSession) extends DomainAccess 
   }
 }
 
-private[dsl] final class ColumnDomain(df: DataFrame, key: Column) extends DomainAccess {
+private[dsl] final class ColumnDomain(val df: DataFrame, key: Column) extends DomainAccess {
 
   override def keyPairs(): RDD[(String, Seq[String])] = {
     df.select(key.as("__lp_key")).rdd.map { row =>
@@ -250,6 +250,19 @@ final class LpVariableSet[K] private[dsl](
   private[dsl] val keyColumn: Option[Column]) {
 
   def name: String = handle.name
+
+  /** Sum all variables, with coefficient one. */
+  def sum: LpExpr = handle.toExpr(1.0)
+
+  /** Sum variables weighted by a column of their domain. */
+  def sum(coefficient: Column): LpExpr =
+    new LpExpr(Vector(ColumnCoeffTerm(handle, coefficient, 1.0)), 0.0)
+
+  /** One sum per domain group: `amount.sumBy("region")($"cost")` or `amount.sumBy("region")()`. */
+  def sumBy(by: String*)(coefficient: Column = lit(1.0)): GroupedLpExpr = handle.domain match {
+    case domain: ColumnDomain => lpSumBy(terms(domain.df, by.map(col), coefficient), by)
+    case _ => throw new LpModelException(s"sumBy requires a DataFrame variable domain: '${handle.name}'")
+  }
 
   /**
     * Relational term rows for DataFrame-native bulk constraints: one row per non-zero coefficient,

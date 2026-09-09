@@ -9,7 +9,12 @@ permissions:
 jobs:
   build:
 
+    name: Spark ${{ matrix.spark }}
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        spark: ['2_4', '3_0', '3_1', '3_2', '3_3', '3_4', '3_5']
 
     steps:
     - uses: actions/checkout@v4
@@ -22,4 +27,7 @@ jobs:
     - name: Setup sbt launcher
       uses: sbt/setup-sbt@v1
     - name: Run tests
-      run: sbt +test
+      run: sbt "spark-lpSpark_${{ matrix.spark }}2_12/test"
+    - name: Check examples
+      if: matrix.spark == '3_5'
+      run: sbt examplesSpark_3_5/test

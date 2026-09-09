@@ -1,4 +1,5 @@
 import SparkLibs._
+import xerial.sbt.Sonatype.sonatypeCentralHost
 
 // https://github.com/sbt/sbt/issues/5849
 Global / lintUnusedKeysOnLoad := false
@@ -38,8 +39,7 @@ ThisBuild / developers := List(
     url = url("https://github.com/ehsanmok")))
 
 ThisBuild / pomIncludeRepository := { _ => false }
-ThisBuild / sonatypeCredentialHost := "oss.sonatype.org"
-ThisBuild / sonatypeRepository := "https://oss.sonatype.org/service/local"
+ThisBuild / sonatypeCredentialHost := sonatypeCentralHost
 ThisBuild / publishTo := sonatypePublishToBundle.value
 ThisBuild / publishMavenStyle := true
 

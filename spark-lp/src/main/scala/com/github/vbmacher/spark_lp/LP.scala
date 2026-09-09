@@ -159,13 +159,15 @@ object LP extends LazyLogging {
     try {
       caches.cache(c)
       caches.cache(AT)
+      // Reuse the wrapper so adjoint products discover the matrix dimensions only once.
+      val matrix = new DMatrixOps(AT)
 
       val resolvedSolver = resolveNewtonSolver(solver, b.size)
       val systemFactory: NewtonSystemFactory = resolvedSolver match {
         case NewtonSolver.ConjugateGradient => new newton.CgFactory(cgTolerance, cgMaxIterations)
         case _ => newton.CholeskyFactory
       }
-      logger.info(s"Normal-equations solver: $resolvedSolver")
+      logger.debug(s"Normal-equations solver: $resolvedSolver")
 
       // run initialization
       val init =
@@ -231,7 +233,7 @@ object LP extends LazyLogging {
             // Complementarity belongs to the current iterate, not the starting point.
             val mu = x.dot(s) / unknowns
             // A^T * x - b
-            var rb = AT.adjointProduct(x).combine(1.0, -1.0, b)
+            var rb = matrix.adjointProduct(x).combine(1.0, -1.0, b)
 
             // A * lambda + s - c
             var rc = AT.product(lambdaBroadcast).combine(1.0, 1.0, s.diff(c))
@@ -250,19 +252,18 @@ object LP extends LazyLogging {
             //   x^T A x > 0    where x != 0
             newtonSystem = systemFactory.build(AT, equations, Some(weights))
 
-            val ATD2rcx = AT.adjointProduct(x.diff(D2.entrywiseProd(rc)))
+            val ATD2rcx = matrix.adjointProduct(x.diff(D2.entrywiseProd(rc)))
 
             val dLambdaAffRightSide = ATD2rcx.combine(1.0, -1.0, rb)
             val dLambdaAff = newtonSystem.solve(dLambdaAffRightSide, newtonAbsTolerance)
             dLambdaAffBroadcast = rebroadcast(dLambdaAffBroadcast, dLambdaAff)
 
             // 2) dsAff = -rc - A * dLambdaAff
-            val jj = temporary.cache(AT.product(dLambdaAffBroadcast))
-            jj.count()
-            val dsAff = rc.combine(-1.0, -1.0, jj)
+            // The step-length and corrector actions reuse these directions and populate their caches.
+            val dsAff = temporary.cache(rc.combine(-1.0, -1.0, AT.product(dLambdaAffBroadcast)))
 
             // 3) dxAff = -x - D^2 * dsAff
-            val dxAff = x.combine(-1.0, -1.0, D2.entrywiseProd(dsAff))
+            val dxAff = temporary.cache(x.combine(-1.0, -1.0, D2.entrywiseProd(dsAff)))
 
             // Calculate following Doubles alphaPriAff, alphaDualAff, muAff (14.32), (14.33)
             val alphaPriAff = math.min(1.0, x.entrywiseNegDiv(dxAff).minValue)
@@ -286,7 +287,7 @@ object LP extends LazyLogging {
             val xInvdXAffdsAff = xInv.entrywiseProd(dxAff.entrywiseProd(dsAff))
             val dLambdaRightSide = rb.combine(
               -1.0, 1.0,
-              AT.adjointProduct(
+              matrix.adjointProduct(
                 D2.entrywiseProd(
                   s.diff(rc)
                     .combine(1.0, 1.0, xInvdXAffdsAff)
@@ -296,9 +297,7 @@ object LP extends LazyLogging {
             dLambdaBroadcast = rebroadcast(dLambdaBroadcast, dLambda)
 
             // 2) ds = -rc - A * dLambda
-            val jj1 = temporary.cache(AT.product(dLambdaBroadcast))
-            jj1.count()
-            val ds = rc.combine(-1.0, -1.0, jj1)
+            val ds = temporary.cache(rc.combine(-1.0, -1.0, AT.product(dLambdaBroadcast)))
 
             // 3) dx = -D^2 dS e - x - S^(-1) dXAff dSAff e + sigma mu S^(-1) e
             val sInv = s.mapElements {
@@ -307,11 +306,11 @@ object LP extends LazyLogging {
             }
 
             val sInvdXAffdsAff = sInv.entrywiseProd(dxAff.entrywiseProd(dsAff))
-            val dx = D2
+            val dx = temporary.cache(D2
               .entrywiseProd(ds)
               .combine(-1.0, -1.0, x)
               .combine(1.0, -1.0, sInvdXAffdsAff)
-              .combine(1.0, sigma * mu, sInv)
+              .combine(1.0, sigma * mu, sInv))
 
             val alphaPrimalIterMax = x.entrywiseNegDiv(dx).minValue
             val alphaDualIterMax = s.entrywiseNegDiv(ds).minValue
@@ -328,16 +327,9 @@ object LP extends LazyLogging {
             // s = s + alphaDualIter * ds
             s = caches.checkpoint(s.combine(1.0, alphaDualIter, ds))
 
-            rb = AT.adjointProduct(x).combine(1.0, -1.0, b)
-            val previousRc = rc
+            rb = matrix.adjointProduct(x).combine(1.0, -1.0, b)
             rc = temporary.cache(AT.product(lambdaBroadcast).combine(1.0, 1.0, s.diff(c)))
-            rc.count()
             cTx = c.dot(x)
-
-            temporary.release(previousRc)
-            temporary.release(jj)
-            temporary.release(jj1)
-            temporary.release(D2)
 
             val bTlambda = b.dot(lambda)
             val normRb = math.sqrt(rb.dot(rb))
@@ -380,18 +372,8 @@ object LP extends LazyLogging {
 
             }
 
-            temporary.release(rc)
-
-            if (iter <= 3 || converged || earlyTermination.nonEmpty || iter == maxIter) {
-              logger.info(s"LP iteration: $iter" +
-                s"\nsigma = $sigma" +
-                s"\n1. convergence condition: $covg1" +
-                s"\n2. convergence condition: $covg2" +
-                s"\n3. convergence condition: $covg3" +
-                s"\nConverged = $converged\n" +
-                s"\ncTx: $cTx" +
-                s"\nb dot lambda: $bTlambda")
-            }
+            logger.debug(s"LP iteration=$iter sigma=$sigma primalResidual=$covg1 " +
+              s"dualResidual=$covg2 gap=$covg3 converged=$converged cTx=$cTx bTlambda=$bTlambda")
 
             completedIterations = iter
             // Both replacements have been materialised and checkpointed by the residual actions.
@@ -441,6 +423,10 @@ object LP extends LazyLogging {
       val termination =
         if (converged) Termination.Converged
         else earlyTermination.getOrElse(Termination.IterationLimit)
+
+      logger.info(s"LP finished: solver=$resolvedSolver termination=$termination " +
+        s"iterations=$completedIterations objective=$cTx primalResidual=$primalResidual " +
+        s"dualResidual=$dualResidual gap=$dualityGap")
 
       SolveSummary(
         objectiveValue = cTx,

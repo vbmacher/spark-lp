@@ -55,8 +55,7 @@ object Initialize extends LazyLogging {
     val columns = A.first().size
     require(columns == b.size, s"Constraint vectors have size $columns but b has size ${b.size}")
 
-    logger.info(s"Number of unknowns: $rows")
-    logger.info(s"Number of equations: $columns")
+    logger.debug(s"Number of unknowns: $rows; number of equations: $columns")
 
     // Solver for B^T B systems (positive definite, if A columns are linearly independent)
     val system = factory.build(A, columns, weights = None)

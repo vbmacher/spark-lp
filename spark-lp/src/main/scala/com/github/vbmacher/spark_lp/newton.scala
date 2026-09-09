@@ -159,6 +159,8 @@ private[spark_lp] object newton extends LazyLogging {
 
     override def build(B: DMatrix, m: Int, weights: Option[Weights]): NewtonSystem = {
       val w = weights.map(_.squared)
+      // Keep the lazy column count across CG steps instead of submitting a first() job each time.
+      val matrix = new DMatrixOps(B)
 
       val maxRank =
         if (preconditionerRank > 0) math.min(preconditionerRank, m)
@@ -193,7 +195,7 @@ private[spark_lp] object newton extends LazyLogging {
           pBroadcast = spark.sparkContext.broadcast(new DenseVector(p.data))
           val Bp = B.product(pBroadcast)
           val weighted = w.map(_.entrywiseProd(Bp)).getOrElse(Bp)
-          new BDV(B.adjointProduct(weighted).values)
+          new BDV(matrix.adjointProduct(weighted).values)
         }
 
         override def solve(rhs: DenseVector, absTolerance: Double): DenseVector = {

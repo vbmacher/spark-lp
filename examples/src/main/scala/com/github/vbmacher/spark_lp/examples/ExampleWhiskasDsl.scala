@@ -33,12 +33,12 @@ object ExampleWhiskasDsl extends App {
   val model = LpProblem("Whiskas", Minimize)
   val amount = model.variables("amount", domain = ingredients, key = $"ingredient")
 
-  model += lpSum(amount * $"cost")
-  model += (lpSum(amount) === 100.0).named("total_weight")
-  model += (lpSum(amount * $"protein") >= 8.0).named("protein_min")
-  model += (lpSum(amount * $"fat") >= 6.0).named("fat_min")
-  model += (lpSum(amount * $"fibre") <= 2.0).named("fibre_max")
-  model += (lpSum(amount * $"salt") <= 0.4).named("salt_max")
+  model += amount.sum($"cost")
+  model += (amount.sum === 100.0).named("total_weight")
+  model += (amount.sum($"protein") >= 8.0).named("protein_min")
+  model += (amount.sum($"fat") >= 6.0).named("fat_min")
+  model += (amount.sum($"fibre") <= 2.0).named("fibre_max")
+  model += (amount.sum($"salt") <= 0.4).named("salt_max")
 
   val solution = model.solve()
   require(solution.status == LpStatus.Optimal, s"unexpected status: ${solution.status}")
@@ -54,5 +54,6 @@ object ExampleWhiskasDsl extends App {
     .select("name", "activity", "sense", "rhs", "slack")
     .show()
 
+  solution.close()
   spark.stop()
 }

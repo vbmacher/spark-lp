@@ -1,0 +1,145 @@
+= How spark-lp solves a model
+:toc: left
+:source-highlighter: highlightjs
+
+== Compile to equality form
+
+The continuous solver minimizes `c^T x` subject to `A x = b`, `x >= 0`.
+The compiler stores columns of `A` as sparse Spark rows of `AT = A^T`.
+Variable order is `(declaration order, encoded key)`; row order follows constraint
+declaration and group keys. No wide DataFrame pivot is needed.
+
+[mermaid]
+----
+flowchart LR
+  M[Model and Spark sources] --> V[Validate keys and coefficients]
+  V --> P[Fold fixed variables and shift bounds]
+  P --> E[Check empty rows and exact duplicate equalities]
+  E --> A[Add inequality and upper-bound slacks]
+  A --> C[Build aligned sparse AT and cost blocks]
+  C --> L[Continuous LP or integer search]
+  L --> R[Undo transformations and report diagnostics]
+----
+
+[cols="1,2",options="header"]
+|===
+|User model |Solver representation
+|`x >= l` |`x = l + y`, `y >= 0`; subtract `a*l` from RHS and add `c*l` to objective constant.
+|`x <= u`, with finite `l` |Add `y + slack = u - l`.
+|`x = l = u` |Remove the variable and substitute its value.
+|Free `x` |`x = positive - negative`, both nonnegative.
+|`a*x <= b` / `a*x >= b` |Add `+slack` / `-slack` to obtain equality.
+|Maximize |Negate costs; restore the objective sign and constant afterward.
+|===
+
+For example, minimize `2*x + 7` with `5 <= x <= 10` becomes minimize `2*y + 17`
+with `y + slack = 5`. The optimum `y = 0` reconstructs `x = 5`, cost `17`.
+Duplicate detection uses hashes to find candidates, then compares normalized coefficients
+before merging. Distinct rows are never merged solely because their hashes match.
+
+== Predictor and corrector
+
+`x` is the primal vector, `lambda` the equality multiplier, and `s` the nonnegative dual slack.
+Initialization solves two unweighted normal systems, then shifts `x` and `s` strictly positive.
+A zero complementarity starting estimate receives a positive shift, including zero-cost models.
+
+[mermaid]
+----
+flowchart TD
+  I[Initialize positive x and s] --> R[Compute primal and dual residuals]
+  R --> W[Update mu and diagonal weights]
+  W --> P[Solve affine predictor]
+  P --> C[Choose centering and solve corrector]
+  C --> U[Step while keeping x and s positive]
+  U --> T{Residuals below tolerance?}
+  T -->|Yes| O[Optimal]
+  T -->|No| F{Infeasibility certificate?}
+  F -->|Yes| S[Report certificate status]
+  F -->|No| B{Iteration budget left?}
+  B -->|Yes| R
+  B -->|No| L[IterationLimit]
+----
+
+At each iteration, `mu = x^T s / n` and `D2 = diag(x/s)` with guarded inverses.
+Both Newton directions solve the same system `A D2 A^T deltaLambda = rhs`.
+The affine predictor estimates progress toward the boundary. Its predicted complementarity
+sets `sigma = min(1, (muAffine/mu)^3)`; the corrector adds centering and the predictor's
+second-order correction. The step uses `etaIteration` to stay inside the nonnegative cone.
+`mu` is recomputed from the current iterate every time.
+This follows the predictor/corrector formulation in
+https://link.springer.com/article/10.1007/s10589-019-00103-y[Cui et al., section 2.1].
+
+Convergence requires all three normalized residuals below `SolveConfig.tolerance`:
+
+....
+primal = ||A*x - b||_2 / (1 + ||b||_2)
+dual   = ||A^T*lambda + s - c||_2 / (1 + ||c||_2)
+gap    = |c^T*x - b^T*lambda| / (1 + |b^T*lambda|)
+....
+
+For infeasibility, test `y = lambda/(b^T lambda)` when the denominator is positive:
+`A^T y <= infeasibilityTolerance`, `b^T y = 1`.
+For dual infeasibility, test `z = x/|c^T x|` when `c^T x < 0`:
+`||A z||_inf <= infeasibilityTolerance`, `c^T z = -1`, `z >= 0`.
+The latter means unboundedness only when a primal-feasible point is also known.
+These are floating-point certificate tests, governed by the configured tolerance.
+A numerical failure retries those tests on the last completed iterate before raising an exception.
+
+== Choose the Newton solver
+
+[cols="1,2,2",options="header"]
+|===
+|Strategy |Computation |Driver cost
+|`Cholesky` |Aggregate and factor the weighted Gramian once per outer iteration; reuse for both directions. |`O(m^2)` storage and `O(m^3)` factorization.
+|`ConjugateGradient` |Apply `v -> A*(D2*(A^T*v))` in Spark; use a bounded partial-Cholesky preconditioner. |`O(m)` iteration vectors plus `O(m*rank)` preconditioner storage.
+|`Auto` |Cholesky up to `maxLocalConstraints` (default 5000); CG above it. |Follows the selected strategy.
+|===
+
+Here `m` includes emitted user constraints and upper-bound rows; `n` includes split
+variables and slacks. Allow roughly `16*m*m` bytes for Gramian-related allocations:
+about 400 MB at `m = 5000`, excluding other driver data. Explicit Cholesky rejects
+models above `maxLocalConstraints` and has a packed-array limit of 65535 rows.
+CG avoids that Gramian limit, but row metadata, RHS, residuals, and group keys remain on
+the driver; matrix indices are still `Int`. Each CG step adds distributed work.
+
+CG uses selected Gramian columns and the diagonal Schur complement, inspired by
+https://webhomes.maths.ed.ac.uk/~jgondzio/reports/mtxFree.pdf[Gondzio's partial-Cholesky preconditioner].
+This implementation does not implement the paper's full regularized algorithm.
+The automatic preconditioner budget is 256 MiB; when no rank fits, CG runs unpreconditioned.
+`cgTolerance` and `cgMaxIterations` control the inner solve. The outer residual checks
+still decide convergence. Independent equality rows and reasonably scaled coefficients
+are required; duplicate removal is not a general rank-revealing presolver.
+
+== Integer and binary models
+
+Compile once. Branch-and-bound reuses `AT` and `c`; tighter integer bounds change the RHS
+and objective offset. Integer bounds and column coefficients are held on the driver.
+
+[mermaid]
+----
+flowchart TD
+  Q[Take node with smallest lower bound] --> B{Bound prunes node?}
+  B -->|Yes| N[Next node]
+  B -->|No| L[Solve LP relaxation]
+  L --> I{Feasible integral point?}
+  I -->|Yes| C[Check rounding and update incumbent]
+  I -->|No| F[Branch on fractional variable or split interval]
+  C --> N
+  F --> N
+  N --> E{Queue empty or node limit?}
+  E -->|No| Q
+  E -->|Yes| R[Report incumbent and search status]
+----
+
+For minimization, use the relaxation's dual objective as its lower bound; the primal
+objective is a candidate upper bound. Discard a branch whose row bounds are contradictory
+or whose LP has an infeasibility certificate. A fractional value `v` splits into
+`x <= floor(v)` and `x >= floor(v)+1`. Near-integer candidates are rounded only after
+checking the resulting constraint residual; the objective includes the rounding change.
+
+Example: maximize integer `x+y` with `2*x+2*y <= 3`. The relaxation reaches `1.5`;
+branching finds an integer optimum of `1`. Exhausting the search proves optimality within
+`mip.gapTolerance`; unresolved branches or `mip.maxNodes` exhaustion give `IterationLimit`.
+Defaults: 1000 LP nodes, integrality tolerance `1e-6`, relative gap tolerance `1e-9`.
+Search is sequential on the driver and can grow exponentially; distributed LP operations
+do not make arbitrary large integer searches inexpensive.

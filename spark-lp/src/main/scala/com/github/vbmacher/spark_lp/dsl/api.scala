@@ -28,7 +28,8 @@ case object Binary extends VariableCategory
   *
   * For models containing [[Integer]] or [[Binary]] variables, the same members retain their
   * truthful meaning across the discrete search: [[LpStatus.Optimal]] requires every candidate
-  * subproblem to be resolved; [[LpStatus.Infeasible]] requires every leaf to be certificate-pruned;
+  * subproblem to be resolved; [[LpStatus.Infeasible]] requires every leaf to be proved infeasible
+  * by a certificate or contradictory row bounds;
   * and an unresolved subproblem degrades the result to [[LpStatus.IterationLimit]], never to a
   * stronger claim.
   */
@@ -40,8 +41,8 @@ object LpStatus {
   case object Optimal extends LpStatus
 
   /**
-    * `maxIterations` was reached (or the solver's divergence backstop stopped a run whose
-    * residuals had grown past recovery); the reported values are the last iterate, which need NOT
+    * The iteration or integer-node budget was reached, or an integer branch stayed unresolved;
+    * the reported values are a retained iterate, which need NOT
     * be primal-feasible (see [[LpResiduals]]).
     */
   case object IterationLimit extends LpStatus
@@ -130,7 +131,12 @@ final case class SolveConfig(
   maxLocalConstraints: Long = 5000L,
   newtonSolver: NewtonSolver = NewtonSolver.Auto,
   cgTolerance: Double = 1e-10,
-  cgMaxIterations: Int = 0) {
+  cgMaxIterations: Int = 0,
+  mip: MipConfig = MipConfig()) {
+
+  com.github.vbmacher.spark_lp.LP.validateParameters(
+    tolerance, maxIterations, etaIteration, valueCap, epsilon, infeasibilityTolerance, cgTolerance)
+  require(maxLocalConstraints >= 0, "maxLocalConstraints must be nonnegative")
 
   /** The concrete normal-equations solver for a model with `m` equality-form rows. */
   private[dsl] def resolvedNewtonSolver(m: Long): NewtonSolver = newtonSolver match {
@@ -140,10 +146,22 @@ final case class SolveConfig(
   }
 }
 
+/** Limits for the driver-side branch-and-bound search. */
+final case class MipConfig(
+  maxNodes: Int = 1000,
+  integralityTolerance: Double = 1e-6,
+  gapTolerance: Double = 1e-9) {
+  require(maxNodes > 0, "maxNodes must be positive")
+  require(integralityTolerance > 0.0 && integralityTolerance < 0.5,
+    "integralityTolerance must be between 0 and 0.5 (exclusive)")
+  require(gapTolerance >= 0.0 && !gapTolerance.isInfinite, "gapTolerance must be finite and nonnegative")
+}
+
 /**
   * Final residuals of the returned iterate, in the solver's minimization form:
   * `primal = ||Ax - b|| / (1 + ||b||)`, `dual = ||A^T lambda + s - c|| / (1 + ||c||)`,
   * `gap = |c^T x - b^T lambda| / (1 + |b^T lambda|)`.
-  * All three are below `tolerance` iff status is [[LpStatus.Optimal]].
+  * For continuous solves, all three are below `tolerance` at [[LpStatus.Optimal]]. For integer
+  * models these describe the retained LP relaxation, not the global search gap.
   */
 final case class LpResiduals(primal: Double, dual: Double, gap: Double)

@@ -6,6 +6,7 @@ import com.github.vbmacher.spark_lp.vectors.dvector.implicits._
 import com.github.vbmacher.spark_lp.vectors.{DMatrix, DVector}
 import com.typesafe.scalalogging.LazyLogging
 import org.apache.spark.mllib.linalg.DenseVector
+import org.apache.spark.storage.StorageLevel
 
 object Initialize extends LazyLogging {
 
@@ -48,10 +49,11 @@ object Initialize extends LazyLogging {
     require(!A.isEmpty(), "Matrix A (constraint matrix) must not be empty")
 
     c.cacheIfNoStorageLevel()
-    A.cache()
+    if (A.getStorageLevel == StorageLevel.NONE) A.cache()
 
     val rows = A.count()
     val columns = A.first().size
+    require(columns == b.size, s"Constraint vectors have size $columns but b has size ${b.size}")
 
     logger.info(s"Number of unknowns: $rows")
     logger.info(s"Number of equations: $columns")
@@ -81,10 +83,11 @@ object Initialize extends LazyLogging {
       val sHat: DVector = sTilda.mapElements(a => a + deltas)
 
       // deltaxHat = 0.5 * (xHat, sHat) / (e, sHat)
-      val deltaxHat: Double = 0.5 * (xHat.dot(sHat) / sHat.sum())
+      val complementarity = xHat.dot(sHat)
+      val deltaxHat: Double = if (complementarity == 0.0) 1.0 else 0.5 * complementarity / sHat.sum()
 
       // deltasHat = 0.5 * (xHat, sHat) / (e, xHat)
-      val deltasHat: Double = 0.5 * (xHat.dot(sHat) / xHat.sum())
+      val deltasHat: Double = if (complementarity == 0.0) 1.0 else 0.5 * complementarity / xHat.sum()
 
       // x = xHat + deltaxHat * e
       val x = xHat.mapElements(a => a + deltaxHat)

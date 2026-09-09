@@ -43,8 +43,8 @@ class DenseVectorSuite extends AnyFunSuite {
 
   test("entrywiseNegDiv is implemented properly") {
     val a = new DenseVector(Array(2, 0, 3.0))
-    val b = new DenseVector(Array(-1.0, 1.0))
-    val expectedEntrywiseNegDiv = new DenseVector(Array(2.0 / math.abs(-1.0), Double.PositiveInfinity))
+    val b = new DenseVector(Array(-1.0, 1.0, -3.0))
+    val expectedEntrywiseNegDiv = new DenseVector(Array(2.0, Double.PositiveInfinity, 1.0))
 
     assert(a.entrywiseNegDiv(b) == expectedEntrywiseNegDiv, "entrywiseNegDiv should return the correct result.")
   }

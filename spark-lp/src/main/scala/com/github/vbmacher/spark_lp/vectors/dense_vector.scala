@@ -52,6 +52,7 @@ object dense_vector {
         * @return The computed vector.
         */
       def entrywiseProd(b: DenseVector): DenseVector = {
+        require(vector.size == b.size, "Entrywise product requires vectors of equal size")
         val c = vector.values.zip(b.values).map { case (i: Double, j: Double) => i * j }
         new DenseVector(c)
       }
@@ -63,6 +64,7 @@ object dense_vector {
         * @return The computed vector.
         */
       def entrywiseNegDiv(b: DenseVector): DenseVector = {
+        require(vector.size == b.size, "Entrywise division requires vectors of equal size")
         val c = vector.values.zip(b.values).map {
           case (ai, bi) if bi < 0 => ai / Math.max(Math.abs(bi), 1e-15)
           case (_, bi) if bi >= 0 => Double.PositiveInfinity // Make Infinity value to be neglected in min

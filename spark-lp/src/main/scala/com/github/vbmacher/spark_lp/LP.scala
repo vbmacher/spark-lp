@@ -25,11 +25,7 @@ object LP extends LazyLogging {
     /** All three convergence conditions were met within tolerance. */
     case object Converged extends Termination
 
-    /**
-      * `maxIter` was reached, or the LIPSOL-style divergence backstop stopped a run whose total
-      * relative error had grown past recovery. The backstop is a heuristic, not a certificate, so
-      * it deliberately maps to the same truthful "did not converge" outcome as the iteration limit.
-      */
+    /** The iteration budget was exhausted without convergence or a certificate. */
     case object IterationLimit extends Termination
 
     /**
@@ -51,22 +47,22 @@ object LP extends LazyLogging {
   /**
     * Detailed result of one solver run.
     *
-    * @param objectiveValue       final objective value `c^T x` of the returned iterate.
-    * @param x                    the returned (last completed) iterate; primal-feasible only if
-    *                             `termination` is [[Termination.Converged]].
-    * @param iterations           the number of completed iterations.
-    * @param termination          how the run terminated (see [[Termination]]).
-    * @param primalResidual       final `||A x - b|| / (1 + ||b||)`.
-    * @param dualResidual         final `||A^T lambda + s - c|| / (1 + ||c||)`.
-    * @param dualityGap           final `|c^T x - b^T lambda| / (1 + |b^T lambda)|`.
-    * @param primalCertificate    on [[Termination.PrimalInfeasible]], the normalized Farkas ray
-    *                             `y = lambda / (b^T lambda)` (so `b^T y = 1`, `A^T y <= eps`).
-    * @param dualCertificate      on [[Termination.DualInfeasible]], the normalized Farkas ray
-    *                             `z = x / |c^T x|` (so `z >= 0`, `c^T z = -1`, `||A z||_inf <= eps`).
-    * @param certificateResidual  residual quality of the reported certificate:
-    *                             `max(0, max_i (A^T y)_i)` for a primal-infeasibility certificate,
-    *                             `||A z||_inf` for a dual-infeasibility one; `NaN` when neither
-    *                             certificate was found.
+    * @param objectiveValue      final objective value `c^T x` of the returned iterate.
+    * @param x                   the returned (last completed) iterate; primal-feasible only if
+    *                            `termination` is [[Termination.Converged]].
+    * @param iterations          the number of completed iterations.
+    * @param termination         how the run terminated (see [[Termination]]).
+    * @param primalResidual      final `||A x - b|| / (1 + ||b||)`.
+    * @param dualResidual        final `||A^T lambda + s - c|| / (1 + ||c||)`.
+    * @param dualityGap          final `|c^T x - b^T lambda| / (1 + |b^T lambda)|`.
+    * @param primalCertificate   on [[Termination.PrimalInfeasible]], the normalized Farkas ray
+    *                            `y = lambda / (b^T lambda)` (so `b^T y = 1`, `A^T y <= eps`).
+    * @param dualCertificate     on [[Termination.DualInfeasible]], the normalized Farkas ray
+    *                            `z = x / |c^T x|` (so `z >= 0`, `c^T z = -1`, `||A z||_inf <= eps`).
+    * @param certificateResidual residual quality of the reported certificate:
+    *                            `max(0, max_i (A^T y)_i)` for a primal-infeasibility certificate,
+    *                            `||A z||_inf` for a dual-infeasibility one; `NaN` when neither
+    *                            certificate was found.
     */
   private[spark_lp] case class SolveSummary(
     objectiveValue: Double,
@@ -78,7 +74,8 @@ object LP extends LazyLogging {
     dualityGap: Double,
     primalCertificate: Option[DenseVector] = None,
     dualCertificate: Option[DVector] = None,
-    certificateResidual: Double = Double.NaN)
+    certificateResidual: Double = Double.NaN,
+    dualObjectiveValue: Double = Double.NaN)
 
   /**
     * Computes the optimal value and the corresponding vector for a LP problem.
@@ -130,10 +127,8 @@ object LP extends LazyLogging {
     * After each iteration's residual update, two scale-invariant Farkas certificate tests are
     * evaluated against `infeasibilityTolerance` (see [[Termination.PrimalInfeasible]] and
     * [[Termination.DualInfeasible]]); when one holds, the loop stops early and the normalized
-    * certificate ray is retained in the summary. A LIPSOL-style divergence backstop additionally
-    * stops a run whose total relative error `phi = (||rb|| + ||rc|| + |c^T x - b^T lambda|) /
-    * max(1, ||b||, ||c||)` exceeds `max(tolerance, 1e5 * min_k phi_k)`; being a heuristic and not
-    * a certificate, it reports [[Termination.IterationLimit]].
+    * certificate ray is retained in the summary. Otherwise the explicit iteration budget bounds
+    * the run; growing residuals alone do not establish infeasibility.
     *
     * Numerical failures (a non-positive-definite Gramian during initialization or an iteration's
     * normal-equations solve — a Cholesky breakdown or a stalled conjugate-gradient run — or a
@@ -158,302 +153,305 @@ object LP extends LazyLogging {
     cgTolerance: Double = 1e-10,
     cgMaxIterations: Int = 0
   )(implicit spark: SparkSession): SolveSummary = {
-    c.cacheIfNoStorageLevel()
+    validateParameters(tolerance, maxIter, etaIter, valueCap, eps, infeasibilityTolerance, cgTolerance)
+    require(b.size > 0 && b.values.forall(v => !v.isNaN && !v.isInfinite), "b must be nonempty and finite")
+    val caches = new CachedRDDs
+    try {
+      caches.cache(c)
+      caches.cache(AT)
+      // Reuse the wrapper so adjoint products discover the matrix dimensions only once.
+      val matrix = new DMatrixOps(AT)
 
-    val resolvedSolver = resolveNewtonSolver(solver, b.size)
-    val systemFactory: NewtonSystemFactory = resolvedSolver match {
-      case NewtonSolver.ConjugateGradient => new newton.CgFactory(cgTolerance, cgMaxIterations)
-      case _ => newton.CholeskyFactory
-    }
-    logger.info(s"Normal-equations solver: $resolvedSolver")
+      val resolvedSolver = resolveNewtonSolver(solver, b.size)
+      val systemFactory: NewtonSystemFactory = resolvedSolver match {
+        case NewtonSolver.ConjugateGradient => new newton.CgFactory(cgTolerance, cgMaxIterations)
+        case _ => newton.CholeskyFactory
+      }
+      logger.debug(s"Normal-equations solver: $resolvedSolver")
 
-    // run initialization
-    val init =
+      // run initialization
+      val init =
+        try {
+          Initialize.init(c, AT, b, systemFactory)
+        } catch {
+          case e if isNumericalFailure(e) => throw numericalFailure("initialization", 0, e)
+        }
+
+      var x = init.x
+      caches.cache(x)
+
+      var lambda = init.lambda
+      var lambdaBroadcast = spark.sparkContext.broadcast(lambda)
+
+      var s = init.s
+      caches.cache(s)
+
+      // set number of unknown in lp
+      val unknowns = init.rows
+
+      // set number of equations in lp
+      val equations = init.cols
+
+      // initial objective value
+      var cTx = Double.PositiveInfinity
+
+      var converged = false
+      var earlyTermination: Option[Termination] = None
+      var primalCertificate: Option[DenseVector] = None
+      var dualCertificate: Option[DVector] = None
+      var certificateResidual = Double.NaN
+      var iter = 1
+      var completedIterations = 0
+
+      var primalResidual = Double.NaN
+      var dualResidual = Double.NaN
+      var dualityGap = Double.NaN
+
+      // constants of the residual normalizations
+      val normB = math.sqrt(b.dot(b))
+      val normC = math.sqrt(c.dot(c))
+
+      // The defect of an iterative normal-equations solve enters the next primal residual
+      // one-to-one, so solves need only be as accurate (in absolute terms) as the primal
+      // convergence condition `||rb|| < tolerance * (1 + ||b||)` demands.
+      val newtonAbsTolerance = 0.1 * tolerance * (1.0 + normB)
+
+      var dLambdaAffBroadcast: Broadcast[DenseVector] = null
+      var dLambdaBroadcast: Broadcast[DenseVector] = null
+
       try {
-        Initialize.init(c, AT, b, systemFactory)
-      } catch {
-        case e if isNumericalFailure(e) => throw numericalFailure("initialization", 0, e)
-      }
+        while (!converged && earlyTermination.isEmpty && iter <= maxIter) {
 
-    var x = init.x
-    x.cacheIfNoStorageLevel()
+          // the last completed iterate, for certificate-based reclassification of numerical failures
+          val x0 = x
+          val lambda0 = lambda
+          val s0 = s
 
-    var lambda = init.lambda
-    var lambdaBroadcast = spark.sparkContext.broadcast(lambda)
+          var newtonSystem: NewtonSystem = null
+          val temporary = new CachedRDDs
+          try {
+            // Complementarity belongs to the current iterate, not the starting point.
+            val mu = x.dot(s) / unknowns
+            // A^T * x - b
+            var rb = matrix.adjointProduct(x).combine(1.0, -1.0, b)
 
-    var s = init.s
-    s.cacheIfNoStorageLevel()
+            // A * lambda + s - c
+            var rc = AT.product(lambdaBroadcast).combine(1.0, 1.0, s.diff(c))
+            temporary.cache(rc)
 
-    // set number of unknown in lp
-    val unknowns = init.rows
+            // D^2 = X S^(-1) is the canonical normal-equations weight. Derive D from it so the
+            // Cholesky and matrix-free systems, as well as their right-hand sides, stay identical when
+            // the inverse-slack cap applies.
+            val weights = normalEquationWeights(x, s, eps, valueCap)
+            val D2 = weights.squared
+            temporary.cache(D2)
 
-    // set number of equations in lp
-    val equations = init.cols
+            // solve (14.30) for (dxAff, dLambdaAff, dsAff)
+            // 1) solve for A^T D2 A dLambdaAff = -rb + A^T * (-D^2 * rc + x)
+            // The normal-equations system A^T D2 A must be positive definite, that means:
+            //   x^T A x > 0    where x != 0
+            newtonSystem = systemFactory.build(AT, equations, Some(weights))
 
-    // duality gap parameter
-    val mu = x.dot(s) / unknowns
+            val ATD2rcx = matrix.adjointProduct(x.diff(D2.entrywiseProd(rc)))
 
-    // initial objective value
-    var cTx = Double.PositiveInfinity
+            val dLambdaAffRightSide = ATD2rcx.combine(1.0, -1.0, rb)
+            val dLambdaAff = newtonSystem.solve(dLambdaAffRightSide, newtonAbsTolerance)
+            dLambdaAffBroadcast = rebroadcast(dLambdaAffBroadcast, dLambdaAff)
 
-    var converged = false
-    var earlyTermination: Option[Termination] = None
-    var primalCertificate: Option[DenseVector] = None
-    var dualCertificate: Option[DVector] = None
-    var certificateResidual = Double.NaN
-    var iter = 1
-    var completedIterations = 0
+            // 2) dsAff = -rc - A * dLambdaAff
+            // The step-length and corrector actions reuse these directions and populate their caches.
+            val dsAff = temporary.cache(rc.combine(-1.0, -1.0, AT.product(dLambdaAffBroadcast)))
 
-    var primalResidual = Double.NaN
-    var dualResidual = Double.NaN
-    var dualityGap = Double.NaN
+            // 3) dxAff = -x - D^2 * dsAff
+            val dxAff = temporary.cache(x.combine(-1.0, -1.0, D2.entrywiseProd(dsAff)))
 
-    // constants of the residual normalizations and of the divergence backstop
-    val normB = math.sqrt(b.dot(b))
-    val normC = math.sqrt(c.dot(c))
-    val phiScale = math.max(1.0, math.max(normB, normC))
-    var phiMin = Double.PositiveInfinity
+            // Calculate following Doubles alphaPriAff, alphaDualAff, muAff (14.32), (14.33)
+            val alphaPriAff = math.min(1.0, x.entrywiseNegDiv(dxAff).minValue)
+            val alphaDualAff = math.min(1.0, s.entrywiseNegDiv(dsAff).minValue)
+            val muAff = {
+              val nx = x.combine(1.0, alphaPriAff, dxAff)
+              val ns = s.combine(1.0, alphaDualAff, dsAff)
+              nx.dot(ns) / unknowns
+            }
 
-    // The defect of an iterative normal-equations solve enters the next primal residual
-    // one-to-one, so solves need only be as accurate (in absolute terms) as the primal
-    // convergence condition `||rb|| < tolerance * (1 + ||b||)` demands.
-    val newtonAbsTolerance = 0.1 * tolerance * (1.0 + normB)
+            val sigma = math.min(1.0, math.pow(muAff / mu, 3)) // heuristic
 
-    var dLambdaAffBroadcast: Broadcast[DenseVector] = null
-    var dLambdaBroadcast: Broadcast[DenseVector] = null
+            // Solve (14.35) for (dx, dLambda, ds)
+            // 1) A^T D2 A dLambda = -rb + A^T * D2 *(-rc + s + X^(-1) dXAff dSAff e - sigma mu X^(-1)e)
+            val xInv = x.mapElements {
+              case a if 0 < math.abs(a) && math.abs(a) < eps => math.signum(a) * valueCap
+              case a if a >= eps => math.pow(a, -1)
+              case _ => throw new IllegalArgumentException(s"Found zero element in X")
+            }
 
-    while (!converged && earlyTermination.isEmpty && iter <= maxIter) {
-      logger.info(s"LP iteration: $iter")
+            val xInvdXAffdsAff = xInv.entrywiseProd(dxAff.entrywiseProd(dsAff))
+            val dLambdaRightSide = rb.combine(
+              -1.0, 1.0,
+              matrix.adjointProduct(
+                D2.entrywiseProd(
+                  s.diff(rc)
+                    .combine(1.0, 1.0, xInvdXAffdsAff)
+                    .combine(1.0, -1.0 * sigma * mu, xInv))))
 
-      // the last completed iterate, for certificate-based reclassification of numerical failures
-      val x0 = x
-      val lambda0 = lambda
-      val s0 = s
+            val dLambda = newtonSystem.solve(dLambdaRightSide, newtonAbsTolerance)
+            dLambdaBroadcast = rebroadcast(dLambdaBroadcast, dLambda)
 
-      var newtonSystem: NewtonSystem = null
-      try {
-      // A^T * x - b
-      var rb = AT.adjointProduct(x).combine(1.0, -1.0, b)
+            // 2) ds = -rc - A * dLambda
+            val ds = temporary.cache(rc.combine(-1.0, -1.0, AT.product(dLambdaBroadcast)))
 
-      // A * lambda + s - c
-      var rc = AT.product(lambdaBroadcast).combine(1.0, 1.0, s.diff(c))
-      rc.cacheIfNoStorageLevel()
+            // 3) dx = -D^2 dS e - x - S^(-1) dXAff dSAff e + sigma mu S^(-1) e
+            val sInv = s.mapElements {
+              case a if math.abs(a) < eps => math.signum(a) * valueCap
+              case a if math.abs(a) >= eps => math.pow(a, -1)
+            }
 
-      // D^2 = X S^(-1) is the canonical normal-equations weight. Derive D from it so the
-      // Cholesky and matrix-free systems, as well as their right-hand sides, stay identical when
-      // the inverse-slack cap applies.
-      val weights = normalEquationWeights(x, s, eps, valueCap)
-      val D2 = weights.squared
-      D2.cacheIfNoStorageLevel()
+            val sInvdXAffdsAff = sInv.entrywiseProd(dxAff.entrywiseProd(dsAff))
+            val dx = temporary.cache(D2
+              .entrywiseProd(ds)
+              .combine(-1.0, -1.0, x)
+              .combine(1.0, -1.0, sInvdXAffdsAff)
+              .combine(1.0, sigma * mu, sInv))
 
-      // solve (14.30) for (dxAff, dLambdaAff, dsAff)
-      // 1) solve for A^T D2 A dLambdaAff = -rb + A^T * (-D^2 * rc + x)
-      // The normal-equations system A^T D2 A must be positive definite, that means:
-      //   x^T A x > 0    where x != 0
-      newtonSystem = systemFactory.build(AT, equations, Some(weights))
+            val alphaPrimalIterMax = x.entrywiseNegDiv(dx).minValue
+            val alphaDualIterMax = s.entrywiseNegDiv(ds).minValue
+            val alphaPrimalIter = math.min(1.0, etaIter * alphaPrimalIterMax)
+            val alphaDualIter = math.min(1.0, etaIter * alphaDualIterMax)
 
-      val ATD2rcx = AT.adjointProduct(x.diff(D2.entrywiseProd(rc)))
+            // x = x + alphaPriIter * dx
+            x = caches.checkpoint(x.combine(1.0, alphaPrimalIter, dx))
 
-      val dLambdaAffRightSide = ATD2rcx.combine(1.0, -1.0, rb)
-      val dLambdaAff = newtonSystem.solve(dLambdaAffRightSide, newtonAbsTolerance)
-      dLambdaAffBroadcast = rebroadcast(dLambdaAffBroadcast, dLambdaAff)
+            // lambda = lambda + alphaDualIter * dLambda
+            lambda = new DenseVector((lambdaBroadcast.value.toBreeze + alphaDualIter * dLambda.toBreeze).toArray)
+            lambdaBroadcast = rebroadcast(lambdaBroadcast, lambda)
 
-      // 2) dsAff = -rc - A * dLambdaAff
-      val jj = AT.product(dLambdaAffBroadcast).cache()
-      jj.count()
-      val dsAff = rc.combine(-1.0, -1.0,jj)
+            // s = s + alphaDualIter * ds
+            s = caches.checkpoint(s.combine(1.0, alphaDualIter, ds))
 
-      // 3) dxAff = -x - D^2 * dsAff
-      val dxAff = x.combine(-1.0, -1.0, D2.entrywiseProd(dsAff))
+            rb = matrix.adjointProduct(x).combine(1.0, -1.0, b)
+            rc = temporary.cache(AT.product(lambdaBroadcast).combine(1.0, 1.0, s.diff(c)))
+            cTx = c.dot(x)
 
-      // Calculate following Doubles alphaPriAff, alphaDualAff, muAff (14.32), (14.33)
-      val alphaPriAff = math.min(1.0, x.entrywiseNegDiv(dxAff).minValue)
-      val alphaDualAff = math.min(1.0, s.entrywiseNegDiv(dsAff).minValue)
-      val muAff = {
-        val nx = x.combine(1.0, alphaPriAff, dxAff)
-        val ns = s.combine(1.0, alphaDualAff, dsAff)
-        nx.dot(ns) / unknowns
-      }
+            val bTlambda = b.dot(lambda)
+            val normRb = math.sqrt(rb.dot(rb))
+            val normRc = math.sqrt(rc.dot(rc))
+            val covg1 = normRb / (1 + normB)
+            val covg2 = normRc / (1 + normC)
+            val covg3 = math.abs(cTx - bTlambda) / (1 + math.abs(bTlambda))
 
-      val sigma = math.pow(muAff / mu, 3) // heuristic
-      logger.info(s"sigma = $sigma")
+            primalResidual = covg1
+            dualResidual = covg2
+            dualityGap = covg3
 
-      // Solve (14.35) for (dx, dLambda, ds)
-      // 1) A^T D2 A dLambda = -rb + A^T * D2 *(-rc + s + X^(-1) dXAff dSAff e - sigma mu X^(-1)e)
-      val xInv = x.mapElements {
-        case a if 0 < math.abs(a) && math.abs(a) < eps => math.signum(a) * valueCap
-        case a if a >= eps => math.pow(a, -1)
-        case _ => throw new IllegalArgumentException(s"Found zero element in X")
-      }
+            converged = (covg1 < tolerance) && (covg2 < tolerance) && (covg3 < tolerance)
 
-      val xInvdXAffdsAff = xInv.entrywiseProd(dxAff.entrywiseProd(dsAff))
-      val dLambdaRightSide = rb.combine(
-        -1.0, 1.0,
-        AT.adjointProduct(
-          D2.entrywiseProd(
-            s.diff(rc)
-              .combine(1.0, 1.0, xInvdXAffdsAff)
-              .combine(1.0, -1.0 * sigma * mu, xInv))))
+            if (!converged) {
+              // Farkas certificate tests on the fresh iterate (see scaladoc). `A^T lambda = rc + c - s`,
+              // so the primal test is one distributed pass; `A x = rb + b` is driver-local, so the dual
+              // test is free.
+              if (bTlambda > 0) {
+                val maxATlambda = rc.combine(1.0, -1.0, s.diff(c)).maxValue
+                val quality = math.max(0.0, maxATlambda) / bTlambda
+                if (quality <= infeasibilityTolerance) {
+                  earlyTermination = Some(Termination.PrimalInfeasible)
+                  primalCertificate = Some(new DenseVector(lambda.values.map(_ / bTlambda)))
+                  certificateResidual = quality
+                  logger.info(s"Primal infeasibility certificate found (residual $quality)")
+                }
+              }
+              if (earlyTermination.isEmpty && cTx < 0) {
+                val axInf = rb.combine(1.0, 1.0, b).values.map(math.abs).max
+                val quality = axInf / math.abs(cTx)
+                if (quality <= infeasibilityTolerance) {
+                  earlyTermination = Some(Termination.DualInfeasible)
+                  val cTxAbs = math.abs(cTx)
+                  dualCertificate = Some(x.mapElements(_ / cTxAbs))
+                  certificateResidual = quality
+                  logger.info(s"Dual infeasibility certificate found (residual $quality)")
+                }
+              }
 
-      val dLambda = newtonSystem.solve(dLambdaRightSide, newtonAbsTolerance)
-      dLambdaBroadcast = rebroadcast(dLambdaBroadcast, dLambda)
+            }
 
-      // 2) ds = -rc - A * dLambda
-      val jj1 = AT.product(dLambdaBroadcast).cache()
-      jj1.count()
-      val ds = rc.combine(-1.0, -1.0, jj1)
+            logger.debug(s"LP iteration=$iter sigma=$sigma primalResidual=$covg1 " +
+              s"dualResidual=$covg2 gap=$covg3 converged=$converged cTx=$cTx bTlambda=$bTlambda")
 
-      // 3) dx = -D^2 dS e - x - S^(-1) dXAff dSAff e + sigma mu S^(-1) e
-      val sInv = s.mapElements {
-        case a if math.abs(a) < eps => math.signum(a) * valueCap
-        case a if math.abs(a) >= eps => math.pow(a, -1)
-      }
+            completedIterations = iter
+            // Both replacements have been materialised and checkpointed by the residual actions.
+            caches.release(x0)
+            caches.release(s0)
 
-      val sInvdXAffdsAff = sInv.entrywiseProd(dxAff.entrywiseProd(dsAff))
-      val dx = D2
-        .entrywiseProd(ds)
-        .combine(-1.0, -1.0, x)
-        .combine(1.0, -1.0, sInvdXAffdsAff)
-        .combine(1.0, sigma * mu, sInv)
-
-      val alphaPrimalIterMax = x.entrywiseNegDiv(dx).minValue
-      val alphaDualIterMax = s.entrywiseNegDiv(ds).minValue
-      val alphaPrimalIter = math.min(1.0, etaIter * alphaPrimalIterMax)
-      val alphaDualIter = math.min(1.0, etaIter * alphaDualIterMax)
-
-      // x = x + alphaPriIter * dx
-      x = x.combine(1.0, alphaPrimalIter, dx)
-      x.localCheckpoint()
-
-      // lambda = lambda + alphaDualIter * dLambda
-      lambda = new DenseVector((lambdaBroadcast.value.toBreeze + alphaDualIter * dLambda.toBreeze).toArray)
-      lambdaBroadcast = rebroadcast(lambdaBroadcast, lambda)
-
-      // s = s + alphaDualIter * ds
-      s = s.combine(1.0, alphaDualIter, ds)
-      s.localCheckpoint()
-
-      rb = AT.adjointProduct(x).combine(1.0, -1.0, b)
-      val previousRc = rc
-      rc = AT.product(lambdaBroadcast).combine(1.0, 1.0, s.diff(c)).cache()
-      rc.count()
-      cTx = c.dot(x)
-
-      previousRc.unpersist(blocking = false)
-      jj.unpersist(blocking = false)
-      jj1.unpersist(blocking = false)
-      D2.unpersist(blocking = false)
-
-      val bTlambda = b.dot(lambda)
-      val normRb = math.sqrt(rb.dot(rb))
-      val normRc = math.sqrt(rc.dot(rc))
-      val covg1 = normRb / (1 + normB)
-      val covg2 = normRc / (1 + normC)
-      val covg3 = math.abs(cTx - bTlambda) / (1 + math.abs(bTlambda))
-
-      primalResidual = covg1
-      dualResidual = covg2
-      dualityGap = covg3
-
-      converged = (covg1 < tolerance) && (covg2 < tolerance) && (covg3 < tolerance)
-
-      if (!converged) {
-        // Farkas certificate tests on the fresh iterate (see scaladoc). `A^T lambda = rc + c - s`,
-        // so the primal test is one distributed pass; `A x = rb + b` is driver-local, so the dual
-        // test is free.
-        if (bTlambda > 0) {
-          val maxATlambda = rc.combine(1.0, -1.0, s.diff(c)).maxValue
-          val quality = math.max(0.0, maxATlambda) / bTlambda
-          if (quality <= infeasibilityTolerance) {
-            earlyTermination = Some(Termination.PrimalInfeasible)
-            primalCertificate = Some(new DenseVector(lambda.values.map(_ / bTlambda)))
-            certificateResidual = quality
-            logger.info(s"Primal infeasibility certificate found (residual $quality)")
+          } catch {
+            case e if isNumericalFailure(e) =>
+              // Before wrapping into LpNumericalException, test the last completed iterate for a
+              // Farkas certificate (at the same public infeasibilityTolerance) that explains the
+              // degeneration; genuine precondition violations (rank-deficient A) still throw.
+              val certificate =
+                try certificatesOnIterate(c, AT, b, x0, lambda0, infeasibilityTolerance)
+                catch {
+                  case NonFatal(_) => None
+                }
+              certificate match {
+                case Some(cert) =>
+                  earlyTermination = Some(cert.termination)
+                  primalCertificate = cert.primalCertificate
+                  dualCertificate = cert.dualCertificate
+                  certificateResidual = cert.residual
+                  // report the last completed iterate; the failed iteration may have partially updated state
+                  if (x ne x0) caches.release(x)
+                  if (s ne s0) caches.release(s)
+                  x = x0
+                  lambda = lambda0
+                  s = s0
+                  cTx = cert.cTx
+                  logger.info(s"Numerical failure in iteration $iter reclassified as ${cert.termination} " +
+                    s"(certificate residual ${cert.residual})")
+                case None => throw numericalFailure(s"iteration $iter", iter - 1, e)
+              }
+          } finally {
+            if (newtonSystem != null) newtonSystem.release()
+            temporary.close()
           }
+          iter += 1
         }
-        if (earlyTermination.isEmpty && cTx < 0) {
-          val axInf = rb.combine(1.0, 1.0, b).values.map(math.abs).max
-          val quality = axInf / math.abs(cTx)
-          if (quality <= infeasibilityTolerance) {
-            earlyTermination = Some(Termination.DualInfeasible)
-            val cTxAbs = math.abs(cTx)
-            dualCertificate = Some(x.mapElements(_ / cTxAbs))
-            certificateResidual = quality
-            logger.info(s"Dual infeasibility certificate found (residual $quality)")
-          }
-        }
-        // Divergence backstop (LIPSOL heuristic): a run whose total relative error grew far past
-        // its running minimum has diverged past recovery; stop early. A heuristic is not a
-        // certificate, so this maps to IterationLimit, never to an infeasibility claim.
-        if (earlyTermination.isEmpty) {
-          val phi = (normRb + normRc + math.abs(cTx - bTlambda)) / phiScale
-          if (phi > math.max(tolerance, 1e5 * phiMin)) {
-            earlyTermination = Some(Termination.IterationLimit)
-            logger.info(s"Divergence backstop triggered (phi $phi, phiMin $phiMin); stopping early")
-          }
-          phiMin = math.min(phiMin, phi)
-        }
-      }
 
-      rc.unpersist(blocking = false)
-
-      logger.info(s"\n1. convergence condition: $covg1" +
-        s"\n2. convergence condition: $covg2" +
-        s"\n3. convergence condition: $covg3" +
-        s"\nConverged = $converged\n" +
-        s"\ncTx: $cTx" +
-        s"\nb dot lambda: $bTlambda")
-
-      completedIterations = iter
-
-      } catch {
-        case e if isNumericalFailure(e) =>
-          // Before wrapping into LpNumericalException, test the last completed iterate for a
-          // Farkas certificate (at the same public infeasibilityTolerance) that explains the
-          // degeneration; genuine precondition violations (rank-deficient A) still throw.
-          val certificate =
-            try certificatesOnIterate(c, AT, b, x0, lambda0, infeasibilityTolerance)
-            catch { case NonFatal(_) => None }
-          certificate match {
-            case Some(cert) =>
-              earlyTermination = Some(cert.termination)
-              primalCertificate = cert.primalCertificate
-              dualCertificate = cert.dualCertificate
-              certificateResidual = cert.residual
-              // report the last completed iterate; the failed iteration may have partially updated state
-              x = x0
-              lambda = lambda0
-              s = s0
-              cTx = cert.cTx
-              logger.info(s"Numerical failure in iteration $iter reclassified as ${cert.termination} " +
-                s"(certificate residual ${cert.residual})")
-            case None => throw numericalFailure(s"iteration $iter", iter - 1, e)
-          }
       } finally {
-        if (newtonSystem != null) newtonSystem.release()
+        if (dLambdaAffBroadcast != null) dLambdaAffBroadcast.unpersist(blocking = false)
+        if (dLambdaBroadcast != null) dLambdaBroadcast.unpersist(blocking = false)
+        lambdaBroadcast.unpersist(blocking = false)
       }
-      iter += 1
+
+      val termination =
+        if (converged) Termination.Converged
+        else earlyTermination.getOrElse(Termination.IterationLimit)
+
+      logger.info(s"LP finished: solver=$resolvedSolver termination=$termination " +
+        s"iterations=$completedIterations objective=$cTx primalResidual=$primalResidual " +
+        s"dualResidual=$dualResidual gap=$dualityGap")
+
+      SolveSummary(
+        objectiveValue = cTx,
+        x = caches.keep(x),
+        iterations = completedIterations,
+        termination = termination,
+        primalResidual = primalResidual,
+        dualResidual = dualResidual,
+        dualityGap = dualityGap,
+        primalCertificate = primalCertificate,
+        dualCertificate = dualCertificate,
+        certificateResidual = certificateResidual,
+        dualObjectiveValue = b.dot(lambda))
+    } finally caches.close()
+  }
+
+  private[spark_lp] def validateParameters(
+    tolerance: Double, maxIter: Int, etaIter: Double, valueCap: Double, eps: Double,
+    infeasibilityTolerance: Double, cgTolerance: Double): Unit = {
+    Seq("tolerance" -> tolerance, "valueCap" -> valueCap, "epsilon" -> eps,
+      "infeasibilityTolerance" -> infeasibilityTolerance, "cgTolerance" -> cgTolerance).foreach {
+      case (name, value) => require(value > 0.0 && !value.isInfinite, s"$name must be finite and positive")
     }
-
-    if (dLambdaAffBroadcast != null) dLambdaAffBroadcast.unpersist(blocking = false)
-    if (dLambdaBroadcast != null) dLambdaBroadcast.unpersist(blocking = false)
-    lambdaBroadcast.unpersist(blocking = false)
-
-    val termination =
-      if (converged) Termination.Converged
-      else earlyTermination.getOrElse(Termination.IterationLimit)
-
-    SolveSummary(
-      objectiveValue = cTx,
-      x = x,
-      iterations = completedIterations,
-      termination = termination,
-      primalResidual = primalResidual,
-      dualResidual = dualResidual,
-      dualityGap = dualityGap,
-      primalCertificate = primalCertificate,
-      dualCertificate = dualCertificate,
-      certificateResidual = certificateResidual)
+    require(maxIter > 0, "maxIterations must be positive")
+    require(etaIter > 0.0 && etaIter < 1.0, "etaIteration must be between 0 and 1 (exclusive)")
   }
 
   /** One certificate found by [[certificatesOnIterate]], with `c^T x` of the tested iterate. */

@@ -1,0 +1,143 @@
+= Using spark-lp
+:toc: left
+:source-highlighter: highlightjs
+
+Define variables over Spark data, add a linear objective and constraints, then solve.
+Scala 2.12; Spark is supplied by your application. This checkout builds against Spark
+2.4.8 and 3.0.2–3.5.3; run the tests on the version you deploy.
+
+== Start here
+
+From this repository, using JDK 11:
+
+[source,shell]
+----
+sbt 'spark-lpSpark_3_52_12/publishLocal'
+sbt 'examplesSpark_3_5/runMain com.github.vbmacher.spark_lp.examples.ExampleAllocationDsl'
+----
+
+For a Spark 3.5.3 application using that local build:
+
+[source,scala]
+----
+libraryDependencies += "com.github.vbmacher" %% "spark-lp" % "3.5.3_1.1.0"
+----
+
+Remote releases use the same `<spark-version>_<library-version>` scheme; choose an
+available release matching your Spark version. Native BLAS/LAPACK improves performance;
+the Java fallback also works.
+
+== Allocate at minimum cost
+
+Each offer gets a nonnegative decision variable. Demand creates one equality per region.
+The complete runnable example is included below.
+
+[source,scala]
+----
+include::../examples/src/main/scala/com/github/vbmacher/spark_lp/examples/ExampleAllocationDsl.scala[tag=allocation]
+----
+
+[mermaid]
+----
+flowchart LR
+  O["Offers: id, region, cost"] --> V["One amount per id"]
+  V --> C["Minimize sum of cost times amount"]
+  V --> G["Sum amount per region"]
+  D["Demand: region, rhs"] --> G
+  C --> S[Solve]
+  G --> S
+  S --> R["a = 4; b = 0; c = 2; cost = 8"]
+----
+
+== Small vocabulary
+
+[cols="1,2",options="header"]
+|===
+|Expression |Meaning
+|`model.variable("x")` |One nonnegative continuous variable.
+|`model.variables("x", df, $"id")` |One variable per unique, non-null key; use `struct(...)` for a composite key.
+|`x + 2.0 * y` |Scalar linear expression. Multiplying two decision variables is unsupported.
+|`amount.sum` |Total of a variable set.
+|`amount.sum($"cost")` |Total weighted by a Spark column from the variable domain.
+|`amount.sumBy("region")()` |One unweighted total per group.
+|`amount.sumBy("region")($"cost")` |One weighted total per group.
+|`expr <= rhs`, `expr >= rhs`, `expr === rhs` |Add with `model += ...`. Use `===` for equality; `==` produces a Boolean.
+|`constraint.named("capacity")` |Readable diagnostics; expanded names must be unique.
+|`model.setObjective(expr)` |Replace the objective deliberately; adding a second objective with `+=` fails.
+|===
+
+Scalar RHS values apply to every group. A grouped RHS DataFrame contains the grouping
+columns and a numeric `rhs` column, exactly once per key. Terms without a matching RHS
+are errors; an RHS-only group represents a zero-term constraint.
+The existing `lpSum(...)` and `lpSumBy(...)` syntax remains supported.
+
+== Bounds, integer choices, and typed data
+
+[source,scala]
+----
+val model = LpProblem("selection", Maximize)
+val pick = model.variables("pick", offers, $"id", category = Binary)
+model += pick.sum($"cost")
+model += (pick.sum <= 2.0).named("at_most_two")
+val solution = model.solve(SolveConfig(mip = MipConfig(maxNodes = 200)))
+try println(solution.status) finally solution.close()
+----
+
+`Binary` means 0 or 1, intersected with declared bounds. `Integer` requires finite
+explicit bounds, for example `model.variable("units", upperBound = Some(10.0), category = Integer)`.
+Bounds enclose whole integers; they are never widened by the rounding tolerance.
+Integer bounds must be within `+/- (2^53 - 1)` because values use `Double`.
+
+Continuous variables accept `lowerBound` and `upperBound = Some(value)`.
+Equal bounds fix a variable exactly. Fully fixed and finite-bound-only models need no
+artificial constraint. For a free variable use `lowerBound = Double.NegativeInfinity`;
+express any finite upper limit as a separate `x <= limit` constraint.
+Other models need at least one nontrivial constraint or finite upper bound.
+
+For `Dataset[Offer]`, declare
+`model.variablesOf("amount", offersDs, (o: Offer) => o.id)` and use
+`lpSum(amount.weightedBy(offersDs)(_.cost))`.
+Typed keys support primitive values, tuples, and custom `LpKeyEncoder` instances.
+Missing weight keys contribute zero; duplicate or foreign keys fail validation.
+
+For coefficients from another DataFrame, use
+`lpSumBy(amount.terms(coefficients, Seq($"region"), $"coefficient"), Seq("region"))`.
+That frame must contain the variable key and grouping columns.
+Repeated `(group, variable)` rows add their coefficients. Filter or join with ordinary
+Spark operations before building these terms; use `when(...).otherwise(0.0)` for conditional weights.
+
+== Read and release the result
+
+[cols="1,3",options="header"]
+|===
+|Status |Interpretation
+|`Optimal` |Accepted within configured tolerances; integer search is complete within its gap tolerance.
+|`IterationLimit` |An LP or node limit, or an unresolved integer branch. Values may be infeasible or fractional.
+|`Infeasible` |No feasible solution, established by a numerical certificate or integer branch bounds.
+|`Unbounded` |An improving ray and a feasible point; objective is signed infinity.
+|`InfeasibleOrUnbounded` |An improving ray without a known feasible point; objective is `NaN`.
+|===
+
+`solution.value(x)` reads a scalar; `solution.values(amount)` joins values to domain columns
+and appends `lp_variable`, `lp_value`. Continuous values are approximate.
+`constraints` contains `name`, `group`, `activity`, `sense`, `rhs`, `slack`, `dual`, `note`.
+Slack is `rhs - activity` for `<=` and equality, and `activity - rhs` for `>=`.
+Equality slack should be near zero; negative inequality slack indicates violation.
+`dual` is currently null. Presolve notes explain removed rows.
+
+`Infeasible` objectives are `NaN`. At a MIP limit, a finite objective identifies a retained
+integer-feasible incumbent; otherwise the objective is `NaN` and values show the root relaxation.
+Residuals describe the retained LP relaxation, not a global MIP optimality gap.
+
+`LpModelException` identifies invalid input, including an obviously contradictory constant row.
+`LpNumericalException` identifies a failed numerical solve; it does not prove infeasibility.
+Invalid solver settings throw `IllegalArgumentException` before computation.
+
+Finish Spark actions on returned values before calling `solution.close()`.
+The solver releases temporary caches automatically; closing releases the materialised result.
+Iterates and results use Spark local checkpoints: write important outputs to durable storage.
+Keep sources stable during solving and when joining results to domain columns; a later `solve()`
+reads the sources again. Cache or snapshot input data yourself when consistent source contents matter.
+
+See link:algorithm.adoc[the algorithm and scaling limits]. Mermaid blocks require a
+Mermaid-capable AsciiDoc renderer; ordinary Asciidoctor still displays their source.

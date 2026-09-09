@@ -18,9 +18,9 @@ object LpProblem {
   * to the equality-form solver (`minimize c^T x` subject to `Ax = b`, `x >= 0`) and runs it.
   *
   * `solve` does not snapshot lazy sources: each call evaluates the domain and coefficient
-  * DataFrames as Spark sees them at that moment. Within one solve every source is read once into
-  * cached, compiled structures, and two solves over identical source contents produce the same
-  * matrix, ordering and solution. Callers who need a durable snapshot should persist their sources.
+  * DataFrames as Spark sees them at that moment. Compiled structures are cached for the solve;
+  * sources must remain stable while compiling and when joining results back to domain columns.
+  * Callers who need a durable snapshot should materialise their sources first.
   */
 final class LpProblem private[dsl](
   val name: String,

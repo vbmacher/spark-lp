@@ -60,9 +60,8 @@ private[spark_lp] object newton extends LazyLogging {
     * The scaling weights of one interior-point iteration, both partitioned consistently with the
     * constraint matrix. `sqrt` (the iteration's `D`) feeds the Cholesky path, which scales matrix
     * rows before aggregating the Gramian; `squared` (the iteration's `D2 = D^2`) feeds the
-    * matrix-free path, which applies the diagonal between the two products. The two are computed
-    * with their own value caps by the solver, hence both are carried instead of deriving one from
-    * the other.
+    * matrix-free path, which applies the diagonal between the two products. The solver derives
+    * `sqrt` from the validated squared weights so both systems use the same capped operator.
     */
   final case class Weights(sqrt: DVector, squared: DVector)
 
@@ -160,6 +159,8 @@ private[spark_lp] object newton extends LazyLogging {
 
     override def build(B: DMatrix, m: Int, weights: Option[Weights]): NewtonSystem = {
       val w = weights.map(_.squared)
+      // Keep the lazy column count across CG steps instead of submitting a first() job each time.
+      val matrix = new DMatrixOps(B)
 
       val maxRank =
         if (preconditionerRank > 0) math.min(preconditionerRank, m)
@@ -194,7 +195,7 @@ private[spark_lp] object newton extends LazyLogging {
           pBroadcast = spark.sparkContext.broadcast(new DenseVector(p.data))
           val Bp = B.product(pBroadcast)
           val weighted = w.map(_.entrywiseProd(Bp)).getOrElse(Bp)
-          new BDV(B.adjointProduct(weighted).values)
+          new BDV(matrix.adjointProduct(weighted).values)
         }
 
         override def solve(rhs: DenseVector, absTolerance: Double): DenseVector = {

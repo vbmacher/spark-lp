@@ -85,6 +85,7 @@ lazy val examples = projectMatrix
           axisValues = Seq(sparkAxes.last._2, VirtualAxis.jvm),
           _.settings(
             name := "examples",
+            fork := true,
             libraryDependencies ++= Libs.jOptimizer +: sparkAxes.last._1.sparkLibs,
             publishArtifact := false))
 

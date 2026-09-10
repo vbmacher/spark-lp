@@ -160,7 +160,7 @@ private[dsl] final class BranchAndBound(
         } else {
           branchOrGiveUp(node, vals, open)
         }
-      case LP.Termination.IterationLimit =>
+      case LP.Termination.IterationLimit | LP.Termination.Stopped =>
         branchOrGiveUp(node, integerValues(node, summary.x), open)
     }
 

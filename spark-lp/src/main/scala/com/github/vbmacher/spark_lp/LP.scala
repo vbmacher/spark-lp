@@ -28,6 +28,9 @@ object LP extends LazyLogging {
     /** The iteration budget was exhausted without convergence or a certificate. */
     case object IterationLimit extends Termination
 
+    /** A caller requested a graceful stop after a completed iteration. */
+    case object Stopped extends Termination
+
     /**
       * A Farkas certificate of primal infeasibility was found: the normalized dual iterate
       * `y = lambda / (b^T lambda)` satisfies `A^T y <= infeasibilityTolerance` componentwise with
@@ -151,7 +154,8 @@ object LP extends LazyLogging {
     infeasibilityTolerance: Double = 1e-8,
     solver: NewtonSolver = NewtonSolver.Auto,
     cgTolerance: Double = 1e-10,
-    cgMaxIterations: Int = 0
+    cgMaxIterations: Int = 0,
+    stopAfterIteration: Option[Int => Boolean] = None
   )(implicit spark: SparkSession): SolveSummary = {
     validateParameters(tolerance, maxIter, etaIter, valueCap, eps, infeasibilityTolerance, cgTolerance)
     require(b.size > 0 && b.values.forall(v => !v.isNaN && !v.isInfinite), "b must be nonempty and finite")
@@ -376,6 +380,8 @@ object LP extends LazyLogging {
               s"dualResidual=$covg2 gap=$covg3 converged=$converged cTx=$cTx bTlambda=$bTlambda")
 
             completedIterations = iter
+            if (!converged && earlyTermination.isEmpty && stopAfterIteration.exists(_(iter)))
+              earlyTermination = Some(Termination.Stopped)
             // Both replacements have been materialised and checkpointed by the residual actions.
             caches.release(x0)
             caches.release(s0)

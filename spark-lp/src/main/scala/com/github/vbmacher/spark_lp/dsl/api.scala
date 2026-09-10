@@ -24,7 +24,7 @@ case object Binary extends VariableCategory
 /**
   * Truthful outcome of one solve. `Infeasible` and the two unboundedness-related members are
   * claimed only when a Farkas certificate backs them (see each member); everything else that did
-  * not converge is reported as [[LpStatus.IterationLimit]].
+  * not converge is reported as [[LpStatus.IterationLimit]] or [[LpStatus.Stopped]].
   *
   * For models containing [[Integer]] or [[Binary]] variables, the same members retain their
   * truthful meaning across the discrete search: [[LpStatus.Optimal]] requires every candidate
@@ -46,6 +46,9 @@ object LpStatus {
     * be primal-feasible (see [[LpResiduals]]).
     */
   case object IterationLimit extends LpStatus
+
+  /** A graceful stop retained a completed iterate; primal feasibility still requires validation. */
+  case object Stopped extends LpStatus
 
   /**
     * A Farkas certificate of primal infeasibility was found within
@@ -98,6 +101,10 @@ final class LpNumericalException private[spark_lp](
 /**
   * Solver configuration.
   *
+  * @param stopAfterIteration optional driver callback for continuous models. Return true to stop
+  *                           after the given completed iteration and retain its values. No Spark
+  *                           jobs are interrupted; validation/reconstruction may finish afterward.
+  *
   * @param infeasibilityTolerance threshold of the Farkas certificate tests behind
   *                               [[LpStatus.Infeasible]], [[LpStatus.Unbounded]] and
   *                               [[LpStatus.InfeasibleOrUnbounded]]: a certificate is claimed only
@@ -132,7 +139,8 @@ final case class SolveConfig(
   newtonSolver: NewtonSolver = NewtonSolver.Auto,
   cgTolerance: Double = 1e-10,
   cgMaxIterations: Int = 0,
-  mip: MipConfig = MipConfig()) {
+  mip: MipConfig = MipConfig(),
+  stopAfterIteration: Option[Int => Boolean] = None) {
 
   com.github.vbmacher.spark_lp.LP.validateParameters(
     tolerance, maxIterations, etaIteration, valueCap, epsilon, infeasibilityTolerance, cgTolerance)

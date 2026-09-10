@@ -159,10 +159,13 @@ private[dsl] final class LpCompiler(problem: LpProblem, config: SolveConfig) ext
         infeasibilityTolerance = config.infeasibilityTolerance,
         solver = config.resolvedNewtonSolver(compiled.numRows),
         cgTolerance = config.cgTolerance,
-        cgMaxIterations = config.cgMaxIterations)
+        cgMaxIterations = config.cgMaxIterations,
+        stopAfterIteration = config.stopAfterIteration)
       try continuousSolution(compiled, summary)
       finally summary.x.unpersist(blocking = false)
     } else {
+      if (config.stopAfterIteration.nonEmpty)
+        fail("stopAfterIteration is supported only for continuous models")
       new BranchAndBound(this, compiled, config).solve()
     }
   } finally close()
@@ -899,6 +902,7 @@ private[dsl] final class LpCompiler(problem: LpProblem, config: SolveConfig) ext
     val status: LpStatus = summary.termination match {
       case LP.Termination.Converged => LpStatus.Optimal
       case LP.Termination.IterationLimit => LpStatus.IterationLimit
+      case LP.Termination.Stopped => LpStatus.Stopped
       case LP.Termination.PrimalInfeasible => LpStatus.Infeasible
       case LP.Termination.DualInfeasible =>
         // a dual-infeasibility ray proves unboundedness only together with a primal-feasible point

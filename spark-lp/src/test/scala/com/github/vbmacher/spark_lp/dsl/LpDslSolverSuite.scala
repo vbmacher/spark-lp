@@ -53,6 +53,30 @@ class LpDslSolverSuite extends AnyFunSuite with DataFrameSuiteBase {
     assert(value ~== summary.objectiveValue absTol 1e-9)
   }
 
+  test("graceful stop retains the completed iterate and leaves Spark usable") {
+    implicit val ss: SparkSession = spark
+    def run(stop: Option[Int => Boolean], limit: Int) = {
+      val c: RDD[DenseVector] = sc.parallelize(cArray, 2).glom.map(new DenseVector(_))
+      val at = sc.parallelize(BArray.toSeq, 2).map(v => Vectors.dense(v))
+      LP.solveSummary(c, at, new DenseVector(bArray), tolerance = 1e-14,
+        maxIter = limit, stopAfterIteration = stop)
+    }
+    val stopped = run(Some(_ >= 2), 50)
+    val limited = run(None, 2)
+    try {
+      assert(stopped.termination == LP.Termination.Stopped)
+      assert(stopped.iterations == 2)
+      assert(stopped.objectiveValue ~== limited.objectiveValue absTol 1e-9)
+      assert(Vectors.dense(stopped.x.flatMap(_.toArray).collect()) ~==
+        Vectors.dense(limited.x.flatMap(_.toArray).collect()) absTol 1e-9)
+      assert(!Thread.currentThread().isInterrupted)
+      assert(spark.range(2).count() == 2)
+    } finally {
+      stopped.x.unpersist(blocking = false)
+      limited.x.unpersist(blocking = false)
+    }
+  }
+
   test("IterationLimit is truthful: residuals returned for a non-converged iterate") {
     implicit val ss: SparkSession = spark
     val ssLocal = spark

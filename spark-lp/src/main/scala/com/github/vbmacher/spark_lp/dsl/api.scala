@@ -89,8 +89,8 @@ final class LpModelException private[spark_lp](message: String) extends LpExcept
   * solver first re-runs the Farkas certificate tests (at the same
   * `SolveConfig.infeasibilityTolerance`) on the last completed iterate and reports
   * [[LpStatus.Infeasible]]/[[LpStatus.Unbounded]]/[[LpStatus.InfeasibleOrUnbounded]] instead when
-  * a certificate holds. Genuine precondition violations (e.g. a rank-deficient constraint matrix)
-  * still throw.
+  * a certificate holds. Without a certificate, the failure is numerical. Rank-deficient
+  * matrices require the regularized matrix-free backend; Cholesky still requires full row rank.
   */
 final class LpNumericalException private[spark_lp](
   val phase: String,
@@ -109,8 +109,8 @@ final class LpNumericalException private[spark_lp](
   *                               [[LpStatus.Infeasible]], [[LpStatus.Unbounded]] and
   *                               [[LpStatus.InfeasibleOrUnbounded]]: a certificate is claimed only
   *                               when its normalized residual is at or below this value.
-  * @param maxLocalConstraints threshold on the number of equality-form constraint rows `m` up to
-  *                            which the driver-local Cholesky normal-equations solver is used.
+  * @param maxLocalConstraints resource cap on the number of equality-form constraint rows `m`
+  *                            allowed for the driver-local Cholesky normal-equations solver.
   *                            With Cholesky, every constraint row is driver-local: the driver
   *                            holds roughly `16 * m * m` bytes of Gramian-related allocations per
   *                            solve, plus an `O(m^3)` factorization per iteration. Models with
@@ -121,12 +121,13 @@ final class LpNumericalException private[spark_lp](
   *                            and task-local storage. An explicit [[NewtonSolver.Cholesky]]
   *                            rejects them.
   * @param newtonSolver how the per-iteration `m x m` normal-equations systems are solved (see
-  *                     [[NewtonSolver]]). [[NewtonSolver.Auto]] picks Cholesky while
-  *                     `m <= maxLocalConstraints` and the matrix-free conjugate gradient beyond.
+  *                     [[NewtonSolver]]). [[NewtonSolver.Auto]] picks Cholesky up to the smaller
+  *                     of `NewtonSolver.AutoCholeskyLimit` and `maxLocalConstraints`, then CG.
   * @param cgTolerance relative residual at which one conjugate-gradient solve is accepted
   *                    (matrix-free solver only).
   * @param cgMaxIterations conjugate-gradient step limit per normal-equations solve; values < 1
   *                        select `min(max(100, 2m), 1000)` (matrix-free solver only).
+  * @param matrixFree primal/dual regularization and bounded preconditioner controls (CG only).
   */
 final case class SolveConfig(
   tolerance: Double = 1e-8,
@@ -140,7 +141,8 @@ final case class SolveConfig(
   cgTolerance: Double = 1e-10,
   cgMaxIterations: Int = 0,
   mip: MipConfig = MipConfig(),
-  stopAfterIteration: Option[Int => Boolean] = None) {
+  stopAfterIteration: Option[Int => Boolean] = None,
+  matrixFree: com.github.vbmacher.spark_lp.MatrixFreeConfig = com.github.vbmacher.spark_lp.MatrixFreeConfig()) {
 
   com.github.vbmacher.spark_lp.LP.validateParameters(
     tolerance, maxIterations, etaIteration, valueCap, epsilon, infeasibilityTolerance, cgTolerance)
@@ -149,7 +151,8 @@ final case class SolveConfig(
   /** The concrete normal-equations solver for a model with `m` equality-form rows. */
   private[dsl] def resolvedNewtonSolver(m: Long): NewtonSolver = newtonSolver match {
     case NewtonSolver.Auto =>
-      if (m <= maxLocalConstraints) NewtonSolver.Cholesky else NewtonSolver.ConjugateGradient
+      if (m <= math.min(maxLocalConstraints, NewtonSolver.AutoCholeskyLimit.toLong)) NewtonSolver.Cholesky
+      else NewtonSolver.ConjugateGradient
     case s => s
   }
 }

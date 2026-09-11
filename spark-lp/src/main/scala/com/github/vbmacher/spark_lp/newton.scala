@@ -1,6 +1,6 @@
 package com.github.vbmacher.spark_lp
 
-import breeze.linalg.{cholesky, norm, DenseMatrix => BDM, DenseVector => BDV}
+import breeze.linalg.{norm, DenseVector => BDV}
 import com.github.vbmacher.spark_lp.vectors.dmatrix.implicits._
 import com.github.vbmacher.spark_lp.vectors.dvector.implicits._
 import com.github.vbmacher.spark_lp.vectors.{DMatrix, DVector}
@@ -24,20 +24,20 @@ import org.apache.spark.wrappers.{Broadcasts, CholeskyDecomposition}
   *    step applies the operator with the distributed matrix-vector products already used
   *    elsewhere. Its dense iteration vectors use `O(m)` driver memory; the optional partial
   *    Cholesky preconditioner uses `O(m * rank)` driver and task-local storage. Automatic rank
-  *    selection bounds that preconditioner storage and falls back to unpreconditioned CG when no
+  *    selection bounds that preconditioner storage and falls back to Jacobi CG when no
   *    column fits. This makes the constraint count a distributed-friendly dimension, at the cost
   *    of extra Spark jobs per iteration (one per CG step) and slightly inexact search directions.
   *    Convergence checks are unaffected: the outer loop recomputes its residuals from the
   *    iterates each iteration.
   *  - [[NewtonSolver.Auto]]: Cholesky while `m` is small enough for the driver, ConjugateGradient
-  *    beyond that (the core API pivots at [[NewtonSolver.AutoCholeskyLimit]]; the DataFrame DSL
-  *    pivots at `SolveConfig.maxLocalConstraints`).
+  *    beyond [[NewtonSolver.AutoCholeskyLimit]]. The DataFrame DSL can lower this cutoff with
+  *    its separate `SolveConfig.maxLocalConstraints` resource cap.
   */
 sealed trait NewtonSolver
 
 object NewtonSolver {
 
-  /** Cholesky up to a driver-friendly row count, matrix-free conjugate gradient beyond it. */
+  /** Cholesky through the measured small-system crossover, matrix-free CG beyond it. */
   case object Auto extends NewtonSolver
 
   /** Always use the driver-local Cholesky factorization of the Gramian. */
@@ -46,8 +46,27 @@ object NewtonSolver {
   /** Always use the matrix-free partial-Cholesky-preconditioned conjugate gradient method. */
   case object ConjugateGradient extends NewtonSolver
 
-  /** Row count at which [[Auto]] switches from Cholesky to conjugate gradient in the core API. */
-  val AutoCholeskyLimit: Int = 5000
+  /** Largest Auto Cholesky row count. Equal-accuracy local benchmarks were mixed at 1000,
+    * and favored CG from 1500 onward; see benchmarks/README.md for workloads and limitations.
+    */
+  val AutoCholeskyLimit: Int = 1000
+}
+
+/** Matrix-free Newton controls. Regularizations are diagonal entries (not square roots).
+  * Proximal reference points are reset to the current iterate, so the residuals are those
+  * of the original LP. A fixed positive regularization bounds the Newton weights without
+  * changing the convergence test. See docs/algorithm.adoc for equations and pivot policy.
+  */
+final case class MatrixFreeConfig(
+  primalRegularization: Double = 1e-8,
+  dualRegularization: Double = 1e-8,
+  preconditionerRank: Int = 0,
+  preconditionerMemoryBytes: Long = 256L * 1024 * 1024) {
+  Seq(primalRegularization, dualRegularization).foreach { value =>
+    require(value > 0.0 && !value.isInfinite, "Regularization must be finite and positive")
+  }
+  require(preconditionerRank >= 0, "Preconditioner rank must be nonnegative (0 selects adaptive rank)")
+  require(preconditionerMemoryBytes >= 0, "Preconditioner memory budget must be nonnegative")
 }
 
 /**
@@ -61,7 +80,8 @@ private[spark_lp] object newton extends LazyLogging {
     * constraint matrix. `sqrt` (the iteration's `D`) feeds the Cholesky path, which scales matrix
     * rows before aggregating the Gramian; `squared` (the iteration's `D2 = D^2`) feeds the
     * matrix-free path, which applies the diagonal between the two products. The solver derives
-    * `sqrt` from the validated squared weights so both systems use the same capped operator.
+    * `sqrt` from the validated squared weights. CG uses `(S/X + Rp)^(-1)`; the direct
+    * reference uses the historical inverse-slack cap.
     */
   final case class Weights(sqrt: DVector, squared: DVector)
 
@@ -73,8 +93,8 @@ private[spark_lp] object newton extends LazyLogging {
 
     /**
       * Solves the system for `rhs`, leaving `rhs` unmodified. `absTolerance` is the absolute
-      * residual norm at which an iterative implementation may stop (`0.0` demands its full
-      * relative tolerance); direct implementations ignore it.
+      * residual norm targeted by an iterative implementation (`0.0` uses only its relative
+      * target); direct implementations ignore it. CgFactory documents its inexact fallback.
       */
     def solve(rhs: DenseVector, absTolerance: Double): DenseVector
 
@@ -82,9 +102,23 @@ private[spark_lp] object newton extends LazyLogging {
     def release(): Unit
   }
 
-  /** Builds a [[NewtonSystem]] for `B^T diag(w) B` (`B^T B` when no weights are given). */
+  /** Builds `B^T diag(w) B + Rd`. With no weights, uses `(I + Rp)^(-1)` for initialization. */
   trait NewtonSystemFactory {
     def build(B: DMatrix, m: Int, weights: Option[Weights]): NewtonSystem
+    def primalRegularization: Double = 0.0
+    def dualRegularization: Double = 0.0
+    def innerIterations: Int = 0
+    def maximumRank: Int = 0
+  }
+
+  /** Recover directions for A dx + Rd dy = -rb, A^T dy + ds - Rp dx = -rc,
+    * S dx + X ds = q, with h = rc + q / x and W = (S/X + Rp)^(-1).
+    */
+  def recoverDirections(weights: Weights, h: DVector, rc: DVector, aty: DVector,
+    primalRegularization: Double): (DVector, DVector) = {
+    val dx = weights.squared.entrywiseProd(aty.combine(1.0, 1.0, h))
+    val ds = rc.combine(-1.0, -1.0, aty).combine(1.0, primalRegularization, dx)
+    (dx, ds)
   }
 
   /**
@@ -112,78 +146,53 @@ private[spark_lp] object newton extends LazyLogging {
     }
   }
 
-  /**
-    * The matrix-free method: preconditioned conjugate gradient on the normal equations.
-    * The operator `p => B^T diag(w) B p` is evaluated with the existing distributed products
-    * (one Spark job per CG step); the Gramian itself is never materialised.
-    *
-    * The preconditioner is a partial Cholesky factorization (the device of Gondzio's matrix-free
-    * interior-point method): the `rank` Gramian columns with the largest diagonal entries are
-    * computed exactly (one distributed pass, `O(m * rank)` driver and task-local storage) and
-    * factorized, and the remaining block is approximated by the diagonal of its Schur complement.
-    * The rank is adaptive: solves start at most at rank [[newton.DefaultPreconditionerRank]] and
-    * the rank doubles whenever a solve cannot reach its target, up to a driver-budget cap. When no
-    * column fits that budget, CG runs without the partial-Cholesky preconditioner. An escalated
-    * rank persists for subsequent iterations.
-    *
-    * Solves after the first within one system are warm-started from the previous solution — the
-    * predictor and corrector right-hand sides of one interior-point iteration are closely
-    * related, so the corrector typically starts near its solution.
-    *
-    * Remaining safeguards for ill-conditioned systems: the solve target is
-    * `max(relTolerance * ||rhs||, absTolerance)` — the caller states the absolute defect the
-    * outer iteration can absorb (the defect enters the next primal residual one-to-one). A
-    * stagnating recurrence triggers residual replacement — the true residual `rhs - A x` is
-    * recomputed and CG restarts from it. A solve that stops short even at the rank cap is
-    * returned as an inexact direction while its residual is within
-    * `max(1e-2 * ||rhs||, 100 * target)` — the outer loop recomputes its residuals from the
-    * iterates each iteration, so inexact directions cost outer iterations, never a false
-    * convergence claim. Anything worse fails the iteration like a Cholesky breakdown would.
-    *
-    * @param relTolerance       relative residual `||r|| / ||rhs||` at which a solve is accepted.
-    * @param maxIterations      CG step limit per solve (per rank level); values < 1 select
-    *                           `min(max(100, 2m), 1000)`.
-    * @param preconditionerRank fixed rank for the partial Cholesky preconditioner; values < 1
-    *                           select the adaptive escalation described above. A rank costs
-    *                           `O(m * rank)` driver memory and `O(m * rank^2)` driver flops per
-    *                           interior-point iteration.
+  /** Matrix-free PCG on B^T W B + Rd. Adaptive rank starts with Jacobi and adds
+    * updated-diagonal Cholesky pivots only when a solve misses its target. Rank is bounded
+    * even when explicitly requested. True (unpreconditioned) residuals decide acceptance;
+    * exhausted solves may return at most a 1e-3 relative defect. The outer loop alone
+    * judges original-LP convergence and certificates.
     */
   final class CgFactory(
     relTolerance: Double,
     maxIterations: Int,
-    preconditionerRank: Int = 0)(implicit spark: SparkSession) extends NewtonSystemFactory {
+    config: MatrixFreeConfig = MatrixFreeConfig())(implicit spark: SparkSession) extends NewtonSystemFactory {
 
+    require(relTolerance > 0.0 && !relTolerance.isInfinite, "CG tolerance must be finite and positive")
     // The escalated rank persists across systems: once one iteration's system forces an
     // escalation, later iterations (which are at least as ill-conditioned) start from it.
     private var currentRank: Int = -1
+    private var steps: Int = 0
+    private var peakRank: Int = 0
+    override val primalRegularization: Double = config.primalRegularization
+    override val dualRegularization: Double = config.dualRegularization
+    override def innerIterations: Int = steps
+    override def maximumRank: Int = peakRank
 
     override def build(B: DMatrix, m: Int, weights: Option[Weights]): NewtonSystem = {
-      val w = weights.map(_.squared)
-      // Keep the lazy column count across CG steps instead of submitting a first() job each time.
+      // Initialization uses the same regularized least-squares operator with S/X = I.
+      val initialWeight = 1.0 / (1.0 + primalRegularization)
+      val w = Some(weights.map(_.squared).getOrElse(
+        B.mapPartitions(rows => Iterator.single(new DenseVector(
+          rows.map(_ => initialWeight).toArray)))))
       val matrix = new DMatrixOps(B)
-
-      val maxRank =
-        if (preconditionerRank > 0) math.min(preconditionerRank, m)
-        else autoMaxRank(m)
-      if (currentRank < 0) {
-        currentRank =
-          if (preconditionerRank > 0) maxRank
-          else math.min(maxRank, math.min(m, DefaultPreconditionerRank))
-      }
+      val requestedRank = config.preconditionerRank
+      val budgetRank = autoMaxRank(m, config.preconditionerMemoryBytes)
+      val maxRank = if (requestedRank > 0) math.min(requestedRank, budgetRank) else budgetRank
+      if (currentRank < 0) currentRank = if (requestedRank > 0) maxRank else 0
       currentRank = math.min(currentRank, maxRank)
-      var diagonal: Array[Double] = null
+      val diagonal = matrix.gramianDiagonal(w).values.map(_ + dualRegularization)
       def buildPreconditioner(rank: Int): BDV[Double] => BDV[Double] = {
-        if (rank == 0) {
-          (r: BDV[Double]) => r.copy
-        } else {
-          if (diagonal == null) diagonal = B.gramianDiagonal(w).values
-          val partial = new PartialCholesky(B, m, w, diagonal, rank)
-          (r: BDV[Double]) => partial(r)
-        }
+        val partial = new PartialCholesky(diagonal, rank, j => {
+          val column = matrix.gramianColumns(Array(j), w)
+          column(j) += dualRegularization
+          column
+        }, dualRegularization)
+        peakRank = math.max(peakRank, partial.indices.length)
+        (r: BDV[Double]) => partial(r)
       }
       var preconditioner = buildPreconditioner(currentRank)
 
-      val maxIter = if (maxIterations > 0) maxIterations else math.min(math.max(100, 2 * m), 1000)
+      val maxIter = if (maxIterations > 0) maxIterations else math.min(math.max(100L, 2L * m), 1000L).toInt
 
       new NewtonSystem {
         private var pBroadcast: Broadcast[DenseVector] = _
@@ -193,13 +202,14 @@ private[spark_lp] object newton extends LazyLogging {
         private def applyOperator(p: BDV[Double]): BDV[Double] = {
           if (pBroadcast != null) Broadcasts.destroyAsync(pBroadcast)
           pBroadcast = spark.sparkContext.broadcast(new DenseVector(p.data))
-          val Bp = B.product(pBroadcast)
-          val weighted = w.map(_.entrywiseProd(Bp)).getOrElse(Bp)
-          new BDV(matrix.adjointProduct(weighted).values)
+          new BDV(regularizedProduct(B, matrix, w, pBroadcast, dualRegularization).values)
         }
 
         override def solve(rhs: DenseVector, absTolerance: Double): DenseVector = {
           val rhsVector = new BDV(rhs.values.clone())
+          require(rhs.size == m && rhs.values.forall(v => !v.isNaN && !v.isInfinite),
+            "CG right-hand side must be finite and match the operator")
+          require(absTolerance >= 0.0 && !absTolerance.isInfinite, "CG absolute tolerance must be finite and nonnegative")
           val rhsNorm = norm(rhsVector)
           if (rhsNorm == 0.0) return new DenseVector(new Array[Double](m))
 
@@ -237,9 +247,8 @@ private[spark_lp] object newton extends LazyLogging {
                     s"Non-finite curvature in the normal-equations CG solve at step ${totalSteps + 1}")
                 }
                 if (pAp <= 0.0) {
-                  // A symmetric positive definite operator cannot produce non-positive curvature:
-                  // the Gramian is rank deficient (linearly dependent constraint rows).
-                  throw new IllegalArgumentException(
+                  // Regularization makes this SPD even for dependent rows: this is numerical failure.
+                  throw new IllegalStateException(
                     s"Normal-equations operator is not positive definite (p^T A p = $pAp at CG step ${totalSteps + 1})")
                 }
                 val alpha = rz / pAp
@@ -247,6 +256,9 @@ private[spark_lp] object newton extends LazyLogging {
                 r -= alpha * ap
                 resNorm = norm(r)
                 totalSteps += 1
+                steps += 1
+                if (resNorm.isNaN || resNorm.isInfinite)
+                  throw new IllegalStateException("Non-finite CG residual")
                 stepsAtRank += 1
                 finished = resNorm <= targetNorm
                 if (!finished) {
@@ -278,7 +290,7 @@ private[spark_lp] object newton extends LazyLogging {
               // the current rank is not strong enough for this system: double it and try again
               // (with a fresh step budget), until the driver-budget cap is reached
               if (currentRank < maxRank) {
-                currentRank = math.min(maxRank, 2 * currentRank)
+                currentRank = math.min(maxRank, math.max(DefaultPreconditionerRank, 2 * currentRank))
                 logger.info(s"CG at residual $resNorm (target $targetNorm) after $totalSteps " +
                   s"steps; escalating the partial Cholesky preconditioner to rank $currentRank")
                 preconditioner = buildPreconditioner(currentRank)
@@ -288,18 +300,17 @@ private[spark_lp] object newton extends LazyLogging {
             }
           }
 
-          if (!finished) {
-            if (resNorm > math.max(1e-2 * rhsNorm, 100 * targetNorm)) {
-              throw new IllegalStateException(
-                s"Normal-equations CG solve stalled: residual $resNorm after $totalSteps steps " +
-                  s"(target $targetNorm, right-hand side norm $rhsNorm). The system is too " +
-                  "ill-conditioned for the current cgTolerance/cgMaxIterations settings.")
-            }
-            logger.info(s"CG stopped with residual $resNorm (target $targetNorm) after " +
-              s"$totalSteps steps; continuing with an inexact direction")
-          } else {
-            logger.debug(s"CG solved to residual $resNorm (target $targetNorm) in $totalSteps steps")
+          // An infeasible LP can drive the iterates to scales where roundoff prevents
+          // the requested tolerance. A bounded inexact direction can still expose a
+          // Farkas certificate on the next iterate. This is never a convergence test.
+          if (resNorm.isNaN || resNorm.isInfinite ||
+              (!finished && resNorm > math.max(targetNorm, 1e-3 * rhsNorm))) {
+            throw new IllegalStateException(
+              s"Normal-equations CG solve stalled: residual $resNorm after $totalSteps steps " +
+                s"(target $targetNorm, right-hand side norm $rhsNorm). Check scaling, regularization, " +
+                "cgTolerance/cgMaxIterations and preconditioner settings.")
           }
+          logger.debug(s"CG residual $resNorm (target $targetNorm) in $totalSteps steps; inexact=${!finished}")
           lastSolution = x.copy
           new DenseVector(x.data)
         }
@@ -313,173 +324,118 @@ private[spark_lp] object newton extends LazyLogging {
     }
   }
 
-  /** Rank at which the adaptive partial-Cholesky preconditioner of [[CgFactory]] starts. */
+  private[spark_lp] def regularizedProduct(B: DMatrix, matrix: DMatrixOps,
+    weights: Option[DVector], p: Broadcast[DenseVector], dual: Double): DenseVector = {
+    val bp = B.product(p)
+    val weighted = weights.map(_.entrywiseProd(bp)).getOrElse(bp)
+    val result = matrix.adjointProduct(weighted).values
+    var i = 0
+    while (i < result.length) {
+      result(i) += dual * p.value(i)
+      i += 1
+    }
+    new DenseVector(result)
+  }
+
+  /** First nonzero rank of the adaptive preconditioner, after Jacobi misses its target. */
   val DefaultPreconditionerRank: Int = 50
 
-  // Driver budget for the partial-Cholesky factor and its aggregation workspace. Four double
-  // arrays per row/rank cover C, L21t, an aggregation buffer, and margin for the diagonal/indexes.
-  private val PreconditionerMemoryBudget: Long = 256L * 1024 * 1024
+  // Budget for factors and aggregation workspace. Four double arrays per row/rank
+  // cover an old factor during escalation, the new factor, a column and reduction buffers.
+  // O(m) iteration vectors and Spark runtime overhead are outside this factor budget.
+  private[spark_lp] val PreconditionerMemoryBudget: Long = 256L * 1024 * 1024
   private val PreconditionerBytesPerRowRank: Long = 4L * 8L
   private val PreconditionerFlopsBudget: Double = 2e10 // ~seconds of driver factorization time
 
   /** The largest preconditioner rank the driver budgets allow for `m` constraint rows. */
-  private[spark_lp] def autoMaxRank(m: Int): Int = {
-    val memoryCap = (PreconditionerMemoryBudget / (PreconditionerBytesPerRowRank * math.max(1, m))).toInt
+  private[spark_lp] def autoMaxRank(m: Int, memoryBytes: Long = PreconditionerMemoryBudget): Int = {
+    val memoryCap = math.min(Int.MaxValue.toLong, memoryBytes / (PreconditionerBytesPerRowRank * math.max(1, m))).toInt
     val flopsCap = math.sqrt(PreconditionerFlopsBudget / math.max(1, m)).toInt
     math.min(m, math.min(memoryCap, flopsCap))
   }
 
-  /**
-    * Partial Cholesky preconditioner for the weighted Gramian `G = B^T diag(w) B` (Gondzio's
-    * matrix-free IPM preconditioner). The `rank` columns of `G` with the largest diagonal
-    * entries are computed exactly — one distributed pass over `B`, `O(m * rank)` driver and
-    * task-local aggregation storage —
-    * and factorized; the remaining block is approximated by the diagonal of its Schur
-    * complement:
-    *
-    * `P G P^T ~ M = [L11 0; L21 I] [I 0; 0 diag(S)] [L11^T L21^T; 0 I]`
-    *
-    * where `G11 = L11 L11^T`, `L21 = G21 L11^{-T}` and `diag(S) = diag(G22 - L21 L21^T)`.
-    * Applying `M^{-1}` costs `O(m * rank)` driver flops, negligible next to the distributed
-    * operator application of one CG step.
+  /** Sequential complete diagonal pivoting, fetching only one Gramian column per pivot.
+    * Storage is O(m * rank), plus O(m) scratch. Small Schur pivots stop factorization;
+    * only the preconditioner's remaining diagonal is floored against roundoff. The
+    * regularized operator itself is never silently perturbed after RHS construction.
     */
-  private final class PartialCholesky(
-    B: DMatrix,
-    m: Int,
-    w: Option[DVector],
+  final class PartialCholesky(
     diagonal: Array[Double],
-    rank: Int) {
+    requestedRank: Int,
+    column: Int => Array[Double],
+    dualRegularization: Double) {
 
-    private val k = rank
-
-    // the k Gramian columns with the largest diagonal (ascending index order for determinism)
-    private val indices: Array[Int] =
-      diagonal.zipWithIndex.sortBy { case (d, _) => -d }.take(k).map(_._2).sorted
-    private val rest: Array[Int] = {
-      val selected = new Array[Boolean](m)
-      indices.foreach(selected(_) = true)
-      (0 until m).filterNot(selected).toArray
-    }
-    private val restCount = rest.length
-
-    // G[:, indices] as a column-major m x k matrix, one distributed pass
-    private val C = new BDM(m, k, B.gramianColumns(indices, w))
-
-    private val L11: BDM[Double] = {
-      val G11 = BDM.tabulate(k, k)((a, b) => C(indices(a), b))
-      val maxDiagonal = (0 until k).map(a => G11(a, a)).max
-      // jitter ladder: retry a near-singular leading block with a tiny relative ridge
-      val ridges = Seq(0.0, 1e-12 * maxDiagonal, 1e-8 * maxDiagonal)
-      ridges.view.map { ridge =>
-        try {
-          val M = G11.copy
-          var a = 0
-          while (a < k) { M(a, a) += ridge; a += 1 }
-          Some(cholesky(M))
-        } catch { case scala.util.control.NonFatal(_) => None }
-      }.collectFirst { case Some(l) => l }.getOrElse {
-        throw new IllegalArgumentException(
-          "Normal-equations Gramian is not positive definite (partial Cholesky preconditioner " +
-            "failed): the constraint matrix is rank deficient")
-      }
-    }
-
-    // L21^T (k x (m - k)): forward-substitute L11 * L21^T = G21^T column by column
-    private val L21t: BDM[Double] = {
-      val X = BDM.tabulate(k, restCount)((a, i) => C(rest(i), a))
-      var col = 0
-      while (col < restCount) {
-        var a = 0
-        while (a < k) {
-          var s = X(a, col)
-          var b = 0
-          while (b < a) {
-            s -= L11(a, b) * X(b, col)
-            b += 1
-          }
-          X(a, col) = s / L11(a, a)
-          a += 1
-        }
-        col += 1
-      }
-      X
-    }
-
-    // diagonal of the Schur complement, guarded against cancellation to keep M positive definite
-    private val schurDiagonal: Array[Double] = Array.tabulate(restCount) { i =>
-      var sumSquares = 0.0
-      var a = 0
-      while (a < k) {
-        val v = L21t(a, i)
-        sumSquares += v * v
-        a += 1
-      }
-      val d = diagonal(rest(i)) - sumSquares
-      if (d > 0.0 && !d.isInfinite) d
-      else if (diagonal(rest(i)) > 0.0 && !diagonal(rest(i)).isInfinite) diagonal(rest(i))
-      else 1.0
-    }
-
-    /** Applies `M^{-1}` to `r`. */
-    def apply(r: BDV[Double]): BDV[Double] = {
-      // forward: y1 = L11^{-1} r1
-      val y1 = new Array[Double](k)
-      var a = 0
-      while (a < k) {
-        var s = r(indices(a))
-        var b = 0
-        while (b < a) {
-          s -= L11(a, b) * y1(b)
-          b += 1
-        }
-        y1(a) = s / L11(a, a)
-        a += 1
-      }
-
-      // y2 = diag(S)^{-1} (r2 - L21 y1)
-      val y2 = new Array[Double](restCount)
+    private val m = diagonal.length
+    require(diagonal.forall(d => d > 0.0 && !d.isInfinite), "Invalid regularized Gramian diagonal")
+    private val floor = math.max(dualRegularization, 64.0 * math.ulp(diagonal.max))
+    private val schur = diagonal.clone()
+    private val selected = new Array[Boolean](m)
+    private val pivots = scala.collection.mutable.ArrayBuffer.empty[Int]
+    private val factors = scala.collection.mutable.ArrayBuffer.empty[Array[Double]]
+    private var stopped = false
+    while (pivots.length < math.min(m, requestedRank) && !stopped) {
+      var pivot = -1
       var i = 0
-      while (i < restCount) {
-        var s = r(rest(i))
-        var b = 0
-        while (b < k) {
-          s -= L21t(b, i) * y1(b)
-          b += 1
-        }
-        y2(i) = s / schurDiagonal(i)
+      while (i < m) {
+        if (!selected(i) && (pivot < 0 || schur(i) > schur(pivot))) pivot = i
         i += 1
       }
-
-      // backward: z1 = L11^{-T} (y1 - L21^T y2), accumulated column-wise over L21t
-      val t = y1.clone()
-      i = 0
-      while (i < restCount) {
-        val v = y2(i)
-        var b = 0
-        while (b < k) {
-          t(b) -= L21t(b, i) * v
-          b += 1
+      if (schur(pivot) <= floor) stopped = true
+      else {
+        val l = column(pivot)
+        require(l.length == m && l.forall(v => !v.isNaN && !v.isInfinite), "Invalid Gramian column")
+        val root = math.sqrt(schur(pivot))
+        i = 0
+        while (i < m) {
+          if (!selected(i) && i != pivot) {
+            var j = 0
+            while (j < factors.length) {
+              l(i) -= factors(j)(i) * factors(j)(pivot)
+              j += 1
+            }
+            l(i) /= root
+            schur(i) -= l(i) * l(i)
+            if (schur(i) < -floor || schur(i).isNaN || schur(i).isInfinite)
+              throw new IllegalStateException(s"Unstable Schur pivot at row $i: ${schur(i)}")
+          } else l(i) = 0.0
+          i += 1
         }
-        i += 1
+        l(pivot) = root
+        selected(pivot) = true
+        pivots += pivot
+        factors += l
       }
-      val z1 = new Array[Double](k)
-      a = k - 1
-      while (a >= 0) {
-        var s = t(a)
-        var b = a + 1
-        while (b < k) {
-          s -= L11(b, a) * z1(b)
-          b += 1
-        }
-        z1(a) = s / L11(a, a)
-        a -= 1
-      }
+    }
+    val indices: Array[Int] = pivots.toArray
+    private val k = indices.length
+    private val rest = (0 until m).filterNot(selected).toArray
+    rest.foreach(i => schur(i) = math.max(floor, schur(i)))
 
-      val z = new Array[Double](m)
-      a = 0
-      while (a < k) { z(indices(a)) = z1(a); a += 1 }
-      i = 0
-      while (i < restCount) { z(rest(i)) = y2(i); i += 1 }
+    def apply(r: BDV[Double]): BDV[Double] = {
+      val z = r.toArray
+      var j = 0
+      while (j < k) {
+        val pivot = indices(j)
+        z(pivot) /= factors(j)(pivot)
+        var i = 0
+        while (i < m) {
+          if (i != pivot) z(i) -= factors(j)(i) * z(pivot)
+          i += 1
+        }
+        j += 1
+      }
+      rest.foreach(i => z(i) /= schur(i))
+      j = k - 1
+      while (j >= 0) {
+        val pivot = indices(j)
+        var i = 0
+        while (i < m) {
+          if (i != pivot) z(pivot) -= factors(j)(i) * z(i)
+          i += 1
+        }
+        z(pivot) /= factors(j)(pivot)
+        j -= 1
+      }
       new BDV(z)
     }
   }

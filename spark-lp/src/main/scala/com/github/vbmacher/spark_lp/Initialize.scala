@@ -32,13 +32,13 @@ object Initialize extends LazyLogging {
     init(c, A, b, newton.CholeskyFactory)
 
   /**
-    * Compute the heuristic starting points, solving the two `B^T B` systems with the supplied
-    * normal-equations solver (driver-local Cholesky or the matrix-free conjugate gradient).
+    * Compute the heuristic starting points with the supplied normal-equations solver:
+    * `B^T B` for Cholesky, `B^T W0 B + Rd` for regularized matrix-free CG.
     *
     * @param c       the objective coefficient DVector.
     * @param A       the constraint DMatrix.
     * @param b       the constraint values.
-    * @param factory the normal-equations solver to use for the `B^T B` systems.
+    * @param factory the normal-equations solver and its initialization regularization.
     * @return starting points (x, lambda, s) and the computed dimensions of rows DMatrix (n, m).
     */
   private[spark_lp] def init(
@@ -57,11 +57,12 @@ object Initialize extends LazyLogging {
 
     logger.debug(s"Number of unknowns: $rows; number of equations: $columns")
 
-    // Solver for B^T B systems (positive definite, if A columns are linearly independent)
+    // G = B^T W0 B + Rd, W0 = I/(1+Rp); Rp=Rd=0 for the direct reference.
     val system = factory.build(A, columns, weights = None)
     try {
-      // xTilda = B * (B^T B)^(-1) * b
-      val xTilda = A.product(system.solve(b))
+      // xTilda = W0 * B * G^(-1) * b
+      val scale = 1.0 / (1.0 + factory.primalRegularization)
+      val xTilda = A.product(system.solve(b)).mapElements(_ * scale)
 
       // deltax = max(-1.5 * xTilda.min(), 0)
       val deltax: Double = math.max(-1.5 * xTilda.minValue, 0)
@@ -69,8 +70,8 @@ object Initialize extends LazyLogging {
       // xHat = xTilda + deltax * e
       val xHat: DVector = xTilda.mapElements(a => a + deltax)
 
-      // lambdaTilda = (B^T B)^(-1) * B^T * c
-      val lambdaTilda: DenseVector = system.solve(A.adjointProduct(c))
+      // lambdaTilda = G^(-1) * B^T * W0 * c
+      val lambdaTilda: DenseVector = system.solve(A.adjointProduct(c.mapElements(_ * scale)))
 
       // sTilda = c - B * lambdaTilda
       val sTilda: DVector = c.diff(A.product(lambdaTilda))

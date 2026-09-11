@@ -82,7 +82,8 @@ object LP extends LazyLogging {
     innerIterations: Int = 0,
     preconditionerRank: Int = 0,
     stopReason: Option[StopReason] = None,
-    candidate: CandidateInfo = CandidateInfo.Unavailable)
+    candidate: CandidateInfo = CandidateInfo.Unavailable,
+    innerRestarts: Int = 0)
 
   /**
     * Computes the optimal value and the corresponding vector for a LP problem.
@@ -165,7 +166,8 @@ object LP extends LazyLogging {
     matrixFree: MatrixFreeConfig = MatrixFreeConfig(),
     control: SolveControl = SolveControl(),
     candidateViolation: Option[DVector => Double] = None,
-    nanoTime: () => Long = () => System.nanoTime()
+    nanoTime: () => Long = () => System.nanoTime(),
+    inspectConverged: Option[(DVector, DenseVector, DVector) => Unit] = None
   )(implicit spark: SparkSession): SolveSummary = {
     validateParameters(tolerance, maxIter, etaIter, valueCap, eps, infeasibilityTolerance, cgTolerance)
     require(b.size > 0 && b.values.forall(v => !v.isNaN && !v.isInfinite), "b must be nonempty and finite")
@@ -194,7 +196,8 @@ object LP extends LazyLogging {
             logger.info(s"LP stopped during initialization: reason=${stopped.reason} candidate=unavailable")
             return SolveSummary(Double.NaN, spark.sparkContext.emptyRDD, 0, Termination.Stopped,
               Double.NaN, Double.NaN, Double.NaN, stopReason = Some(stopped.reason),
-              innerIterations = systemFactory.innerIterations, preconditionerRank = systemFactory.maximumRank)
+              innerIterations = systemFactory.innerIterations, preconditionerRank = systemFactory.maximumRank,
+              innerRestarts = systemFactory.innerRestarts)
           case e if isNumericalFailure(e) => throw numericalFailure("initialization", 0, e)
         }
 
@@ -464,6 +467,10 @@ object LP extends LazyLogging {
         if (converged) Termination.Converged
         else earlyTermination.getOrElse(Termination.IterationLimit)
 
+      // Internal validation hook: inspect the actual primal/dual iterate before releasing its
+      // caches. Only converged results qualify; stopped runs may return an earlier candidate.
+      if (converged) monitor.callback(inspectConverged.foreach(_(x, lambda, s)))
+
       val last = SolveSummary(
         objectiveValue = if (!lastCandidate.available) Double.NaN else cTx,
         x = if (!lastCandidate.available) spark.sparkContext.emptyRDD[DenseVector] else x,
@@ -486,6 +493,7 @@ object LP extends LazyLogging {
         primalCertificate = primalCertificate, dualCertificate = dualCertificate,
         certificateResidual = certificateResidual, innerIterations = systemFactory.innerIterations,
         preconditionerRank = systemFactory.maximumRank,
+        innerRestarts = systemFactory.innerRestarts,
         stopReason = if (termination == Termination.IterationLimit) Some(StopReason.IterationLimit) else stopReason)
       logger.info(s"LP finished: solver=$resolvedSolver termination=$termination stopReason=${result.stopReason} " +
         s"iterations=$completedIterations candidate=${result.candidate} objective=${result.objectiveValue} " +

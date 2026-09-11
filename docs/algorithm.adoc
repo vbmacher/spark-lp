@@ -153,6 +153,14 @@ the dense aggregation and its memory requirements remain. See
 link:../benchmarks/allocation.md[the allocation workload measurements] for the performance
 impact and the limits of the synthetic Auto crossover on this workload.
 
+The driver-local `org.apache.spark.wrappers.ConjugateGradient` wrapper owns the PCG
+iteration, warm-start state, restarts, and true-residual replacement. It uses the
+existing netlib BLAS dependency for dot products (`ddot`), norms (`dnrm2`), scaling
+(`dscal`), and vector updates (`daxpy`). `CgFactory` supplies the distributed operator
+and partial-Cholesky preconditioner, and retains rank escalation, monitoring, and
+bounded-inexact acceptance policy. Retrying the wrapper with a stronger preconditioner
+preserves the current solution and cumulative iteration counts without forming a Gramian.
+
 `MatrixFreeConfig` supplies constant scalar diagonal entries `Rp = 1e-8` and
 `Rd = 1e-8` by default. These are entries, not their square roots. They stay positive
 throughout a solve. Larger values can improve conditioning but require more outer

@@ -37,6 +37,7 @@ def prepare(destination):
     harness = harness[:start] + harness[end:]
     harness = harness.replace('          control = SolveControl(onProgress = Some(progress)),\n', '')
     harness = harness.replace('result.innerIterations', 'None').replace('result.innerRestarts', 'None').replace('result.preconditionerRank', 'None')
+    harness = harness.replace('"phase_seconds" -> phaseTimes.toMap', '"phase_seconds" -> None')
     harness = harness.replace('(if (args(3) == "cg") 1e-8 else 0.0)', '0.0')
     harness = harness.replace('"backend" -> args(3)', '"backend" -> "cg-pre"')
     (destination / folder / 'MatrixFreeBenchmark.scala').write_text(harness)

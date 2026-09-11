@@ -86,6 +86,8 @@ class LPSuite extends AnyFunSuite with DataFrameSuiteBase {
   }
 
   test("core Auto resolves from the known equality-form row count") {
+    assert(LP.resolveNewtonSolver(NewtonSolver.Auto, 10000) == NewtonSolver.Cholesky)
+    assert(LP.resolveNewtonSolver(NewtonSolver.Auto, 10001) == NewtonSolver.ConjugateGradient)
     assert(LP.resolveNewtonSolver(NewtonSolver.Auto, NewtonSolver.AutoCholeskyLimit) == NewtonSolver.Cholesky)
     assert(LP.resolveNewtonSolver(NewtonSolver.Auto, NewtonSolver.AutoCholeskyLimit + 1) ==
       NewtonSolver.ConjugateGradient)

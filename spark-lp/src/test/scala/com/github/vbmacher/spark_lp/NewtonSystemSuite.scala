@@ -92,12 +92,12 @@ class NewtonSystemSuite extends AnyFunSuite with DataFrameSuiteBase {
     assert(!Fixtures.passes(Map.empty, 1e-8))
   }
 
-  test("Auto and explicit DSL overrides retain the already selected policy and resource cap") {
-    assert(NewtonSolver.AutoCholeskyLimit == 1000)
-    assert(LP.resolveNewtonSolver(NewtonSolver.Auto, 1000) == NewtonSolver.Cholesky)
-    assert(LP.resolveNewtonSolver(NewtonSolver.Auto, 1001) == NewtonSolver.ConjugateGradient)
-    Seq(5000, 5001).foreach { m =>
-      assert(LP.resolveNewtonSolver(NewtonSolver.Auto, m) == NewtonSolver.ConjugateGradient)
+  test("Auto uses the 10000-row cutoff across the historical boundaries") {
+    assert(NewtonSolver.AutoCholeskyLimit == 10000)
+    assert(LP.resolveNewtonSolver(NewtonSolver.Auto, 10000) == NewtonSolver.Cholesky)
+    assert(LP.resolveNewtonSolver(NewtonSolver.Auto, 10001) == NewtonSolver.ConjugateGradient)
+    Seq(1000, 1001, 5000, 5001).foreach { m =>
+      assert(LP.resolveNewtonSolver(NewtonSolver.Auto, m) == NewtonSolver.Cholesky)
     }
   }
 }

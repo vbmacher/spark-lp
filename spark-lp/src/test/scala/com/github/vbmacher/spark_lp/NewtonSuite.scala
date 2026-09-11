@@ -81,10 +81,69 @@ class NewtonSuite extends AnyFunSuite with DataFrameSuiteBase {
       _ => fail("No column should be fetched for a pivot at the regularization floor"), 1e-8)
     assert(partial.indices.isEmpty)
     assert(norm(partial(BDV(1e-8, 2e-8)) - BDV(1.0, 2.0)) < 1e-12)
+    partial.extendTo(2)
+    assert(partial.indices.isEmpty)
     intercept[IllegalStateException] {
       new newton.PartialCholesky(Array(1.0, 1.0), 2, j =>
         if (j == 0) Array(1.0, 2.0) else Array(2.0, 1.0), 1e-8)
     }
+  }
+
+  test("incremental partial Cholesky matches fresh factors without refetching old pivots") {
+    val g = BDM((10.0, 9.0, 0.0), (9.0, 9.0, 0.2), (0.0, 0.2, 8.0))
+    val fetched = scala.collection.mutable.ArrayBuffer.empty[Int]
+    val progress = scala.collection.mutable.ArrayBuffer.empty[Int]
+    def column(j: Int): Array[Double] = (0 until 3).map(i => g(i, j)).toArray
+    val incremental = new newton.PartialCholesky(diag(g).toArray, 0, j => {
+      fetched += j
+      column(j)
+    }, 1e-8, completed => { progress += completed; () })
+    val rhs = BDV(1.0, 2.0, 3.0)
+    Seq(0, 1, 2, 3, 3, 1).foreach { rank =>
+      incremental.extendTo(rank)
+      val fresh = new newton.PartialCholesky(diag(g).toArray, fetched.size, column, 1e-8)
+      assert(incremental.indices.sameElements(fresh.indices))
+      assert(norm(incremental(rhs) - fresh(rhs)) < 1e-14)
+    }
+    assert(fetched.toSeq == Seq(0, 2, 1))
+    assert(progress.toSeq == Seq(1, 2, 3))
+    assert(norm(incremental(rhs) - (g \ rhs)) < 1e-12)
+  }
+
+  test("CG rank escalation reuses pivots within a system and rebuilds for new weights") {
+    implicit val session: SparkSession = spark
+    val m = 64
+    val rows: DMatrix = sc.parallelize(0 to m, 4).map { i =>
+      val entries = if (i == 0) Seq(0 -> 1.0)
+        else if (i == m) Seq((m - 1) -> -1.0)
+        else Seq((i - 1) -> -1.0, i -> 1.0)
+      Vectors.sparse(m, entries)
+    }.cache()
+    val pivots = scala.collection.mutable.ArrayBuffer.empty[Int]
+    val monitor = new SolveMonitor(SolveControl(onProgress = Some { e =>
+      if (e.phase == SolvePhase.Preconditioner) e.preconditionerRank.foreach(pivots += _)
+    }))
+    val factory = new newton.CgFactory(1e-10, 1, monitor = monitor)
+    val rhs = new DenseVector(Array.tabulate(m)(i => (i % 7 + 1).toDouble))
+    try {
+      Seq(None, Some(newton.Weights(
+        rows.mapPartitions(it => Iterator.single(new DenseVector(it.map(_ => math.sqrt(2.0)).toArray))),
+        rows.mapPartitions(it => Iterator.single(new DenseVector(it.map(_ => 2.0).toArray)))))).foreach { weights =>
+        pivots.clear()
+        val system = factory.build(rows, m, weights)
+        try {
+          val solution = system.solve(rhs)
+          assert(pivots.toSeq == (1 to m))
+          val p = sc.broadcast(solution)
+          try {
+            val scale = if (weights.isDefined) 1.0 else 1.0 / (1.0 + factory.primalRegularization)
+            val actual = newton.regularizedProduct(new DMatrixOps(rows), weights.map(_.squared),
+              p, factory.dualRegularization, scale)
+            assert(norm(new BDV(actual.values) - new BDV(rhs.values)) / norm(new BDV(rhs.values)) < 1e-10)
+          } finally Broadcasts.destroyAsync(p)
+        } finally system.release()
+      }
+    } finally rows.unpersist()
   }
 
   test("regularized products and both recovered directions match explicit augmented equations") {
@@ -102,7 +161,7 @@ class NewtonSuite extends AnyFunSuite with DataFrameSuiteBase {
     val g = b.t * w * b + delta * BDM.eye[Double](2)
     val p = sc.broadcast(new DenseVector(Array(0.7, -0.3)))
     try {
-      val actual = newton.regularizedProduct(rows, new DMatrixOps(rows), Some(weights.squared), p, delta)
+      val actual = newton.regularizedProduct(new DMatrixOps(rows), Some(weights.squared), p, delta)
       assert(norm(new BDV(actual.values) - g * new BDV(p.value.values)) < 1e-12)
     } finally Broadcasts.destroyAsync(p)
     val factory = new newton.CgFactory(1e-12, 50, config = MatrixFreeConfig(rho, delta))

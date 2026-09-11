@@ -92,23 +92,30 @@ A numerical failure retries those tests on the last completed iterate before rai
 |Strategy |Computation |Driver cost
 |`Cholesky` |Aggregate the weighted Gramian and factor its exact contiguous independent blocks; reuse for both directions. |`O(m^2)` aggregation/storage; factorization `O(sum(block_size^3))`, worst case `O(m^3)`.
 |`ConjugateGradient` |Apply `v -> A*(W*(A^T*v))+Rd*v` in Spark; use a bounded partial-Cholesky preconditioner. |`O(m)` iteration vectors plus `O(m*rank)` preconditioner storage.
-|`Auto` |Cholesky through 1000 equality-form rows (or a lower `maxLocalConstraints` cap); CG above it. |Follows the selected strategy.
+|`Auto` |Cholesky through 10000 equality-form rows (or a lower `maxLocalConstraints` cap); CG above it. |Follows the selected strategy.
 |===
 
-The shared core/DSL cutoff comes from the equal-accuracy runs in
-link:../benchmarks/README.md[the reproducible benchmark report]: results were mixed at
-1000 rows, while CG won from 1500 onward in the measured workloads. This is a conservative
-measured default for the recorded local environment, not a universal performance bound.
-`maxLocalConstraints` remains a separate resource cap (default 5000): lowering it can
-switch Auto earlier; raising it does not raise the performance cutoff. To use Cholesky
-above 1000 rows, select it explicitly and allow enough rows with that resource cap.
+The shared core/DSL cutoff is 10000 rows to avoid long CG sequences and repeated
+preconditioner escalation on medium-sized allocation models; see
+link:../benchmarks/allocation.md[the allocation investigation]. This is a workload-driven
+policy, not a universal measured crossover. The earlier
+link:../benchmarks/README.md[local synthetic benchmarks] favored CG at smaller sizes.
+`maxLocalConstraints` remains a separate resource cap (default 10000): lowering it can
+switch Auto earlier; raising it does not raise the cutoff. To use Cholesky
+above 10000 rows, select it explicitly and allow enough rows with that resource cap.
 
 Here `m` includes emitted user constraints and upper-bound rows; `n` includes split
 variables and slacks. Allow roughly `16*m*m` bytes for Gramian-related allocations:
-about 400 MB at `m = 5000`, excluding other driver data. Explicit Cholesky rejects
+about 1.6 GB (1.49 GiB) at `m = 10000`, excluding other driver data. Executors also
+need packed aggregation buffers (about 400 MB each at that size). Explicit Cholesky rejects
 models above `maxLocalConstraints` and has a packed-array limit of 65535 rows.
 CG avoids that Gramian limit, but row metadata, RHS, residuals, and group keys remain on
 the driver; matrix indices are still `Int`. Each CG step adds distributed work.
+The matrix-free operator streams each stored matrix row once per application: it
+computes the row's dot product, multiplies by its weight, and accumulates the scaled
+row into a partition sum. This avoids a second matrix traversal and intermediate
+partition-sized vectors. Initialization applies its uniform weight as a scalar,
+without constructing a separate weight RDD from the matrix.
 
 === Regularized matrix-free LP equations
 
@@ -159,7 +166,9 @@ backend still requires full row rank.
 
 The adaptive preconditioner starts with the regularized diagonal (Jacobi). If an inner
 solve misses its requested tolerance, it builds up to 50 partial-Cholesky columns, then
-doubles the rank on further failures. Escalation carries forward to later outer iterations.
+doubles the rank on further failures. Within one weighted system, escalation extends
+the existing factors and Schur diagonal, fetching only new columns. Later outer
+iterations inherit the rank but rebuild factors for their changed weights.
 Each pivot is the largest *updated Schur-complement diagonal*, with ties broken by row
 index. Only that column is fetched from Spark before the next pivot is chosen. The
 remaining Schur block is approximated by its diagonal. No full Gramian is collected.
@@ -175,6 +184,10 @@ also limits rank using `m*rank^2 <= 2e10`. Explicit `preconditionerRank` is clip
 these same caps. Rank 0 selects adaptive behavior; a zero byte budget forces Jacobi.
 Sequential pivoting costs one distributed column pass per selected pivot, so beginning
 with Jacobi avoids paying for unnecessary pivots on easy systems.
+For example, reaching ranks 50, 100, 200, 400 and 800 requires 800 column fetches
+when all requested pivots are accepted, instead of 1550 from rebuilding each rank.
+Each new pivot still requires a distributed pass; neither this reuse nor the fused
+operator removes the synchronization between successive CG steps.
 
 `cgTolerance` (default `1e-10`) and `cgMaxIterations` control the inner solve. Its requested
 residual norm is `max(cgTolerance*norm(rhs), 0.1*tolerance*(1+norm(b)))`; initialization

@@ -37,7 +37,7 @@ sealed trait NewtonSolver
 
 object NewtonSolver {
 
-  /** Cholesky through the measured small-system crossover, matrix-free CG beyond it. */
+  /** Cholesky through the direct-solver row cutoff, matrix-free CG beyond it. */
   case object Auto extends NewtonSolver
 
   /** Always use the driver-local Cholesky factorization of the Gramian. */
@@ -46,10 +46,11 @@ object NewtonSolver {
   /** Always use the matrix-free partial-Cholesky-preconditioned conjugate gradient method. */
   case object ConjugateGradient extends NewtonSolver
 
-  /** Largest Auto Cholesky row count. Equal-accuracy local benchmarks were mixed at 1000,
-    * and favored CG from 1500 onward; see benchmarks/README.md for workloads and limitations.
+  /** Largest Auto Cholesky row count. Prefer the direct solver for medium-sized allocation
+    * systems where CG can require hundreds of distributed steps and preconditioner pivots.
+    * This is a workload-driven policy, not a universal measured crossover; see benchmarks/allocation.md.
     */
-  val AutoCholeskyLimit: Int = 1000
+  val AutoCholeskyLimit: Int = 10000
 }
 
 /** Matrix-free Newton controls. Regularizations are diagonal entries (not square roots).
@@ -239,9 +240,9 @@ private[spark_lp] object newton extends LazyLogging {
     override def build(B: DMatrix, m: Int, weights: Option[Weights]): NewtonSystem = {
       // Initialization uses the same regularized least-squares operator with S/X = I.
       val initialWeight = 1.0 / (1.0 + primalRegularization)
-      val w = Some(weights.map(_.squared).getOrElse(
-        B.mapPartitions(rows => Iterator.single(new DenseVector(
-          rows.map(_ => initialWeight).toArray)))))
+      // A uniform initialization weight needs no extra RDD or second matrix traversal.
+      val w = weights.map(_.squared)
+      val operatorScale = if (weights.isDefined) 1.0 else initialWeight
       val matrix = new DMatrixOps(B)
       val requestedRank = config.preconditionerRank
       val budgetRank = autoMaxRank(m, config.preconditionerMemoryBytes)
@@ -249,20 +250,26 @@ private[spark_lp] object newton extends LazyLogging {
       if (currentRank < 0) currentRank = if (requestedRank > 0) maxRank else 0
       currentRank = math.min(currentRank, maxRank)
       monitor.phase(SolvePhase.Preconditioner)
-      val diagonal = matrix.gramianDiagonal(w).values.map(_ + dualRegularization)
-      def buildPreconditioner(rank: Int): BDV[Double] => BDV[Double] = {
-        val partial = new PartialCholesky(diagonal, rank, j => {
-          monitor.check()
-          val column = matrix.gramianColumns(Array(j), w)
-          column(j) += dualRegularization
-          column
-        }, dualRegularization, completed => monitor.report(SolveProgress(
-          SolvePhase.Preconditioner, 0, 0.0, preconditionerRank = Some(completed))))
+      val diagonal = matrix.gramianDiagonal(w).values.map(_ * operatorScale + dualRegularization)
+      // Keep pivots and the unfloored Schur diagonal for this weighted system. Escalation
+      // fetches only new columns; the factors must be rebuilt when the weights change.
+      val partial = new PartialCholesky(diagonal, 0, j => {
+        monitor.check()
+        val column = matrix.gramianColumns(Array(j), w)
+        if (operatorScale != 1.0) {
+          var i = 0
+          while (i < column.length) { column(i) *= operatorScale; i += 1 }
+        }
+        column(j) += dualRegularization
+        column
+      }, dualRegularization, completed => monitor.report(SolveProgress(
+        SolvePhase.Preconditioner, 0, 0.0, preconditionerRank = Some(completed))))
+      def extendPreconditioner(rank: Int): Unit = {
+        partial.extendTo(rank)
         monitor.check()
         peakRank = math.max(peakRank, partial.indices.length)
-        (r: BDV[Double]) => partial(r)
       }
-      var preconditioner = buildPreconditioner(currentRank)
+      extendPreconditioner(currentRank)
 
       val maxIter = if (maxIterations > 0) maxIterations else math.min(math.max(100L, 2L * m), 1000L).toInt
 
@@ -275,7 +282,7 @@ private[spark_lp] object newton extends LazyLogging {
           monitor.check()
           if (pBroadcast != null) Broadcasts.destroyAsync(pBroadcast)
           pBroadcast = spark.sparkContext.broadcast(new DenseVector(p.data))
-          new BDV(regularizedProduct(B, matrix, w, pBroadcast, dualRegularization).values)
+          new BDV(regularizedProduct(matrix, w, pBroadcast, dualRegularization, operatorScale).values)
         }
 
         override def solve(rhs: DenseVector, absTolerance: Double): DenseVector = {
@@ -396,7 +403,7 @@ private[spark_lp] object newton extends LazyLogging {
                 logger.info(s"CG at residual $resNorm (target $targetNorm) after $totalSteps " +
                   s"steps; escalating the partial Cholesky preconditioner to rank $currentRank")
                 monitor.phase(SolvePhase.Preconditioner)
-                preconditioner = buildPreconditioner(currentRank)
+                extendPreconditioner(currentRank)
                 monitor.phase(SolvePhase.InnerSolve)
               } else {
                 exhausted = true
@@ -419,7 +426,7 @@ private[spark_lp] object newton extends LazyLogging {
           new DenseVector(x.data)
         }
 
-        private def precondition(r: BDV[Double]): BDV[Double] = preconditioner(r)
+        private def precondition(r: BDV[Double]): BDV[Double] = partial(r)
 
         override def release(): Unit = {
           if (pBroadcast != null) Broadcasts.destroyAsync(pBroadcast)
@@ -428,14 +435,13 @@ private[spark_lp] object newton extends LazyLogging {
     }
   }
 
-  private[spark_lp] def regularizedProduct(B: DMatrix, matrix: DMatrixOps,
-    weights: Option[DVector], p: Broadcast[DenseVector], dual: Double): DenseVector = {
-    val bp = B.product(p)
-    val weighted = weights.map(_.entrywiseProd(bp)).getOrElse(bp)
-    val result = matrix.adjointProduct(weighted).values
+  private[spark_lp] def regularizedProduct(matrix: DMatrixOps,
+    weights: Option[DVector], p: Broadcast[DenseVector], dual: Double,
+    scale: Double = 1.0): DenseVector = {
+    val result = matrix.gramianProduct(p, weights).values
     var i = 0
     while (i < result.length) {
-      result(i) += dual * p.value(i)
+      result(i) = scale * result(i) + dual * p.value(i)
       i += 1
     }
     new DenseVector(result)
@@ -445,7 +451,7 @@ private[spark_lp] object newton extends LazyLogging {
   val DefaultPreconditionerRank: Int = 50
 
   // Budget for factors and aggregation workspace. Four double arrays per row/rank
-  // cover an old factor during escalation, the new factor, a column and reduction buffers.
+  // conservatively cover the factors, column/reduction buffers and allocation headroom.
   // O(m) iteration vectors and Spark runtime overhead are outside this factor budget.
   private[spark_lp] val PreconditionerMemoryBudget: Long = 256L * 1024 * 1024
   private val PreconditionerBytesPerRowRank: Long = 4L * 8L
@@ -478,50 +484,60 @@ private[spark_lp] object newton extends LazyLogging {
     private val pivots = scala.collection.mutable.ArrayBuffer.empty[Int]
     private val factors = scala.collection.mutable.ArrayBuffer.empty[Array[Double]]
     private var stopped = false
-    while (pivots.length < math.min(m, requestedRank) && !stopped) {
-      var pivot = -1
-      var i = 0
-      while (i < m) {
-        if (!selected(i) && (pivot < 0 || schur(i) > schur(pivot))) pivot = i
-        i += 1
-      }
-      if (schur(pivot) <= floor) stopped = true
-      else {
-        val l = column(pivot)
-        require(l.length == m && l.forall(v => !v.isNaN && !v.isInfinite), "Invalid Gramian column")
-        val root = math.sqrt(schur(pivot))
-        i = 0
+    private var rest = Array.empty[Int]
+    extendTo(requestedRank)
+
+    /** Continue the same diagonal-pivoted factorization without fetching old columns again.
+      * The raw Schur diagonal is retained for future pivots; flooring is applied only
+      * when using its diagonal approximation in [[apply]].
+      */
+    def extendTo(rank: Int): Unit = {
+      require(rank >= 0, "Preconditioner rank must be nonnegative")
+      while (pivots.length < math.min(m, rank) && !stopped) {
+        var pivot = -1
+        var i = 0
         while (i < m) {
-          if (!selected(i) && i != pivot) {
-            var j = 0
-            while (j < factors.length) {
-              l(i) -= factors(j)(i) * factors(j)(pivot)
-              j += 1
-            }
-            l(i) /= root
-            schur(i) -= l(i) * l(i)
-            if (schur(i) < -floor || schur(i).isNaN || schur(i).isInfinite)
-              throw new IllegalStateException(s"Unstable Schur pivot at row $i: ${schur(i)}")
-          } else l(i) = 0.0
+          if (!selected(i) && (pivot < 0 || schur(i) > schur(pivot))) pivot = i
           i += 1
         }
-        l(pivot) = root
-        selected(pivot) = true
-        pivots += pivot
-        factors += l
-        onPivot(pivots.length)
+        if (schur(pivot) <= floor) stopped = true
+        else {
+          val l = column(pivot)
+          require(l.length == m && l.forall(v => !v.isNaN && !v.isInfinite), "Invalid Gramian column")
+          val root = math.sqrt(schur(pivot))
+          i = 0
+          while (i < m) {
+            if (!selected(i) && i != pivot) {
+              var j = 0
+              while (j < factors.length) {
+                l(i) -= factors(j)(i) * factors(j)(pivot)
+                j += 1
+              }
+              l(i) /= root
+              schur(i) -= l(i) * l(i)
+              if (schur(i) < -floor || schur(i).isNaN || schur(i).isInfinite)
+                throw new IllegalStateException(s"Unstable Schur pivot at row $i: ${schur(i)}")
+            } else l(i) = 0.0
+            i += 1
+          }
+          l(pivot) = root
+          selected(pivot) = true
+          pivots += pivot
+          factors += l
+          onPivot(pivots.length)
+        }
       }
+      rest = (0 until m).filterNot(selected).toArray
     }
-    val indices: Array[Int] = pivots.toArray
-    private val k = indices.length
-    private val rest = (0 until m).filterNot(selected).toArray
-    rest.foreach(i => schur(i) = math.max(floor, schur(i)))
+
+    def indices: Array[Int] = pivots.toArray
 
     def apply(r: BDV[Double]): BDV[Double] = {
+      val k = pivots.length
       val z = r.toArray
       var j = 0
       while (j < k) {
-        val pivot = indices(j)
+        val pivot = pivots(j)
         z(pivot) /= factors(j)(pivot)
         var i = 0
         while (i < m) {
@@ -530,10 +546,10 @@ private[spark_lp] object newton extends LazyLogging {
         }
         j += 1
       }
-      rest.foreach(i => z(i) /= schur(i))
+      rest.foreach(i => z(i) /= math.max(floor, schur(i)))
       j = k - 1
       while (j >= 0) {
-        val pivot = indices(j)
+        val pivot = pivots(j)
         var i = 0
         while (i < m) {
           if (i != pivot) z(pivot) -= factors(j)(i) * z(i)

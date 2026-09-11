@@ -56,9 +56,13 @@ The historical baseline uses the unregularized implementation at `d0e4939`. Its
 final primal, dual and gap are independently verified using a recorded diagnostic-only
 callback patch. Its unavailable inner/rank/phase counters remain null or empty.
 
-Recommendation while execution is pending: **retain the current Auto policy**
+Recommendation recorded for this campaign: **retain its existing Auto policy**
 (Cholesky through 1000 rows; CG above, subject to the DSL's lower resource cap).
 A new crossover is not established by the smoke or a partially completed campaign.
 Shape screening uses seed 11; any policy-changing shape finding needs seeds 29/47.
 Distributed validation remains pending cluster access, as requested. Local measurements
 alone cannot establish a production cluster crossover.
+
+The current implementation subsequently raised Auto's cutoff to 10000 rows for the
+EMR allocation workload; see [the allocation investigation](../../benchmarks/allocation.md).
+That policy change is separate from this campaign's recorded results and protocol.

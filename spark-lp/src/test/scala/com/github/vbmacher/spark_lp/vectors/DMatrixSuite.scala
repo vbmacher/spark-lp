@@ -4,9 +4,41 @@ import com.github.vbmacher.spark_lp.TestingUtils._
 import com.holdenkarau.spark.testing.DataFrameSuiteBase
 import dmatrix.implicits._
 import org.apache.spark.mllib.linalg.{DenseVector, Vectors}
+import org.apache.spark.wrappers.Broadcasts
 import org.scalatest.funsuite.AnyFunSuite
 
 class DMatrixSuite extends AnyFunSuite with DataFrameSuiteBase {
+
+  test("fused Gramian products read each matrix row once and handle mixed rows and empty partitions") {
+    val reads = sc.longAccumulator("gramian-product-rows")
+    val rows: DMatrix = sc.parallelize(Seq(
+      Vectors.dense(1.0, 2.0, 3.0),
+      Vectors.sparse(3, Seq(0 -> 4.0, 2 -> 6.0))), 8).map { row =>
+      reads.add(1L)
+      row
+    }
+    val weights: DVector = sc.parallelize(Seq(2.0, 3.0), 8).glom().map(new DenseVector(_))
+    val p = sc.broadcast(new DenseVector(Array(1.0, -2.0, 3.0)))
+    try {
+      val ops = new DMatrixOps(rows)
+      assert(ops.gramianProduct(p) ~== Vectors.dense(94.0, 12.0, 150.0) absTol 1e-12)
+      assert(reads.value == 2L)
+      reads.reset()
+      assert(ops.gramianProduct(p, Some(weights)) ~== Vectors.dense(276.0, 24.0, 432.0) absTol 1e-12)
+      assert(reads.value == 2L)
+      assert(p.value.values.sameElements(Array(1.0, -2.0, 3.0)))
+    } finally Broadcasts.destroyAsync(p)
+  }
+
+  test("fused Gramian product of empty input is zero with or without partitions") {
+    val p = sc.broadcast(new DenseVector(Array(1.0, 2.0, 3.0)))
+    try {
+      Seq(sc.emptyRDD[org.apache.spark.mllib.linalg.Vector],
+        sc.parallelize(Seq.empty[org.apache.spark.mllib.linalg.Vector], 8)).foreach { rows =>
+        assert(rows.gramianProduct(p).values.sameElements(Array(0.0, 0.0, 0.0)))
+      }
+    } finally Broadcasts.destroyAsync(p)
+  }
 
   test("packed Gramian combines dense and sparse rows with empty partitions") {
     val matrix: DMatrix = sc.parallelize(Seq(

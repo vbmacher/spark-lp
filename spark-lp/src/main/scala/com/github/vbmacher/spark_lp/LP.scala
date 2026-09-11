@@ -184,7 +184,8 @@ object LP extends LazyLogging {
         case NewtonSolver.ConjugateGradient => new newton.CgFactory(cgTolerance, cgMaxIterations, config = matrixFree, monitor = monitor)
         case _ => new newton.DirectFactory(monitor)
       }
-      logger.debug(s"Normal-equations solver: $resolvedSolver")
+      logger.info(s"Normal-equations solver: $resolvedSolver, rows=${b.size}, " +
+        s"matrixPartitions=${AT.getNumPartitions}, autoCholeskyLimit=${NewtonSolver.AutoCholeskyLimit}")
 
       // run initialization
       val init =

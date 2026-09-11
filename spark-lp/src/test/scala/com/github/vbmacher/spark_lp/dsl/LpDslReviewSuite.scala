@@ -9,10 +9,14 @@ class LpDslReviewSuite extends AnyFunSuite with DataFrameSuiteBase {
 
   test("Auto uses the shared crossover and the DSL can lower the Cholesky resource cap") {
     val limit = NewtonSolver.AutoCholeskyLimit.toLong
+    assert(SolveConfig().resolvedNewtonSolver(10000) == NewtonSolver.Cholesky)
+    assert(SolveConfig().resolvedNewtonSolver(10001) == NewtonSolver.ConjugateGradient)
     assert(SolveConfig().resolvedNewtonSolver(limit) == NewtonSolver.Cholesky)
     assert(SolveConfig().resolvedNewtonSolver(limit + 1) == NewtonSolver.ConjugateGradient)
     assert(SolveConfig(maxLocalConstraints = 0).resolvedNewtonSolver(1) == NewtonSolver.ConjugateGradient)
-    assert(SolveConfig(maxLocalConstraints = 10000).resolvedNewtonSolver(limit + 1) ==
+    assert(SolveConfig(maxLocalConstraints = 5000).resolvedNewtonSolver(5000) == NewtonSolver.Cholesky)
+    assert(SolveConfig(maxLocalConstraints = 5000).resolvedNewtonSolver(5001) == NewtonSolver.ConjugateGradient)
+    assert(SolveConfig(maxLocalConstraints = limit + 1).resolvedNewtonSolver(limit + 1) ==
       NewtonSolver.ConjugateGradient)
     assert(SolveConfig(newtonSolver = NewtonSolver.Cholesky).resolvedNewtonSolver(limit + 1) ==
       NewtonSolver.Cholesky)

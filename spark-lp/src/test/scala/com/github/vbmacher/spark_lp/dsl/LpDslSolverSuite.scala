@@ -18,10 +18,10 @@ object LpDslSolverSuiteState {
 class LpDslSolverSuite extends AnyFunSuite with DataFrameSuiteBase {
 
   test("Auto policy and explicit overrides remain independent of the historical 5000-row boundary") {
-    assert(SolveConfig().resolvedNewtonSolver(1000) == NewtonSolver.Cholesky)
-    assert(SolveConfig().resolvedNewtonSolver(1001) == NewtonSolver.ConjugateGradient)
-    Seq(5000, 5001).foreach { m =>
-      assert(SolveConfig().resolvedNewtonSolver(m) == NewtonSolver.ConjugateGradient)
+    assert(SolveConfig().resolvedNewtonSolver(10000) == NewtonSolver.Cholesky)
+    assert(SolveConfig().resolvedNewtonSolver(10001) == NewtonSolver.ConjugateGradient)
+    Seq(1000, 1001, 5000, 5001).foreach { m =>
+      assert(SolveConfig().resolvedNewtonSolver(m) == NewtonSolver.Cholesky)
       assert(SolveConfig(newtonSolver = NewtonSolver.Cholesky).resolvedNewtonSolver(m) == NewtonSolver.Cholesky)
     }
     assert(SolveConfig(maxLocalConstraints = 50).resolvedNewtonSolver(51) == NewtonSolver.ConjugateGradient)

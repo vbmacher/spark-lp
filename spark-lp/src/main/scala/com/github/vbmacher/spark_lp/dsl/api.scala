@@ -138,7 +138,7 @@ final case class SolveConfig(
   etaIteration: Double = 0.999,
   valueCap: Double = 1e20,
   epsilon: Double = 1e-20,
-  maxLocalConstraints: Long = 5000L,
+  maxLocalConstraints: Long = NewtonSolver.AutoCholeskyLimit.toLong,
   newtonSolver: NewtonSolver = NewtonSolver.Auto,
   cgTolerance: Double = 1e-10,
   cgMaxIterations: Int = 0,

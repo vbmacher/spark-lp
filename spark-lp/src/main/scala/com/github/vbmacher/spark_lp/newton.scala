@@ -1,6 +1,6 @@
 package com.github.vbmacher.spark_lp
 
-import breeze.linalg.{norm, DenseVector => BDV}
+import breeze.linalg.{DenseVector => BDV}
 import com.github.vbmacher.spark_lp.vectors.dmatrix.implicits._
 import com.github.vbmacher.spark_lp.vectors.dvector.implicits._
 import com.github.vbmacher.spark_lp.vectors.{DMatrix, DVector}
@@ -8,7 +8,7 @@ import com.typesafe.scalalogging.LazyLogging
 import org.apache.spark.broadcast.Broadcast
 import org.apache.spark.mllib.linalg.DenseVector
 import org.apache.spark.sql.SparkSession
-import org.apache.spark.wrappers.{Broadcasts, CholeskyDecomposition}
+import org.apache.spark.wrappers.{Broadcasts, CholeskyDecomposition, ConjugateGradient}
 
 /**
   * Strategy for solving the m x m normal-equations ("Newton") systems `A^T D^2 A y = r` that the
@@ -275,158 +275,73 @@ private[spark_lp] object newton extends LazyLogging {
 
       new NewtonSystem {
         private var pBroadcast: Broadcast[DenseVector] = _
-        private var lastSolution: BDV[Double] = _
+        private var lastSolution: Array[Double] = _
 
         /** One application of the operator: `B^T (w * (B p))`, driver memory O(m). */
-        private def applyOperator(p: BDV[Double]): BDV[Double] = {
+        private def applyOperator(p: Array[Double]): Array[Double] = {
           monitor.check()
           if (pBroadcast != null) Broadcasts.destroyAsync(pBroadcast)
-          pBroadcast = spark.sparkContext.broadcast(new DenseVector(p.data))
-          new BDV(regularizedProduct(matrix, w, pBroadcast, dualRegularization, operatorScale).values)
+          // CG updates its vectors in place; the broadcast must own an immutable snapshot.
+          pBroadcast = spark.sparkContext.broadcast(new DenseVector(p.clone()))
+          regularizedProduct(matrix, w, pBroadcast, dualRegularization, operatorScale).values
         }
 
         override def solve(rhs: DenseVector, absTolerance: Double): DenseVector = {
           monitor.phase(SolvePhase.InnerSolve)
-          val rhsVector = new BDV(rhs.values.clone())
-          require(rhs.size == m && rhs.values.forall(v => !v.isNaN && !v.isInfinite),
-            "CG right-hand side must be finite and match the operator")
-          require(absTolerance >= 0.0 && !absTolerance.isInfinite, "CG absolute tolerance must be finite and nonnegative")
-          val rhsNorm = norm(rhsVector)
-          if (rhsNorm == 0.0) return new DenseVector(new Array[Double](m))
+          require(rhs.size == m, "CG right-hand side must match the operator")
+          val cg = new ConjugateGradient(rhs.values, applyOperator, relTolerance, absTolerance,
+            Option(lastSolution))
+          if (cg.rhsNorm == 0.0) return new DenseVector(cg.solution)
 
-          val targetNorm = math.max(relTolerance * rhsNorm, absTolerance)
-
-          // warm start from the previous solution of this system, when one exists (the predictor
-          // and corrector right-hand sides of one interior-point iteration are closely related)
-          val x = if (lastSolution != null) lastSolution.copy else BDV.zeros[Double](m)
-          var r = if (lastSolution != null) rhsVector - applyOperator(x) else rhsVector.copy
-          var resNorm = norm(r)
-          var totalSteps = 0
-          var cycles = 0
-          var finished = resNorm <= targetNorm
-          var exhausted = false
           val progress = monitor.control.stagnation.map(c => new ProgressWindow(c, c.innerPatience))
           def reportResidual(isTrue: Boolean, residual: Double): Unit = {
             monitor.report(SolveProgress(SolvePhase.InnerSolve, 0, 0.0,
-              innerSteps = Some(totalSteps), preconditionerRank = Some(currentRank),
+              innerSteps = Some(cg.iterations), preconditionerRank = Some(currentRank),
               innerResidual = Some(residual), trueResidual = isTrue))
-            if (isTrue && !finished) {
-              val stalled = progress.exists(_.observe(totalSteps, Vector(residual / rhsNorm)))
-              if (stalled || monitor.control.stagnation.exists(totalSteps >= _.maxInnerSteps))
+            if (isTrue && !cg.converged) {
+              val stalled = progress.exists(_.observe(cg.iterations, Vector(residual / cg.rhsNorm)))
+              if (stalled || monitor.control.stagnation.exists(cg.iterations >= _.maxInnerSteps))
                 throw SolveStopped(StopReason.NoProgress)
             }
           }
-          reportResidual(isTrue = true, residual = resNorm)
+          def checkTrueResidual(totalSteps: Int): Boolean = monitor.control.stagnation.exists(c =>
+            totalSteps % math.min(25, c.innerPatience) == 0 || totalSteps >= c.maxInnerSteps)
 
-          while (!finished && !exhausted) {
-            var stepsAtRank = 0
-            var gaveUp = false
-
-            // Each cycle is a CG run with directions restarted from the preconditioned residual;
-            // cycles after the first begin with residual replacement (r recomputed as rhs - A x).
-            while (!finished && !gaveUp && stepsAtRank < maxIter) {
-              if (cycles > 0) restarts += 1
-              cycles += 1
-              val cycleStartNorm = resNorm
-              var z = precondition(r)
-              var p = z.copy
-              var rz = r dot z
-              var cycleBest = resNorm
-              var stepsSinceImprovement = 0
-              var stagnated = false
-
-              while (!finished && !stagnated && stepsAtRank < maxIter) {
-                val ap = applyOperator(p)
-                val pAp = p dot ap
-                if (pAp.isNaN || pAp.isInfinite) {
-                  throw new IllegalStateException(
-                    s"Non-finite curvature in the normal-equations CG solve at step ${totalSteps + 1}")
-                }
-                if (pAp <= 0.0) {
-                  // Regularization makes this SPD even for dependent rows: this is numerical failure.
-                  throw new IllegalStateException(
-                    s"Normal-equations operator is not positive definite (p^T A p = $pAp at CG step ${totalSteps + 1})")
-                }
-                val alpha = rz / pAp
-                x += alpha * p
-                r -= alpha * ap
-                resNorm = norm(r)
-                totalSteps += 1
-                steps += 1
-                if (resNorm.isNaN || resNorm.isInfinite)
-                  throw new IllegalStateException("Non-finite CG residual")
-                stepsAtRank += 1
-                finished = resNorm <= targetNorm
-                reportResidual(isTrue = false, residual = resNorm)
-                // Periodic true residuals bound the opt-in policy even during a long cycle.
-                val progressCheck = monitor.control.stagnation.exists(c =>
-                  totalSteps % math.min(25, c.innerPatience) == 0 || totalSteps >= c.maxInnerSteps)
-                if (progressCheck && !finished) {
-                  // Probe without restarting conjugate directions just for monitoring.
-                  val actual = rhsVector - applyOperator(x)
-                  val actualNorm = norm(actual)
-                  finished = actualNorm <= targetNorm
-                  if (finished) { r = actual; resNorm = actualNorm }
-                  reportResidual(isTrue = true, residual = actualNorm)
-                }
-                if (!finished) {
-                  if (resNorm < 0.95 * cycleBest) {
-                    cycleBest = resNorm
-                    stepsSinceImprovement = 0
-                  } else {
-                    stepsSinceImprovement += 1
-                    stagnated = stepsSinceImprovement >= 25
-                  }
-                  if (!stagnated) {
-                    z = precondition(r)
-                    val rzNew = r dot z
-                    p = z + (rzNew / rz) * p
-                    rz = rzNew
-                  }
-                }
-              }
-
-              // residual replacement: judge the cycle on the true residual, not the recurrence
-              r = rhsVector - applyOperator(x)
-              resNorm = norm(r)
-              finished = resNorm <= targetNorm
-              reportResidual(isTrue = true, residual = resNorm)
-              // a full cycle that recovered less than 10% of the residual will not recover more
-              gaveUp = !finished && resNorm > 0.9 * cycleStartNorm
-            }
-
-            if (!finished) {
-              // the current rank is not strong enough for this system: double it and try again
-              // (with a fresh step budget), until the driver-budget cap is reached
-              if (currentRank < maxRank) {
-                currentRank = math.min(maxRank, math.max(DefaultPreconditionerRank, 2 * currentRank))
-                logger.info(s"CG at residual $resNorm (target $targetNorm) after $totalSteps " +
-                  s"steps; escalating the partial Cholesky preconditioner to rank $currentRank")
-                monitor.phase(SolvePhase.Preconditioner)
-                extendPreconditioner(currentRank)
-                monitor.phase(SolvePhase.InnerSolve)
-              } else {
-                exhausted = true
+          try {
+            reportResidual(isTrue = true, residual = cg.residualNorm)
+            var exhausted = false
+            while (!cg.converged && !exhausted) {
+              cg.solve(r => partial(new BDV(r)).data, maxIter, reportResidual, checkTrueResidual)
+              if (!cg.converged) {
+                if (currentRank < maxRank) {
+                  currentRank = math.min(maxRank, math.max(DefaultPreconditionerRank, 2 * currentRank))
+                  logger.info(s"CG at residual ${cg.residualNorm} (target ${cg.targetNorm}) after ${cg.iterations} " +
+                    s"steps; escalating the partial Cholesky preconditioner to rank $currentRank")
+                  monitor.phase(SolvePhase.Preconditioner)
+                  extendPreconditioner(currentRank)
+                  monitor.phase(SolvePhase.InnerSolve)
+                } else exhausted = true
               }
             }
-          }
 
-          // An infeasible LP can drive the iterates to scales where roundoff prevents
-          // the requested tolerance. A bounded inexact direction can still expose a
-          // Farkas certificate on the next iterate. This is never a convergence test.
-          if (resNorm.isNaN || resNorm.isInfinite ||
-              (!finished && resNorm > math.max(targetNorm, 1e-3 * rhsNorm))) {
-            throw new IllegalStateException(
-              s"Normal-equations CG solve stalled: residual $resNorm after $totalSteps steps " +
-                s"(target $targetNorm, right-hand side norm $rhsNorm). Check scaling, regularization, " +
-                "cgTolerance/cgMaxIterations and preconditioner settings.")
+            // A bounded inexact direction can still expose a Farkas certificate on the
+            // next LP iterate. This is never an original-LP convergence test.
+            if (cg.residualNorm.isNaN || cg.residualNorm.isInfinite ||
+                (!cg.converged && cg.residualNorm > math.max(cg.targetNorm, 1e-3 * cg.rhsNorm))) {
+              throw new IllegalStateException(
+                s"Normal-equations CG solve stalled: residual ${cg.residualNorm} after ${cg.iterations} steps " +
+                  s"(target ${cg.targetNorm}, right-hand side norm ${cg.rhsNorm}). Check scaling, regularization, " +
+                  "cgTolerance/cgMaxIterations and preconditioner settings.")
+            }
+            logger.debug(s"CG residual ${cg.residualNorm} (target ${cg.targetNorm}) in ${cg.iterations} " +
+              s"steps; inexact=${!cg.converged}")
+            lastSolution = cg.solution
+            new DenseVector(lastSolution.clone())
+          } finally {
+            steps += cg.iterations
+            restarts += cg.restarts
           }
-          logger.debug(s"CG residual $resNorm (target $targetNorm) in $totalSteps steps; inexact=${!finished}")
-          lastSolution = x.copy
-          new DenseVector(x.data)
         }
-
-        private def precondition(r: BDV[Double]): BDV[Double] = partial(r)
 
         override def release(): Unit = {
           if (pBroadcast != null) Broadcasts.destroyAsync(pBroadcast)

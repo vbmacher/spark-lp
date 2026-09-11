@@ -30,14 +30,20 @@ object dmatrix {
         if (ncol % 2 == 0) (ncol / 2) * (ncol + 1)
         else ncol * ((ncol + 1) / 2)
 
-      // Compute the upper triangular part of the gram matrix.
-      val GU = matrix.treeAggregate(new BDV[Double](nt))(
+      // Allocate the packed accumulator on executors, not in the serialized task closure.
+      // A dense zero value otherwise sends O(ncol^2) bytes before any rows are processed.
+      val GU = matrix.treeAggregate[BDV[Double]](null)(
         seqOp = (U, v) => {
-          BLAS.spr(1.0, v, U.data)
-          //NativeBLAS.dspr("U", ncol, 1.0, v, 1, U) //symmetric rk 1 update included in BLAS netlib-java
-          U
-        }, combOp = (U1, U2) => U1 += U2, depth)
-      GU // column major == BLAS packed columnwise format
+          val accumulator = if (U == null) new BDV[Double](nt) else U
+          BLAS.spr(1.0, v, accumulator.data)
+          accumulator
+        }, combOp = (U1, U2) => {
+          if (U1 == null) U2
+          else if (U2 == null) U1
+          else U1 += U2
+        }, depth)
+      // An entirely empty matrix has an all-zero Gramian, including with zero partitions.
+      if (GU == null) new BDV[Double](nt) else GU // BLAS packed columnwise format
     }
 
     /**

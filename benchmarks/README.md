@@ -1,5 +1,14 @@
 # Newton backend benchmarks (issue #25)
 
+For the subsequent allocation workload investigation and exact block-Cholesky
+optimization, see [allocation.md](allocation.md). Those measurements expose a
+CG escalation case absent from the synthetic crossover grid below; this grid
+does not establish the preferred backend for that EMR workload.
+The timings below are historical measurements of commit `51f7498`, before block
+Cholesky and executor-side accumulator allocation. Reproduce that grid on that
+revision; the subsequent optimization changes direct-backend costs. Auto's cutoff
+is unchanged, so the allocation recommendation uses an explicit backend choice.
+
 Both backends solve the same LPs with `tolerance=1e-8`, `maxIter=50`, `eta=0.999`;
 CG uses `cgTolerance=1e-10`, `cgMaxIterations=1000`, `Rp=Rd=1e-8` and the default
 256 MiB adaptive preconditioner budget. Only runs whose original-LP primal, dual

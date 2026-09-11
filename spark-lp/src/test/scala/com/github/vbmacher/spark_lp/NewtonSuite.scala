@@ -15,6 +15,37 @@ class NewtonSuite extends AnyFunSuite with DataFrameSuiteBase {
   private def matrix(b: BDM[Double]): DMatrix =
     sc.parallelize((0 until b.rows).map(i => Vectors.dense((0 until b.cols).map(j => b(i, j)).toArray)), 2)
 
+  test("Cholesky block boundaries preserve tiny and nonadjacent couplings") {
+    def packed(g: BDM[Double]): Array[Double] =
+      (0 until g.cols).flatMap(j => (0 to j).map(i => g(i, j))).toArray
+    val g = BDM.eye[Double](5)
+    g(0, 1) = 0.1
+    g(3, 4) = 0.1
+    assert(newton.choleskyBlockEnds(packed(g), 5).sameElements(Array(2, 3, 5)))
+    g(1, 3) = 1e-100
+    assert(newton.choleskyBlockEnds(packed(g), 5).sameElements(Array(5)))
+    g(1, 3) = 0.0
+    g(0, 4) = 0.1
+    assert(newton.choleskyBlockEnds(packed(g), 5).sameElements(Array(5)))
+  }
+
+  test("block Cholesky solves weighted independent systems and preserves both right-hand sides") {
+    val b = BDM((1.0, 2.0, 0.0, 0.0, 0.0), (2.0, -1.0, 0.0, 0.0, 0.0),
+      (0.0, 0.0, 3.0, 0.0, 0.0), (0.0, 0.0, 0.0, 1.0, 2.0),
+      (0.0, 0.0, 0.0, 2.0, -1.0))
+    val w = BDV(0.5, 2.0, 3.0, 0.7, 1.2)
+    val weights = newton.Weights(vector(w.toArray.map(math.sqrt)), vector(w.toArray))
+    val system = newton.CholeskyFactory.build(matrix(b), 5, Some(weights))
+    try {
+      Seq(BDV(1.0, 2.0, 3.0, 4.0, 5.0), BDV(-3.0, 0.0, 1.0, -1.0, 2.0)).foreach { rhs =>
+        val input = new DenseVector(rhs.toArray)
+        val actual = new BDV(system.solve(input).values)
+        assert(norm(actual - ((b.t * diag(w) * b) \ rhs)) < 1e-12)
+        assert(input.values.sameElements(rhs.toArray))
+      }
+    } finally system.release()
+  }
+
   test("matrix-free configuration rejects invalid regularization and memory settings") {
     intercept[IllegalArgumentException](MatrixFreeConfig(primalRegularization = 0.0))
     intercept[IllegalArgumentException](MatrixFreeConfig(dualRegularization = Double.NaN))

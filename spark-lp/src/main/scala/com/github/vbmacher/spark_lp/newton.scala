@@ -108,6 +108,7 @@ private[spark_lp] object newton extends LazyLogging {
     def primalRegularization: Double = 0.0
     def dualRegularization: Double = 0.0
     def innerIterations: Int = 0
+    def innerRestarts: Int = 0
     def maximumRank: Int = 0
     def check(): Unit = ()
   }
@@ -226,11 +227,13 @@ private[spark_lp] object newton extends LazyLogging {
     // escalation, later iterations (which are at least as ill-conditioned) start from it.
     private var currentRank: Int = -1
     private var steps: Int = 0
+    private var restarts: Int = 0
     private var peakRank: Int = 0
     override def check(): Unit = monitor.check()
     override val primalRegularization: Double = config.primalRegularization
     override val dualRegularization: Double = config.dualRegularization
     override def innerIterations: Int = steps
+    override def innerRestarts: Int = restarts
     override def maximumRank: Int = peakRank
 
     override def build(B: DMatrix, m: Int, weights: Option[Weights]): NewtonSystem = {
@@ -292,6 +295,7 @@ private[spark_lp] object newton extends LazyLogging {
           var r = if (lastSolution != null) rhsVector - applyOperator(x) else rhsVector.copy
           var resNorm = norm(r)
           var totalSteps = 0
+          var cycles = 0
           var finished = resNorm <= targetNorm
           var exhausted = false
           val progress = monitor.control.stagnation.map(c => new ProgressWindow(c, c.innerPatience))
@@ -314,6 +318,8 @@ private[spark_lp] object newton extends LazyLogging {
             // Each cycle is a CG run with directions restarted from the preconditioned residual;
             // cycles after the first begin with residual replacement (r recomputed as rhs - A x).
             while (!finished && !gaveUp && stepsAtRank < maxIter) {
+              if (cycles > 0) restarts += 1
+              cycles += 1
               val cycleStartNorm = resNorm
               var z = precondition(r)
               var p = z.copy
@@ -389,7 +395,9 @@ private[spark_lp] object newton extends LazyLogging {
                 currentRank = math.min(maxRank, math.max(DefaultPreconditionerRank, 2 * currentRank))
                 logger.info(s"CG at residual $resNorm (target $targetNorm) after $totalSteps " +
                   s"steps; escalating the partial Cholesky preconditioner to rank $currentRank")
+                monitor.phase(SolvePhase.Preconditioner)
                 preconditioner = buildPreconditioner(currentRank)
+                monitor.phase(SolvePhase.InnerSolve)
               } else {
                 exhausted = true
               }

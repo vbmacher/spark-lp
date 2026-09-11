@@ -208,6 +208,32 @@ val config = SolveConfig(
     preconditionerMemoryBytes = 128L * 1024 * 1024))
 ----
 
+== Opt-in progress policy
+
+`SolveControl.stagnation = Some(StagnationConfig(...))` enables separate outer and inner
+progress windows. Defaults are 10 outer iterations of patience, absolute improvement `1e-10`
+plus relative improvement `1e-3`, 100 inner steps of patience and a 2000-step inner cap.
+These are configurable starting points, not EMR-calibrated guarantees.
+
+Before a feasible candidate appears, outer progress considers original-model violation and
+the primal, dual and gap residuals. After feasibility, it considers objective improvement on
+feasible iterates or improving convergence residuals. Each component is compared against its
+last meaningful best using `absoluteImprovement + relativeImprovement * abs(best)`.
+The first feasible iterate starts a new window once; later feasibility regressions do not
+reset patience. Small gains can accumulate past the threshold, temporary regressions are
+allowed, and a flat objective does not stop improving residuals. Explicit objective constants
+are excluded from this comparison. The existing convergence and certificate tests are unchanged.
+
+Inner progress compares `norm(rhs-G*dy)/norm(rhs)` on true residuals across CG restarts and rank
+changes for the same right-hand side. True residual checks occur at cycle ends and, with the
+policy enabled, at most every `min(25, innerPatience)` steps, with an additional check at the
+total step cap. A rank change cannot reset the window or cap. A stalled or capped unfinished
+inner solve requests `NoProgress` and discards the unfinished direction. A successfully checked
+inner solution is accepted even if it used the final allowed step. Controls disabled retain
+the existing per-rank numerical recovery and inexact-acceptance policy.
+
+See link:usage.adoc[usage] for deadlines, callback fields and candidate ownership.
+
 == Integer and binary models
 
 Compile once. Branch-and-bound reuses `AT` and `c`; tighter integer bounds change the RHS

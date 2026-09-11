@@ -28,7 +28,7 @@ object LP extends LazyLogging {
     /** The iteration budget was exhausted without convergence or a certificate. */
     case object IterationLimit extends Termination
 
-    /** A caller requested a graceful stop after a completed iteration. */
+    /** A cooperative stop was requested; candidate availability is explicit. */
     case object Stopped extends Termination
 
     /**
@@ -51,8 +51,8 @@ object LP extends LazyLogging {
     * Detailed result of one solver run.
     *
     * @param objectiveValue      final objective value `c^T x` of the returned iterate.
-    * @param x                   the returned (last completed) iterate; primal-feasible only if
-    *                            `termination` is [[Termination.Converged]].
+    * @param x                   the returned completed iterate (best feasible on intentional stops), or an
+    *                            empty RDD when `candidate.available` is false.
     * @param iterations          the number of completed iterations.
     * @param termination         how the run terminated (see [[Termination]]).
     * @param primalResidual      final `||A x - b|| / (1 + ||b||)`.
@@ -80,7 +80,9 @@ object LP extends LazyLogging {
     certificateResidual: Double = Double.NaN,
     dualObjectiveValue: Double = Double.NaN,
     innerIterations: Int = 0,
-    preconditionerRank: Int = 0)
+    preconditionerRank: Int = 0,
+    stopReason: Option[StopReason] = None,
+    candidate: CandidateInfo = CandidateInfo.Unavailable)
 
   /**
     * Computes the optimal value and the corresponding vector for a LP problem.
@@ -160,11 +162,15 @@ object LP extends LazyLogging {
     cgTolerance: Double = 1e-10,
     cgMaxIterations: Int = 0,
     stopAfterIteration: Option[Int => Boolean] = None,
-    matrixFree: MatrixFreeConfig = MatrixFreeConfig()
+    matrixFree: MatrixFreeConfig = MatrixFreeConfig(),
+    control: SolveControl = SolveControl(),
+    candidateViolation: Option[DVector => Double] = None,
+    nanoTime: () => Long = () => System.nanoTime()
   )(implicit spark: SparkSession): SolveSummary = {
     validateParameters(tolerance, maxIter, etaIter, valueCap, eps, infeasibilityTolerance, cgTolerance)
     require(b.size > 0 && b.values.forall(v => !v.isNaN && !v.isInfinite), "b must be nonempty and finite")
     val caches = new CachedRDDs
+    val monitor = new SolveMonitor(control, nanoTime)
     try {
       caches.cache(c)
       caches.cache(AT)
@@ -173,16 +179,22 @@ object LP extends LazyLogging {
 
       val resolvedSolver = resolveNewtonSolver(solver, b.size)
       val systemFactory: NewtonSystemFactory = resolvedSolver match {
-        case NewtonSolver.ConjugateGradient => new newton.CgFactory(cgTolerance, cgMaxIterations, config = matrixFree)
-        case _ => newton.CholeskyFactory
+        case NewtonSolver.ConjugateGradient => new newton.CgFactory(cgTolerance, cgMaxIterations, config = matrixFree, monitor = monitor)
+        case _ => new newton.DirectFactory(monitor)
       }
       logger.debug(s"Normal-equations solver: $resolvedSolver")
 
       // run initialization
       val init =
         try {
+          monitor.phase(SolvePhase.Initialization)
           Initialize.init(c, AT, b, systemFactory)
         } catch {
+          case stopped: SolveStopped =>
+            logger.info(s"LP stopped during initialization: reason=${stopped.reason} candidate=unavailable")
+            return SolveSummary(Double.NaN, spark.sparkContext.emptyRDD, 0, Termination.Stopped,
+              Double.NaN, Double.NaN, Double.NaN, stopReason = Some(stopped.reason),
+              innerIterations = systemFactory.innerIterations, preconditionerRank = systemFactory.maximumRank)
           case e if isNumericalFailure(e) => throw numericalFailure("initialization", 0, e)
         }
 
@@ -211,6 +223,10 @@ object LP extends LazyLogging {
       var certificateResidual = Double.NaN
       var iter = 1
       var completedIterations = 0
+      var stopReason: Option[StopReason] = None
+      var bestCandidate: Option[SolveSummary] = None
+      var lastCandidate = CandidateInfo.Unavailable
+      val progress = control.stagnation.map(new OuterProgress(_))
 
       var primalResidual = Double.NaN
       var dualResidual = Double.NaN
@@ -239,6 +255,8 @@ object LP extends LazyLogging {
           var newtonSystem: NewtonSystem = null
           val temporary = new CachedRDDs
           try {
+            monitor.iteration = iter
+            monitor.check()
             // Complementarity belongs to the current iterate, not the starting point.
             val mu = x.dot(s) / unknowns
             // A^T * x - b
@@ -298,6 +316,7 @@ object LP extends LazyLogging {
             val alphaPrimalIter = math.min(1.0, etaIter * alphaPrimalIterMax)
             val alphaDualIter = math.min(1.0, etaIter * alphaDualIterMax)
 
+            monitor.check()
             // x = x + alphaPriIter * dx
             x = caches.checkpoint(x.combine(1.0, alphaPrimalIter, dx))
 
@@ -310,7 +329,20 @@ object LP extends LazyLogging {
 
             rb = matrix.adjointProduct(x).combine(1.0, -1.0, b)
             rc = temporary.cache(AT.product(lambdaBroadcast).combine(1.0, 1.0, s.diff(c)))
-            cTx = c.dot(x)
+            val objectiveAndMin = c.zipPartitions(x) { (costs, values) =>
+              val cv = costs.next().values
+              val xv = values.next().values
+              var objective = 0.0
+              var minimum = Double.PositiveInfinity
+              var i = 0
+              while (i < xv.length) {
+                objective += cv(i) * xv(i)
+                minimum = math.min(minimum, xv(i))
+                i += 1
+              }
+              Iterator.single((objective, minimum))
+            }.reduce { case ((a, amin), (b, bmin)) => (a + b, math.min(amin, bmin)) }
+            cTx = objectiveAndMin._1
 
             val bTlambda = b.dot(lambda)
             val normRb = math.sqrt(rb.dot(rb))
@@ -357,13 +389,37 @@ object LP extends LazyLogging {
               s"dualResidual=$covg2 gap=$covg3 converged=$converged cTx=$cTx bTlambda=$bTlambda")
 
             completedIterations = iter
-            if (!converged && earlyTermination.isEmpty && stopAfterIteration.exists(_(iter)))
-              earlyTermination = Some(Termination.Stopped)
+            val violation = candidateViolation.map(_(x)).getOrElse {
+              val rowViolation = rb.values.zip(b.values).map { case (r, rhs) =>
+                math.abs(r) / (1.0 + math.abs(rhs))
+              }.max
+              math.max(rowViolation, math.max(0.0, -objectiveAndMin._2))
+            }
+            val feasible = !cTx.isNaN && !cTx.isInfinite && violation <= control.feasibilityTolerance
+            lastCandidate = CandidateInfo(available = true, feasible = feasible, iteration = Some(iter))
+            if (feasible && bestCandidate.forall(cTx < _.objectiveValue)) {
+              bestCandidate.foreach { previous => if (previous.x ne x0) caches.release(previous.x) }
+              bestCandidate = Some(SolveSummary(cTx, x, iter, Termination.Stopped, covg1, covg2, covg3,
+                dualObjectiveValue = bTlambda, candidate = lastCandidate))
+            }
             // Both replacements have been materialised and checkpointed by the residual actions.
-            caches.release(x0)
+            if (!bestCandidate.exists(_.x eq x0)) caches.release(x0)
             caches.release(s0)
+            val terminal = converged || earlyTermination.nonEmpty
+            monitor.report(SolveProgress(SolvePhase.OuterIteration, iter, 0.0,
+              objectiveValue = Some(cTx), primalResidual = Some(covg1), dualResidual = Some(covg2),
+              dualityGap = Some(covg3), feasible = Some(feasible)), terminal = terminal)
+            if (!terminal) {
+              if (monitor.callback(stopAfterIteration.exists(_(iter)))) throw SolveStopped(StopReason.UserRequested)
+              if (progress.exists(_.observe(iter, feasible, cTx, violation, covg1, covg2, covg3)))
+                throw SolveStopped(StopReason.NoProgress)
+            }
 
           } catch {
+            case stopped: SolveStopped =>
+              earlyTermination = Some(Termination.Stopped)
+              stopReason = Some(stopped.reason)
+              // Safe checks run before updates or after a fully completed iteration.
             case e if isNumericalFailure(e) =>
               // Before wrapping into LpNumericalException, test the last completed iterate for a
               // Farkas certificate (at the same public infeasibilityTolerance) that explains the
@@ -386,6 +442,7 @@ object LP extends LazyLogging {
                   lambda = lambda0
                   s = s0
                   cTx = cert.cTx
+                  lastCandidate = CandidateInfo(true, false, Some(completedIterations))
                   logger.info(s"Numerical failure in iteration $iter reclassified as ${cert.termination} " +
                     s"(certificate residual ${cert.residual})")
                 case None => throw numericalFailure(s"iteration $iter", iter - 1, e)
@@ -407,13 +464,9 @@ object LP extends LazyLogging {
         if (converged) Termination.Converged
         else earlyTermination.getOrElse(Termination.IterationLimit)
 
-      logger.info(s"LP finished: solver=$resolvedSolver termination=$termination " +
-        s"iterations=$completedIterations objective=$cTx primalResidual=$primalResidual " +
-        s"dualResidual=$dualResidual gap=$dualityGap")
-
-      SolveSummary(
-        objectiveValue = cTx,
-        x = caches.keep(x),
+      val last = SolveSummary(
+        objectiveValue = if (!lastCandidate.available) Double.NaN else cTx,
+        x = if (!lastCandidate.available) spark.sparkContext.emptyRDD[DenseVector] else x,
         iterations = completedIterations,
         termination = termination,
         primalResidual = primalResidual,
@@ -424,7 +477,22 @@ object LP extends LazyLogging {
         certificateResidual = certificateResidual,
         dualObjectiveValue = b.dot(lambda),
         innerIterations = systemFactory.innerIterations,
-        preconditionerRank = systemFactory.maximumRank)
+        preconditionerRank = systemFactory.maximumRank,
+        candidate = lastCandidate)
+      val intentional = termination == Termination.Stopped || termination == Termination.IterationLimit
+      val selected = if (intentional) bestCandidate.getOrElse(last) else last
+      caches.keep(selected.x)
+      val result = selected.copy(iterations = completedIterations, termination = termination,
+        primalCertificate = primalCertificate, dualCertificate = dualCertificate,
+        certificateResidual = certificateResidual, innerIterations = systemFactory.innerIterations,
+        preconditionerRank = systemFactory.maximumRank,
+        stopReason = if (termination == Termination.IterationLimit) Some(StopReason.IterationLimit) else stopReason)
+      logger.info(s"LP finished: solver=$resolvedSolver termination=$termination stopReason=${result.stopReason} " +
+        s"iterations=$completedIterations candidate=${result.candidate} objective=${result.objectiveValue} " +
+        s"primalResidual=${result.primalResidual} dualResidual=${result.dualResidual} gap=${result.dualityGap}")
+      result
+    } catch {
+      case failed: CallbackFailed => throw failed.error
     } finally caches.close()
   }
 

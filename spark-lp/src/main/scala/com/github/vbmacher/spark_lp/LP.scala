@@ -78,7 +78,9 @@ object LP extends LazyLogging {
     primalCertificate: Option[DenseVector] = None,
     dualCertificate: Option[DVector] = None,
     certificateResidual: Double = Double.NaN,
-    dualObjectiveValue: Double = Double.NaN)
+    dualObjectiveValue: Double = Double.NaN,
+    innerIterations: Int = 0,
+    preconditionerRank: Int = 0)
 
   /**
     * Computes the optimal value and the corresponding vector for a LP problem.
@@ -101,6 +103,7 @@ object LP extends LazyLogging {
     *                               accepted (matrix-free solver only).
     * @param cgMaxIterations        CG step limit per normal-equations solve; values < 1 select
     *                               `min(max(100, 2m), 1000)` (matrix-free solver only).
+    * @param matrixFree             primal/dual regularization and bounded preconditioner controls.
     * @param spark                  a SparkSession instance.
     * @return optimal value and the corresponding solution vector.
     */
@@ -116,10 +119,11 @@ object LP extends LazyLogging {
     infeasibilityTolerance: Double = 1e-8,
     solver: NewtonSolver = NewtonSolver.Auto,
     cgTolerance: Double = 1e-10,
-    cgMaxIterations: Int = 0
+    cgMaxIterations: Int = 0,
+    matrixFree: MatrixFreeConfig = MatrixFreeConfig()
   )(implicit spark: SparkSession): (Double, DVector) = {
     val summary = solveSummary(c, AT, b, tolerance, maxIter, etaIter, valueCap, eps, infeasibilityTolerance,
-      solver, cgTolerance, cgMaxIterations)
+      solver, cgTolerance, cgMaxIterations, matrixFree = matrixFree)
     (summary.objectiveValue, summary.x)
   }
 
@@ -155,7 +159,8 @@ object LP extends LazyLogging {
     solver: NewtonSolver = NewtonSolver.Auto,
     cgTolerance: Double = 1e-10,
     cgMaxIterations: Int = 0,
-    stopAfterIteration: Option[Int => Boolean] = None
+    stopAfterIteration: Option[Int => Boolean] = None,
+    matrixFree: MatrixFreeConfig = MatrixFreeConfig()
   )(implicit spark: SparkSession): SolveSummary = {
     validateParameters(tolerance, maxIter, etaIter, valueCap, eps, infeasibilityTolerance, cgTolerance)
     require(b.size > 0 && b.values.forall(v => !v.isNaN && !v.isInfinite), "b must be nonempty and finite")
@@ -168,7 +173,7 @@ object LP extends LazyLogging {
 
       val resolvedSolver = resolveNewtonSolver(solver, b.size)
       val systemFactory: NewtonSystemFactory = resolvedSolver match {
-        case NewtonSolver.ConjugateGradient => new newton.CgFactory(cgTolerance, cgMaxIterations)
+        case NewtonSolver.ConjugateGradient => new newton.CgFactory(cgTolerance, cgMaxIterations, config = matrixFree)
         case _ => newton.CholeskyFactory
       }
       logger.debug(s"Normal-equations solver: $resolvedSolver")
@@ -243,31 +248,23 @@ object LP extends LazyLogging {
             var rc = AT.product(lambdaBroadcast).combine(1.0, 1.0, s.diff(c))
             temporary.cache(rc)
 
-            // D^2 = X S^(-1) is the canonical normal-equations weight. Derive D from it so the
-            // Cholesky and matrix-free systems, as well as their right-hand sides, stay identical when
-            // the inverse-slack cap applies.
-            val weights = normalEquationWeights(x, s, eps, valueCap)
-            val D2 = weights.squared
-            temporary.cache(D2)
-
-            // solve (14.30) for (dxAff, dLambdaAff, dsAff)
-            // 1) solve for A^T D2 A dLambdaAff = -rb + A^T * (-D^2 * rc + x)
-            // The normal-equations system A^T D2 A must be positive definite, that means:
-            //   x^T A x > 0    where x != 0
+            // Proximal references are the current x/lambda. The original residuals are
+            // unchanged; only the Newton equations contain Rp and Rd.
+            val rho = systemFactory.primalRegularization
+            val weights = if (rho > 0.0) regularizedWeights(x, s, rho)
+              else normalEquationWeights(x, s, eps, valueCap)
+            val D2 = temporary.cache(weights.squared)
             newtonSystem = systemFactory.build(AT, equations, Some(weights))
 
-            val ATD2rcx = matrix.adjointProduct(x.diff(D2.entrywiseProd(rc)))
-
-            val dLambdaAffRightSide = ATD2rcx.combine(1.0, -1.0, rb)
+            // qAff = -X S e, hAff = rc + qAff / x = rc - s.
+            val hAff = rc.diff(s)
+            val dLambdaAffRightSide = rb.combine(-1.0, -1.0, matrix.adjointProduct(D2.entrywiseProd(hAff)))
             val dLambdaAff = newtonSystem.solve(dLambdaAffRightSide, newtonAbsTolerance)
             dLambdaAffBroadcast = rebroadcast(dLambdaAffBroadcast, dLambdaAff)
-
-            // 2) dsAff = -rc - A * dLambdaAff
-            // The step-length and corrector actions reuse these directions and populate their caches.
-            val dsAff = temporary.cache(rc.combine(-1.0, -1.0, AT.product(dLambdaAffBroadcast)))
-
-            // 3) dxAff = -x - D^2 * dsAff
-            val dxAff = temporary.cache(x.combine(-1.0, -1.0, D2.entrywiseProd(dsAff)))
+            val (dxAff0, dsAff0) = newton.recoverDirections(
+              weights, hAff, rc, AT.product(dLambdaAffBroadcast), rho)
+            val dxAff = temporary.cache(dxAff0)
+            val dsAff = temporary.cache(dsAff0)
 
             // Calculate following Doubles alphaPriAff, alphaDualAff, muAff (14.32), (14.33)
             val alphaPriAff = math.min(1.0, x.entrywiseNegDiv(dxAff).minValue)
@@ -280,41 +277,21 @@ object LP extends LazyLogging {
 
             val sigma = math.min(1.0, math.pow(muAff / mu, 3)) // heuristic
 
-            // Solve (14.35) for (dx, dLambda, ds)
-            // 1) A^T D2 A dLambda = -rb + A^T * D2 *(-rc + s + X^(-1) dXAff dSAff e - sigma mu X^(-1)e)
-            val xInv = x.mapElements {
-              case a if 0 < math.abs(a) && math.abs(a) < eps => math.signum(a) * valueCap
-              case a if a >= eps => math.pow(a, -1)
-              case _ => throw new IllegalArgumentException(s"Found zero element in X")
+            // q = -X S e - dxAff*dsAff + sigma*mu*e. Eliminate with the same W
+            // used by the operator, then recover both directions from the regularized KKT.
+            val xInv = x.mapElements { a =>
+              require(a > 0.0 && !a.isInfinite, "Newton iterate X must be finite and positive")
+              1.0 / a
             }
-
-            val xInvdXAffdsAff = xInv.entrywiseProd(dxAff.entrywiseProd(dsAff))
-            val dLambdaRightSide = rb.combine(
-              -1.0, 1.0,
-              matrix.adjointProduct(
-                D2.entrywiseProd(
-                  s.diff(rc)
-                    .combine(1.0, 1.0, xInvdXAffdsAff)
-                    .combine(1.0, -1.0 * sigma * mu, xInv))))
-
+            val h = hAff.diff(xInv.entrywiseProd(dxAff.entrywiseProd(dsAff)))
+              .combine(1.0, sigma * mu, xInv)
+            val dLambdaRightSide = rb.combine(-1.0, -1.0, matrix.adjointProduct(D2.entrywiseProd(h)))
             val dLambda = newtonSystem.solve(dLambdaRightSide, newtonAbsTolerance)
             dLambdaBroadcast = rebroadcast(dLambdaBroadcast, dLambda)
-
-            // 2) ds = -rc - A * dLambda
-            val ds = temporary.cache(rc.combine(-1.0, -1.0, AT.product(dLambdaBroadcast)))
-
-            // 3) dx = -D^2 dS e - x - S^(-1) dXAff dSAff e + sigma mu S^(-1) e
-            val sInv = s.mapElements {
-              case a if math.abs(a) < eps => math.signum(a) * valueCap
-              case a if math.abs(a) >= eps => math.pow(a, -1)
-            }
-
-            val sInvdXAffdsAff = sInv.entrywiseProd(dxAff.entrywiseProd(dsAff))
-            val dx = temporary.cache(D2
-              .entrywiseProd(ds)
-              .combine(-1.0, -1.0, x)
-              .combine(1.0, -1.0, sInvdXAffdsAff)
-              .combine(1.0, sigma * mu, sInv))
+            val (dx0, ds0) = newton.recoverDirections(
+              weights, h, rc, AT.product(dLambdaBroadcast), rho)
+            val dx = temporary.cache(dx0)
+            val ds = temporary.cache(ds0)
 
             val alphaPrimalIterMax = x.entrywiseNegDiv(dx).minValue
             val alphaDualIterMax = s.entrywiseNegDiv(ds).minValue
@@ -390,7 +367,7 @@ object LP extends LazyLogging {
             case e if isNumericalFailure(e) =>
               // Before wrapping into LpNumericalException, test the last completed iterate for a
               // Farkas certificate (at the same public infeasibilityTolerance) that explains the
-              // degeneration; genuine precondition violations (rank-deficient A) still throw.
+              // degeneration. Without a certificate, report a numerical failure.
               val certificate =
                 try certificatesOnIterate(c, AT, b, x0, lambda0, infeasibilityTolerance)
                 catch {
@@ -445,7 +422,9 @@ object LP extends LazyLogging {
         primalCertificate = primalCertificate,
         dualCertificate = dualCertificate,
         certificateResidual = certificateResidual,
-        dualObjectiveValue = b.dot(lambda))
+        dualObjectiveValue = b.dot(lambda),
+        innerIterations = systemFactory.innerIterations,
+        preconditionerRank = systemFactory.maximumRank)
     } finally caches.close()
   }
 
@@ -525,9 +504,8 @@ object LP extends LazyLogging {
       phase = phase,
       completedIterations = completedIterations,
       message = s"Numerical failure during $phase (completed iterations: $completedIterations): $detail. " +
-        "The solver requires a constraint matrix with full row rank (linearly independent constraint rows) " +
-        "and strictly interior iterates; a non-positive-definite Gramian or a zero iterate element " +
-        "indicates this precondition is violated.",
+        "No infeasibility or unboundedness certificate was established. Check scaling, " +
+        "strictly positive iterates and the selected Newton solver settings; Cholesky requires full row rank.",
       cause = cause)
   }
 
@@ -543,7 +521,24 @@ object LP extends LazyLogging {
     case s => s
   }
 
-  /** Builds one validated weight pair for both normal-equations implementations. */
+  /** W = (S/X + Rp)^(-1), evaluated without forming the potentially overflowing X/S.
+    * No inverse-slack cap: the same diagonal participates in the operator and recovery.
+    */
+  private[spark_lp] def regularizedWeights(x: DVector, s: DVector, rho: Double): newton.Weights = {
+    val squared = x.zip(s).map { case (xp, sp) =>
+      require(xp.size == sp.size, "Newton vectors must have matching partitions")
+      new DenseVector(xp.values.zip(sp.values).map { case (xi, si) =>
+        require(xi > 0.0 && si > 0.0 && !xi.isInfinite && !si.isInfinite,
+          "Newton iterates must be finite and positive")
+        val w = 1.0 / (si / xi + rho)
+        require(w > 0.0 && !w.isInfinite, "Non-finite or underflowed Newton weight")
+        w
+      })
+    }
+    newton.Weights(squared.mapElements(math.sqrt), squared)
+  }
+
+  /** Historical capped weights for the unregularized Cholesky reference. */
   private[spark_lp] def normalEquationWeights(
     x: DVector,
     s: DVector,

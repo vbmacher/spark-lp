@@ -159,6 +159,7 @@ private[dsl] final class LpCompiler(problem: LpProblem, config: SolveConfig) ext
         infeasibilityTolerance = config.infeasibilityTolerance,
         solver = config.resolvedNewtonSolver(compiled.numRows),
         cgTolerance = config.cgTolerance,
+        matrixFree = config.matrixFree,
         cgMaxIterations = config.cgMaxIterations,
         stopAfterIteration = config.stopAfterIteration)
       try continuousSolution(compiled, summary)

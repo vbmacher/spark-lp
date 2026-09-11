@@ -150,3 +150,6 @@ spark-warehouse/
 
 .Rproj.user
 .codex/
+
+# Bulky benchmark applications, event logs and immutable run snapshots.
+benchmarks/artifacts/

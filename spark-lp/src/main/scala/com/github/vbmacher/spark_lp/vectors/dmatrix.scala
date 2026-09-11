@@ -178,6 +178,45 @@ object dmatrix {
           Iterator.single(new DenseVector(partitionRows.map(row => BLAS.dot(row, x)).toArray)))
       }
 
+      /** Apply `A^T diag(w) A x` in one streaming pass over the matrix per partition.
+        * Fusing the dot product and scaled-row accumulation avoids reading A twice and
+        * materializing partition-sized intermediate vectors. Weights, when supplied,
+        * must have the same partition layout as A (see [[adjointProduct]]).
+        * Only the O(ncol) partition sums are reduced; the Gramian is never formed.
+        */
+      def gramianProduct(x: Broadcast[DenseVector], w: Option[DVector] = None,
+        depth: Int = 2): DenseVector = {
+        val n = x.value.size
+        val perPartition = w match {
+          case Some(weights) =>
+            matrix.zipPartitions(weights)((rows, weightPartition) => {
+              val p = x.value
+              val sum = Vectors.zeros(n).toDense
+              rows.checkedZip(weightPartition.next().values.toIterator).foreach { case (row, wi) =>
+                BLAS.axpy(wi * BLAS.dot(row, p), row, sum)
+              }
+              Iterator.single(sum)
+            })
+          case None =>
+            matrix.mapPartitions(rows => {
+              val p = x.value
+              val sum = Vectors.zeros(n).toDense
+              rows.foreach(row => BLAS.axpy(BLAS.dot(row, p), row, sum))
+              Iterator.single(sum)
+            })
+        }
+        def merge(left: DenseVector, right: DenseVector): DenseVector = {
+          if (left == null) right
+          else if (right == null) left
+          else {
+            BLAS.axpy(1.0, right, left)
+            left
+          }
+        }
+        val result = perPartition.treeAggregate[DenseVector](null)(merge, merge, depth)
+        if (result == null) Vectors.zeros(n).toDense else result
+      }
+
       /**
         * Compute the diagonal of the (optionally weighted) Gramian `A^T diag(w) A` of this DMatrix,
         * i.e. `diag_j = sum_i w_i * A_ij^2`, in a single distributed pass with `O(ncol)` driver

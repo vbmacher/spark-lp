@@ -1,5 +1,8 @@
 # Newton backend benchmarks (issue #25)
 
+For progress reporting, candidate retention and cooperative stopping measurements (#27),
+see [progress-stopping.md](progress-stopping.md).
+
 For the subsequent allocation workload investigation and exact block-Cholesky
 optimization, see [allocation.md](allocation.md). Those measurements expose a
 CG escalation case absent from the synthetic crossover grid below; this grid
@@ -7,22 +10,24 @@ does not establish the preferred backend for that EMR workload.
 The timings below are historical measurements of commit `51f7498`, before block
 Cholesky and executor-side accumulator allocation. Reproduce that grid on that
 revision; the subsequent optimization changes direct-backend costs. Auto's cutoff
-is unchanged, so the allocation recommendation uses an explicit backend choice.
+has since been raised to 10000 rows for allocation workloads; these historical
+measurements do not validate that new cutoff as a universal crossover.
 
 Both backends solve the same LPs with `tolerance=1e-8`, `maxIter=50`, `eta=0.999`;
 CG uses `cgTolerance=1e-10`, `cgMaxIterations=1000`, `Rp=Rd=1e-8` and the default
 256 MiB adaptive preconditioner budget. Only runs whose original-LP primal, dual
 and objective-gap residuals are all below `1e-8` qualify for timing comparisons.
 
-The selected shared `Auto` policy uses Cholesky through **1000 equality-form rows**
+The historical shared `Auto` policy used Cholesky through **1000 equality-form rows**
 and CG above that. The DSL additionally honors a lower `maxLocalConstraints` resource
-cap; its default resource cap remains 5000. Explicit Cholesky remains available above
-the performance cutoff. Increasing that resource cap alone does not change `Auto`.
+cap; its default resource cap was 5000. The current shared cutoff and default DSL
+resource cap are both **10000**. Explicit Cholesky remains available above the cutoff.
+Increasing that resource cap alone does not change `Auto`.
 
 At 1000 rows, the well-scaled and narrower scaled cases favored CG, but the wider
 scaled case favored Cholesky (1.60 vs 1.94 seconds median). At 1500 rows that same
 scaled family favored CG (3.55 vs 1.66 seconds). Choosing 1000 as the last direct size
-keeps the reference backend in the measured mixed region. It is a conservative default
+kept the reference backend in the measured mixed region. It was a conservative default
 based on these workloads; the exact crossing between sampled row counts is unmeasured,
 and native BLAS, sparsity, conditioning, variable count and cluster latency can move it.
 

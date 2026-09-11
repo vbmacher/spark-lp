@@ -47,7 +47,7 @@ object LpStatus {
     */
   case object IterationLimit extends LpStatus
 
-  /** A graceful stop retained a completed iterate; primal feasibility still requires validation. */
+  /** A cooperative stop; inspect candidate metadata for availability and primal feasibility. */
   case object Stopped extends LpStatus
 
   /**
@@ -102,8 +102,10 @@ final class LpNumericalException private[spark_lp](
   * Solver configuration.
   *
   * @param stopAfterIteration optional driver callback for continuous models. Return true to stop
-  *                           after the given completed iteration and retain its values. No Spark
+  *                           after the given completed iteration and retain the best feasible values. No Spark
   *                           jobs are interrupted; validation/reconstruction may finish afterward.
+  * @param control driver progress callbacks, cooperative stops and opt-in stagnation policy for
+  *                continuous models; candidate feasibility uses its separate tolerance.
   *
   * @param infeasibilityTolerance threshold of the Farkas certificate tests behind
   *                               [[LpStatus.Infeasible]], [[LpStatus.Unbounded]] and
@@ -136,13 +138,14 @@ final case class SolveConfig(
   etaIteration: Double = 0.999,
   valueCap: Double = 1e20,
   epsilon: Double = 1e-20,
-  maxLocalConstraints: Long = 5000L,
+  maxLocalConstraints: Long = NewtonSolver.AutoCholeskyLimit.toLong,
   newtonSolver: NewtonSolver = NewtonSolver.Auto,
   cgTolerance: Double = 1e-10,
   cgMaxIterations: Int = 0,
   mip: MipConfig = MipConfig(),
   stopAfterIteration: Option[Int => Boolean] = None,
-  matrixFree: com.github.vbmacher.spark_lp.MatrixFreeConfig = com.github.vbmacher.spark_lp.MatrixFreeConfig()) {
+  matrixFree: com.github.vbmacher.spark_lp.MatrixFreeConfig = com.github.vbmacher.spark_lp.MatrixFreeConfig(),
+  control: com.github.vbmacher.spark_lp.SolveControl = com.github.vbmacher.spark_lp.SolveControl()) {
 
   com.github.vbmacher.spark_lp.LP.validateParameters(
     tolerance, maxIterations, etaIteration, valueCap, epsilon, infeasibilityTolerance, cgTolerance)

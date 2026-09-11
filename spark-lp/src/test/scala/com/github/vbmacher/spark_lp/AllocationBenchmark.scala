@@ -1,14 +1,18 @@
 package com.github.vbmacher.spark_lp
 
 import java.io.{File, PrintWriter}
+import scala.concurrent.duration._
 
-import com.github.vbmacher.spark_lp.dsl.LpNumericalException
+import com.github.vbmacher.spark_lp.dsl._
+import com.github.vbmacher.spark_lp.dsl.implicits._
+import org.apache.spark.sql.functions.col
 import org.apache.spark.mllib.linalg.{DenseVector, Vectors}
 import org.apache.spark.sql.SparkSession
 
 /** Synthetic daily allocation LP: overlapping conserved scopes, soft share targets and
   * zero-cost allocation factors. This is not a replay of production input.
-  * Args: absolute output.csv, days, cholesky|cg, regularization (default 1e-8).
+  * Args: absolute output.csv, days, cholesky|cg, regularization (default 1e-8),
+  * none|report|stagnation|candidate|time (default none), core|dsl (default core).
   */
 object AllocationBenchmark {
   def main(args: Array[String]): Unit = {
@@ -22,6 +26,7 @@ object AllocationBenchmark {
       case "cg" => NewtonSolver.ConjugateGradient
       case other => throw new IllegalArgumentException(s"Unknown backend: $other")
     }
+    val mode = args.lift(4).getOrElse("none")
     val regularization = args.lift(3).map(_.toDouble).getOrElse(1e-8)
     implicit val spark: SparkSession = SparkSession.builder().master("local[4]")
       .appName("spark-lp allocation benchmark").config("spark.ui.enabled", "false")
@@ -78,7 +83,7 @@ object AllocationBenchmark {
       }
     }
     val writer = new PrintWriter(output)
-    writer.println("days,m,n,backend,regularization,status,primal,dual,gap,objective,wall_seconds,outer_iterations,inner_iterations,preconditioner_rank,spark_jobs,error")
+    writer.println("days,m,n,backend,regularization,status,primal,dual,gap,objective,wall_seconds,outer_iterations,inner_iterations,preconditioner_rank,spark_jobs,error,control,stop_reason,candidate_available,candidate_feasible,candidate_iteration,progress_events")
     writer.flush()
     try {
       at.count()
@@ -86,9 +91,46 @@ object AllocationBenchmark {
       sc.setJobGroup("allocation", "allocation")
       val start = System.nanoTime()
       var previous = start
+      var events = 0
+      var stop = false
+      val report: SolveProgress => Unit = e => {
+        events += 1
+        if (mode == "candidate" && e.feasible.contains(true)) stop = true
+      }
+      val control = mode match {
+        case "none" => SolveControl()
+        case "report" => SolveControl(onProgress = Some(report))
+        case "stagnation" => SolveControl(onProgress = Some(report), stagnation = Some(StagnationConfig()))
+        case "candidate" => SolveControl(onProgress = Some(report), shouldStop = Some(() => stop))
+        case "time" => SolveControl(onProgress = Some(report), timeLimit = Some(5.seconds))
+        case other => throw new IllegalArgumentException(s"Unknown control mode: $other")
+      }
       try {
+        if (args.lift(5).contains("dsl")) {
+          import spark.implicits._
+          val domain = columns.zipWithIndex().map { case ((_, c), id) => (id, c) }.toDF("id", "cost")
+          val coefficients = columns.zipWithIndex().flatMap { case ((vector, _), id) =>
+            val sparse = vector.toSparse
+            sparse.indices.zip(sparse.values).map { case (row, c) => (id, row, c) }
+          }.toDF("id", "constraint", "coefficient")
+          val rhsFrame = rhs.zipWithIndex.map { case (value, row) => (row, value) }.toSeq.toDF("constraint", "rhs")
+          val model = LpProblem("allocation-controls", Minimize)
+          val amount = model.variables("amount", domain, col("id"))
+          model += lpSum(amount * col("cost"))
+          model += (lpSumBy(amount.terms(coefficients, Seq(col("constraint")), col("coefficient")),
+            Seq("constraint")) === rhsFrame).named("allocation")
+          val result = model.solve(SolveConfig(newtonSolver = backend,
+            matrixFree = MatrixFreeConfig(regularization, regularization), control = control))
+          try {
+            writer.println(Seq(days, m, n, backend, regularization, result.status,
+              result.residuals.primal, result.residuals.dual, result.residuals.gap, result.objectiveValue,
+              (System.nanoTime() - start) / 1e9, result.iterations, "NA", "NA",
+              sc.statusTracker.getJobIdsForGroup("allocation").length, "", mode, result.stopReason,
+              result.candidate.available, result.candidate.feasible, result.candidate.iteration, events).mkString(","))
+          } finally result.close()
+        } else {
         val result = LP.solveSummary(cost, at, new DenseVector(rhs), solver = backend,
-          matrixFree = MatrixFreeConfig(regularization, regularization),
+          matrixFree = MatrixFreeConfig(regularization, regularization), control = control,
           stopAfterIteration = Some(iteration => {
             val now = System.nanoTime()
             println(s"ALLOCATION iteration=$iteration seconds=${(now - previous) / 1e9}")
@@ -99,14 +141,16 @@ object AllocationBenchmark {
           writer.println(Seq(days, m, n, backend, regularization, result.termination,
             result.primalResidual, result.dualResidual, result.dualityGap, result.objectiveValue,
             (System.nanoTime() - start) / 1e9, result.iterations, result.innerIterations,
-            result.preconditionerRank, sc.statusTracker.getJobIdsForGroup("allocation").length, "").mkString(","))
+            result.preconditionerRank, sc.statusTracker.getJobIdsForGroup("allocation").length, "", mode, result.stopReason,
+            result.candidate.available, result.candidate.feasible, result.candidate.iteration, events).mkString(","))
         } finally result.x.unpersist(blocking = true)
+        }
       } catch {
         case e: LpNumericalException =>
           writer.println(Seq(days, m, n, backend, regularization, "NumericalFailure",
             "NaN", "NaN", "NaN", "NaN", (System.nanoTime() - start) / 1e9,
             e.completedIterations, "NA", "NA", sc.statusTracker.getJobIdsForGroup("allocation").length,
-            e.getMessage.replace(',', ';').replace('\n', ' ')).mkString(","))
+            e.getMessage.replace(',', ';').replace('\n', ' '), mode, "", false, false, "None", events).mkString(","))
       }
     } finally {
       writer.close()

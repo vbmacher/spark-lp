@@ -1,5 +1,8 @@
 # Newton backend benchmarks (issue #25)
 
+For progress reporting, candidate retention and cooperative stopping measurements (#27),
+see [progress-stopping.md](progress-stopping.md).
+
 For the subsequent allocation workload investigation and exact block-Cholesky
 optimization, see [allocation.md](allocation.md). Those measurements expose a
 CG escalation case absent from the synthetic crossover grid below; this grid

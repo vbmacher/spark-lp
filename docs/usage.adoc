@@ -113,6 +113,7 @@ Spark operations before building these terms; use `when(...).otherwise(0.0)` for
 |Status |Interpretation
 |`Optimal` |Accepted within configured tolerances; integer search is complete within its gap tolerance.
 |`IterationLimit` |An LP or node limit, or an unresolved integer branch. Values may be infeasible or fractional.
+|`Stopped` |A continuous solve stopped for time, a user request or lack of progress. Inspect `stopReason` and `candidate`.
 |`Infeasible` |No feasible solution, established by a numerical certificate or integer branch bounds.
 |`Unbounded` |An improving ray and a feasible point; objective is signed infinity.
 |`InfeasibleOrUnbounded` |An improving ray without a known feasible point; objective is `NaN`.
@@ -141,3 +142,78 @@ reads the sources again. Cache or snapshot input data yourself when consistent s
 
 See link:algorithm.adoc[the algorithm and scaling limits]. Mermaid blocks require a
 Mermaid-capable AsciiDoc renderer; ordinary Asciidoctor still displays their source.
+
+== Progress and cooperative stopping (continuous models)
+
+[source,scala]
+----
+import com.github.vbmacher.spark_lp.{SolveControl, SolvePhase, StagnationConfig}
+import scala.concurrent.duration._
+import java.util.concurrent.atomic.AtomicBoolean
+
+val stop = new AtomicBoolean(false) // another driver thread can call stop.set(true)
+val result = model.solve(SolveConfig(
+  control = SolveControl(
+    timeLimit = Some(20.minutes),
+    shouldStop = Some(() => stop.get()),
+    onProgress = Some { event =>
+      if (event.phase == SolvePhase.OuterIteration)
+        println(s"iteration=${event.iteration} objective=${event.objectiveValue} " +
+          s"primal=${event.primalResidual} gap=${event.dualityGap}")
+    },
+    stagnation = Some(StagnationConfig(patience = 10)))))
+try {
+  println(s"status=${result.status} reason=${result.stopReason} candidate=${result.candidate}")
+  if (result.candidate.available && result.candidate.feasible) {
+    // Read or persist result.value(x) / result.values(amount) for your model here.
+  }
+} finally result.close()
+----
+
+Stagnation detection is *disabled by default*. The example opts in; omit `stagnation`
+to use only explicit iteration/time/user limits. The numerical time budget begins after
+DSL compilation, immediately before initialization, and excludes result reconstruction.
+Models solved entirely by fixed-variable presolve return immediately without numerical events.
+
+Callbacks execute on the driver. Events cover initialization, preconditioner pivots, Cholesky
+blocks, CG steps and completed outer iterations, including a terminal iteration. `iteration=0`
+means initialization; later inner events name the outer iteration being computed.
+Metrics that do not apply to a phase are `None`. Inner step counts restart for each right-hand
+side, but continue across residual replacement and rank escalation. `trueResidual` identifies
+a recomputed CG residual; other inner residuals come from the recurrence. Objective values
+in outer events include the user's objective sense and constants.
+Reporting itself starts no additional Spark actions and collects no distributed vectors.
+Keep callbacks quick; their exceptions propagate unchanged after cleanup.
+
+Checks occur between initialization operations, CG operations, preconditioner pivots and
+Cholesky blocks. They do not interrupt an already-running Spark action or native call.
+The next safe check can therefore occur after the requested deadline. Convergence and
+certificates already established on a completed iteration take precedence over a coincident
+stop request. `stopAfterIteration` remains available and runs only after nonterminal iterations.
+
+On *every intentional limit*, including `maxIterations`, the result contains the best feasible
+completed iterate if one was retained. `iterations` counts all completed iterations;
+`candidate.iteration` identifies the returned one. Its objective, residuals, values and constraint
+diagnostics describe that same iterate. Tied objectives retain the earlier feasible iterate.
+An iteration limit keeps `IterationLimit`; other intentional stops use `Stopped`, with
+`TimeLimit`, `UserRequested` or `NoProgress` as the reason. A retained candidate does not prove
+optimality, and numerical failures do not become graceful stops.
+
+Candidate feasibility uses the original user constraints and variable bounds, including fixed
+variables, merged rows, bound shifts and free-variable splits. Each violation must be at most
+`control.feasibilityTolerance * (1 + abs(rhs_or_bound))` (default tolerance `1e-8`). Dual
+feasibility is not required. Validation adds one distributed action per iteration. For ordinary bounded variables it reduces
+constraint activities and a scalar bound violation using aligned compiled columns. Models with
+free/fixed variables or merged rows reconstruct user values and reduce a scalar violation.
+Solution vectors stay distributed.
+This componentwise feasibility test differs from the normalized L2 residual used for convergence;
+`candidate.feasible=true` does not imply that every convergence residual is below `tolerance`.
+A stricter candidate tolerance can also reject values accepted by convergence or presolve.
+Retention holds at most one additional distributed iterate and closing the result releases its
+materialized values without releasing caller-owned caches.
+
+If no feasible candidate exists but an iteration completed, values are available for diagnostics
+with `candidate.feasible=false`. If stopping occurred before any iteration completed,
+`candidate.available=false`, the objective/residuals and constraint activities are `NaN`, and
+`value`/`values` throw an explicit no-iterate error. Never publish those results as feasible output.
+New controls are rejected for integer models; branch-and-bound stopping is a separate contract.

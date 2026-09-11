@@ -1,5 +1,6 @@
 package com.github.vbmacher.spark_lp.dsl
 
+import com.github.vbmacher.spark_lp.{CandidateInfo, StopReason}
 import org.apache.spark.rdd.RDD
 import org.apache.spark.sql.DataFrame
 
@@ -12,9 +13,10 @@ import org.apache.spark.sql.DataFrame
   * At [[LpStatus.Infeasible]] and [[LpStatus.InfeasibleOrUnbounded]] the `objectiveValue` is `NaN`;
   * at [[LpStatus.Unbounded]] it is the signed infinity of the objective sense (`-Infinity` for
   * [[Minimize]], `+Infinity` for [[Maximize]]). `values(...)` and `constraints` keep exposing the
-  * last iterate for these statuses, as with [[LpStatus.IterationLimit]] — for
+  * last iterate for these certificate statuses — for
   * [[LpStatus.Infeasible]] the `slack` column is exactly the tool to locate the conflicting
-  * constraints.
+  * constraints. Intentional limits retain the best feasible candidate when available; inspect
+  * `candidate` before using the values. A stop before the first completed iterate has no values.
   */
 final class LpSolution private[dsl](
   val status: LpStatus,
@@ -38,13 +40,20 @@ final class LpSolution private[dsl](
     */
   val constraints: DataFrame,
   private val problem: LpProblem,
-  private[dsl] val userValues: RDD[((Int, String), Double)]) extends AutoCloseable {
+  private[dsl] val userValues: RDD[((Int, String), Double)],
+  val candidate: CandidateInfo,
+  val stopReason: Option[StopReason] = None) extends AutoCloseable {
+
+  private def requireCandidate(): Unit = {
+    if (!candidate.available) throw new LpModelException("No completed iterate is available for this solve")
+  }
 
   /** Releases the materialised result. Finish all Spark actions on values before closing. */
   override def close(): Unit = userValues.unpersist(blocking = false)
 
   /** The original variable domain plus `lp_variable` (display name) and `lp_value` columns. */
   def values[K](variables: LpVariableSet[K]): DataFrame = {
+    requireCandidate()
     val handle = variables.handle
     if (!(handle.problem eq problem)) {
       throw new LpModelException(s"Variable set '${handle.name}' belongs to a different problem")
@@ -56,6 +65,7 @@ final class LpSolution private[dsl](
 
   /** Primal value of one scalar variable, in the caller's original units. */
   def value(variable: LpVariable): Double = {
+    requireCandidate()
     val handle = variable.handle
     if (!(handle.problem eq problem)) {
       throw new LpModelException(s"Variable '${handle.name}' belongs to a different problem")

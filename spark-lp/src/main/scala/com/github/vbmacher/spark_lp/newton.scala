@@ -109,6 +109,7 @@ private[spark_lp] object newton extends LazyLogging {
     def dualRegularization: Double = 0.0
     def innerIterations: Int = 0
     def maximumRank: Int = 0
+    def check(): Unit = ()
   }
 
   /** Recover directions for A dx + Rd dy = -rb, A^T dy + ds - Rp dx = -rc,
@@ -126,14 +127,19 @@ private[spark_lp] object newton extends LazyLogging {
     * triangle of the weighted Gramian to the driver, factor its exact independent contiguous
     * blocks once, and solve each right-hand side with LAPACK `dpptrf`/`dpptrs`.
     */
-  object CholeskyFactory extends NewtonSystemFactory {
+  object CholeskyFactory extends DirectFactory(new SolveMonitor())
+
+  class DirectFactory(monitor: SolveMonitor) extends NewtonSystemFactory {
+    override def check(): Unit = monitor.check()
 
     override def build(B: DMatrix, m: Int, weights: Option[Weights]): NewtonSystem = {
+      monitor.phase(SolvePhase.Cholesky)
       val scaled = weights.map(_.sqrt.diagonalProduct(B)).getOrElse(B)
       val packedGramian = scaled.gramianMatrix(m).data
       val ends = choleskyBlockEnds(packedGramian, m)
       val starts = Array(0) ++ ends.dropRight(1)
-      val factors = starts.zip(ends).map { case (start, end) =>
+      val factors = starts.zip(ends).zipWithIndex.map { case ((start, end), blockIndex) =>
+        monitor.check()
         val size = end - start
         val packed = if (size == m) packedGramian else {
           val block = new Array[Double]((size.toLong * (size + 1) / 2).toInt)
@@ -148,7 +154,10 @@ private[spark_lp] object newton extends LazyLogging {
           }
           block
         }
-        (start, size, CholeskyDecomposition.factor(packed, size))
+        val factor = CholeskyDecomposition.factor(packed, size)
+        monitor.report(SolveProgress(SolvePhase.Cholesky, 0, 0.0,
+          completedBlocks = Some(blockIndex + 1)))
+        (start, size, factor)
       }
       logger.debug(s"Cholesky blocks=${ends.length} largest=${factors.map(_._2).max} rows=$m")
 
@@ -157,10 +166,12 @@ private[spark_lp] object newton extends LazyLogging {
           // dpptrs overwrites only the right-hand side; preserve the caller's vector.
           val solution = rhs.values.clone()
           factors.foreach { case (start, size, factor) =>
+            monitor.check()
             val block = java.util.Arrays.copyOfRange(solution, start, start + size)
             CholeskyDecomposition.solveFactored(factor, size, block)
             System.arraycopy(block, 0, solution, start, size)
           }
+          monitor.check()
           new DenseVector(solution)
         }
 
@@ -207,7 +218,8 @@ private[spark_lp] object newton extends LazyLogging {
   final class CgFactory(
     relTolerance: Double,
     maxIterations: Int,
-    config: MatrixFreeConfig = MatrixFreeConfig())(implicit spark: SparkSession) extends NewtonSystemFactory {
+    config: MatrixFreeConfig = MatrixFreeConfig(),
+    monitor: SolveMonitor = new SolveMonitor())(implicit spark: SparkSession) extends NewtonSystemFactory {
 
     require(relTolerance > 0.0 && !relTolerance.isInfinite, "CG tolerance must be finite and positive")
     // The escalated rank persists across systems: once one iteration's system forces an
@@ -215,6 +227,7 @@ private[spark_lp] object newton extends LazyLogging {
     private var currentRank: Int = -1
     private var steps: Int = 0
     private var peakRank: Int = 0
+    override def check(): Unit = monitor.check()
     override val primalRegularization: Double = config.primalRegularization
     override val dualRegularization: Double = config.dualRegularization
     override def innerIterations: Int = steps
@@ -232,13 +245,17 @@ private[spark_lp] object newton extends LazyLogging {
       val maxRank = if (requestedRank > 0) math.min(requestedRank, budgetRank) else budgetRank
       if (currentRank < 0) currentRank = if (requestedRank > 0) maxRank else 0
       currentRank = math.min(currentRank, maxRank)
+      monitor.phase(SolvePhase.Preconditioner)
       val diagonal = matrix.gramianDiagonal(w).values.map(_ + dualRegularization)
       def buildPreconditioner(rank: Int): BDV[Double] => BDV[Double] = {
         val partial = new PartialCholesky(diagonal, rank, j => {
+          monitor.check()
           val column = matrix.gramianColumns(Array(j), w)
           column(j) += dualRegularization
           column
-        }, dualRegularization)
+        }, dualRegularization, completed => monitor.report(SolveProgress(
+          SolvePhase.Preconditioner, 0, 0.0, preconditionerRank = Some(completed))))
+        monitor.check()
         peakRank = math.max(peakRank, partial.indices.length)
         (r: BDV[Double]) => partial(r)
       }
@@ -252,12 +269,14 @@ private[spark_lp] object newton extends LazyLogging {
 
         /** One application of the operator: `B^T (w * (B p))`, driver memory O(m). */
         private def applyOperator(p: BDV[Double]): BDV[Double] = {
+          monitor.check()
           if (pBroadcast != null) Broadcasts.destroyAsync(pBroadcast)
           pBroadcast = spark.sparkContext.broadcast(new DenseVector(p.data))
           new BDV(regularizedProduct(B, matrix, w, pBroadcast, dualRegularization).values)
         }
 
         override def solve(rhs: DenseVector, absTolerance: Double): DenseVector = {
+          monitor.phase(SolvePhase.InnerSolve)
           val rhsVector = new BDV(rhs.values.clone())
           require(rhs.size == m && rhs.values.forall(v => !v.isNaN && !v.isInfinite),
             "CG right-hand side must be finite and match the operator")
@@ -275,6 +294,18 @@ private[spark_lp] object newton extends LazyLogging {
           var totalSteps = 0
           var finished = resNorm <= targetNorm
           var exhausted = false
+          val progress = monitor.control.stagnation.map(c => new ProgressWindow(c, c.innerPatience))
+          def reportResidual(isTrue: Boolean, residual: Double): Unit = {
+            monitor.report(SolveProgress(SolvePhase.InnerSolve, 0, 0.0,
+              innerSteps = Some(totalSteps), preconditionerRank = Some(currentRank),
+              innerResidual = Some(residual), trueResidual = isTrue))
+            if (isTrue && !finished) {
+              val stalled = progress.exists(_.observe(totalSteps, Vector(residual / rhsNorm)))
+              if (stalled || monitor.control.stagnation.exists(totalSteps >= _.maxInnerSteps))
+                throw SolveStopped(StopReason.NoProgress)
+            }
+          }
+          reportResidual(isTrue = true, residual = resNorm)
 
           while (!finished && !exhausted) {
             var stepsAtRank = 0
@@ -313,6 +344,18 @@ private[spark_lp] object newton extends LazyLogging {
                   throw new IllegalStateException("Non-finite CG residual")
                 stepsAtRank += 1
                 finished = resNorm <= targetNorm
+                reportResidual(isTrue = false, residual = resNorm)
+                // Periodic true residuals bound the opt-in policy even during a long cycle.
+                val progressCheck = monitor.control.stagnation.exists(c =>
+                  totalSteps % math.min(25, c.innerPatience) == 0 || totalSteps >= c.maxInnerSteps)
+                if (progressCheck && !finished) {
+                  // Probe without restarting conjugate directions just for monitoring.
+                  val actual = rhsVector - applyOperator(x)
+                  val actualNorm = norm(actual)
+                  finished = actualNorm <= targetNorm
+                  if (finished) { r = actual; resNorm = actualNorm }
+                  reportResidual(isTrue = true, residual = actualNorm)
+                }
                 if (!finished) {
                   if (resNorm < 0.95 * cycleBest) {
                     cycleBest = resNorm
@@ -334,6 +377,7 @@ private[spark_lp] object newton extends LazyLogging {
               r = rhsVector - applyOperator(x)
               resNorm = norm(r)
               finished = resNorm <= targetNorm
+              reportResidual(isTrue = true, residual = resNorm)
               // a full cycle that recovered less than 10% of the residual will not recover more
               gaveUp = !finished && resNorm > 0.9 * cycleStartNorm
             }
@@ -415,7 +459,8 @@ private[spark_lp] object newton extends LazyLogging {
     diagonal: Array[Double],
     requestedRank: Int,
     column: Int => Array[Double],
-    dualRegularization: Double) {
+    dualRegularization: Double,
+    onPivot: Int => Unit = _ => ()) {
 
     private val m = diagonal.length
     require(diagonal.forall(d => d > 0.0 && !d.isInfinite), "Invalid regularized Gramian diagonal")
@@ -456,6 +501,7 @@ private[spark_lp] object newton extends LazyLogging {
         selected(pivot) = true
         pivots += pivot
         factors += l
+        onPivot(pivots.length)
       }
     }
     val indices: Array[Int] = pivots.toArray

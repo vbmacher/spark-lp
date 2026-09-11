@@ -1,0 +1,10 @@
+version,scenario,days,m,n,backend,regularization,status,primal,dual,gap,objective,wall_seconds,outer_iterations,inner_iterations,preconditioner_rank,spark_jobs,error,control,stop_reason,candidate_available,candidate_feasible,candidate_iteration,progress_events
+baseline,core,152,5472,11856,Cholesky,1.0E-8,Converged,1.6641960485411882E-11,1.5804448544420835E-15,2.6165879389269196E-9,0.17090955332568328,17.438471964,24,0,0,348,,,,,,,
+baseline,dsl,8,288,624,Cholesky,1.0E-8,Optimal,3.67529813669194E-12,1.0718301877613617E-17,8.414036673872706E-10,0.17077977047080392,8.287642499,18,NA,NA,295,,,,,,,
+current,core,152,5472,11856,Cholesky,1.0E-8,Converged,1.3595745831404306E-11,1.5805340574183688E-15,2.616760624655241E-9,0.17090955332583774,17.46379847,24,0,0,348,,none,None,true,true,Some(24),0
+current,report,152,5472,11856,Cholesky,1.0E-8,Converged,1.5754311571463308E-11,1.5799839446943095E-15,2.616077277479212E-9,0.17090955332530852,17.546930442,24,0,0,348,,report,None,true,true,Some(24),3850
+current-initial,dsl,8,288,624,Cholesky,1.0E-8,Optimal,3.3743012952548613E-12,1.1241905239909496E-17,8.413113289562827E-10,0.17077977047060525,10.446318334,18,NA,NA,313,,none,None,true,true,Some(18),0
+current,candidate,152,5472,11856,Cholesky,1.0E-8,Stopped,1.2019452907601529E-8,7.581552427777032E-14,1.9046665341829266E-7,0.17090972306623756,15.971022248,22,0,0,321,,candidate,Some(UserRequested),true,true,Some(22),3542
+current,stagnation,8,288,624,ConjugateGradient,1.0E-8,Stopped,NaN,NaN,NaN,NaN,7.632669236,0,375,100,551,,stagnation,Some(NoProgress),false,false,None,550
+current,time,8,288,624,ConjugateGradient,1.0E-8,Stopped,NaN,NaN,NaN,NaN,5.013798647,0,223,50,342,,time,Some(TimeLimit),false,false,None,341
+current,dsl,8,288,624,Cholesky,1.0E-8,Optimal,3.864074550774417E-12,1.0005219447166836E-17,8.417444305729078E-10,0.1707797704711667,8.842796413,18,NA,NA,313,,none,None,true,true,Some(18),0

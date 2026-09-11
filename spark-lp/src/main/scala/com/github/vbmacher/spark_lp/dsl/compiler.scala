@@ -1,6 +1,6 @@
 package com.github.vbmacher.spark_lp.dsl
 
-import com.github.vbmacher.spark_lp.{CachedRDDs, LP}
+import com.github.vbmacher.spark_lp.{CachedRDDs, CandidateInfo, LP, SolveControl, StopReason}
 import com.github.vbmacher.spark_lp.vectors.{DMatrix, DVector}
 import org.apache.spark.Partitioner
 import org.apache.spark.mllib.linalg.{DenseVector, Vectors, Vector => MLVector}
@@ -143,9 +143,20 @@ private[dsl] final class LpCompiler(problem: LpProblem, config: SolveConfig) ext
 
   def solve(): LpSolution = try {
     val compiled = compile()
+    if (compiled.plans.exists(_.integral) &&
+        (config.stopAfterIteration.nonEmpty || config.control != SolveControl()))
+      fail("stopAfterIteration and SolveControl are supported only for continuous models")
     if (compiled.numCols == 0) {
+      val feasible = compiled.rowSpecs.forall { row =>
+        val violation = row.sense match {
+          case LpSense.Eq => math.abs(row.b0)
+          case LpSense.Le => math.max(0.0, -row.b0)
+          case LpSense.Ge => math.max(0.0, row.b0)
+        }
+        violation <= config.control.feasibilityTolerance * (1.0 + math.abs(row.rhsUser))
+      }
       buildSolution(compiled, sc.emptyRDD, LpStatus.Optimal, compiled.objConstant, 0,
-        LpResiduals(0.0, 0.0, 0.0), Map.empty)
+        LpResiduals(0.0, 0.0, 0.0), Map.empty, Some(CandidateInfo(true, feasible, Some(0))))
     } else if (compiled.intCols.isEmpty) {
       val summary = LP.solveSummary(
         c = compiled.c,
@@ -159,8 +170,14 @@ private[dsl] final class LpCompiler(problem: LpProblem, config: SolveConfig) ext
         infeasibilityTolerance = config.infeasibilityTolerance,
         solver = config.resolvedNewtonSolver(compiled.numRows),
         cgTolerance = config.cgTolerance,
+        matrixFree = config.matrixFree,
         cgMaxIterations = config.cgMaxIterations,
-        stopAfterIteration = config.stopAfterIteration)
+        stopAfterIteration = config.stopAfterIteration,
+        control = config.control.copy(onProgress = config.control.onProgress.map { callback =>
+          event => callback(event.copy(objectiveValue = event.objectiveValue.map(v =>
+            compiled.senseMult * v + compiled.objConstant)))
+        }),
+        candidateViolation = Some(x => originalViolation(compiled, x)))
       try continuousSolution(compiled, summary)
       finally summary.x.unpersist(blocking = false)
     } else {
@@ -916,26 +933,14 @@ private[dsl] final class LpCompiler(problem: LpProblem, config: SolveConfig) ext
       case _ => compiled.senseMult * summary.objectiveValue + compiled.objConstant
     }
     buildSolution(compiled, summary.x, status, objectiveValue, summary.iterations,
-      LpResiduals(summary.primalResidual, summary.dualResidual, summary.dualityGap), Map.empty)
+      LpResiduals(summary.primalResidual, summary.dualResidual, summary.dualityGap), Map.empty,
+      Some(summary.candidate), summary.stopReason)
   }
 
-  /**
-    * Reconstructs user-facing values and diagnostics from a solver iterate. `integerOverrides`
-    * carries exact user-unit values (already rounded to integers) for integral solver columns,
-    * keyed by the global column index; an empty map reproduces the plain continuous
-    * reconstruction.
-    */
-  private[dsl] def buildSolution(
-    compiled: Compiled,
-    x: DVector,
-    status: LpStatus,
-    objectiveValue: Double,
-    iterations: Int,
-    residuals: LpResiduals,
-    integerOverrides: Map[Long, Double]): LpSolution = {
-
+  private def reconstructValues(compiled: Compiled, x: DVector,
+    integerOverrides: Map[Long, Double]): RDD[((Int, String), Double)] = {
     // per-column primal values, aligned with the compiled column order
-    val overrides = sc.broadcast(integerOverrides)
+    val overrides = integerOverrides
     val xValues: RDD[(Long, ColData, Double)] = compiled.sortedCols.zipPartitions(x) { (colsIt, xIt) =>
       if (!xIt.hasNext) Iterator.empty
       else {
@@ -946,7 +951,7 @@ private[dsl] final class LpCompiler(problem: LpProblem, config: SolveConfig) ext
 
     // undo bound shifts and free-variable splits; drop slacks
     val varValues = xValues.flatMap { case (g, colData, v) =>
-      overrides.value.get(g) match {
+      overrides.get(g) match {
         case Some(exact) => Some(((colData.setIndex, colData.enc), exact))
         case None =>
           colData.kind match {
@@ -967,8 +972,124 @@ private[dsl] final class LpCompiler(problem: LpProblem, config: SolveConfig) ext
         case _ => None
       }
     }
+    if (fixedRdds.isEmpty) varValues else sc.union(varValues +: fixedRdds)
+  }
+
+  /** Check original units, including presolved/merged rows, bound shifts and free splits.
+    * These actions validate retention, not reporting; solution vectors stay distributed.
+    */
+  private def originalViolation(compiled: Compiled, x: DVector): Double = {
+    if (compiled.rowSpecs.forall(_.emitted) && compiled.plans.forall(_.kind.isInstanceOf[ShiftedKind]))
+      alignedOriginalViolation(compiled, x)
+    else reconstructedOriginalViolation(compiled, x)
+  }
+
+  /** Plain bounded variables have one solver column per user value. Reuse that alignment
+    * instead of joining keys on every iteration. Accumulate original-unit activities (excluding
+    * internal slacks); only the bounded constraint vector and a scalar bound violation reduce
+    * to the driver. Other transformations use the complete reconstruction below.
+    */
+  private def alignedOriginalViolation(compiled: Compiled, x: DVector): Double = {
+    val rowCount = compiled.rowSpecs.size
+    val bounds = compiled.plans.map { p =>
+      p.handle.setIndex -> (p.kind match {
+        case ShiftedKind(lower, upper) => (lower, upper)
+        case _ => throw new IllegalStateException("Expected one-column bounded variables")
+      })
+    }.toMap
+    val (activity, boundViolation) = compiled.sortedCols.zipPartitions(x) { (columns, blocks) =>
+      val values = blocks.next().values
+      val activity = new Array[Double](rowCount)
+      var violation = 0.0
+      var i = 0
+      columns.foreach { case (_, data) =>
+        if (data.kind == 0) {
+          val value = data.shift + values(i)
+          val (lower, upper) = bounds(data.setIndex)
+          if (value.isNaN || value.isInfinite) violation = Double.PositiveInfinity
+          else {
+            violation = math.max(violation, (lower - value) / (1.0 + math.abs(lower)))
+            upper.foreach(u => violation = math.max(violation, (value - u) / (1.0 + math.abs(u))))
+          }
+          data.vector.foreachActive { (row, coefficient) =>
+            if (row < rowCount) activity(row) += coefficient * value
+          }
+        }
+        i += 1
+      }
+      Iterator.single((activity, violation))
+    }.reduce { case ((left, lv), (right, rv)) =>
+      var i = 0
+      while (i < left.length) { left(i) += right(i); i += 1 }
+      (left, math.max(lv, rv))
+    }
+    compiled.rowSpecs.foldLeft(boundViolation) { (worst, row) =>
+      val residual = activity(row.finalIdx) - row.rhsUser
+      val violation = if (residual.isNaN || residual.isInfinite) Double.PositiveInfinity else {
+        (row.sense match {
+          case LpSense.Eq => math.abs(residual)
+          case LpSense.Le => math.max(0.0, residual)
+          case LpSense.Ge => math.max(0.0, -residual)
+        }) / (1.0 + math.abs(row.rhsUser))
+      }
+      math.max(worst, violation)
+    }
+  }
+
+  private def reconstructedOriginalViolation(compiled: Compiled, x: DVector): Double = {
+    val values = reconstructValues(compiled, x, Map.empty)
+    val bounds = compiled.plans.map { p =>
+      val limits = p.kind match {
+        case FixedKind(v) => (Some(v), Some(v))
+        case ShiftedKind(lower, upper) => (Some(lower), upper)
+        case SplitKind => (None, None)
+      }
+      p.handle.setIndex -> limits
+    }.toMap
+    val boundViolations = values.map { case ((si, _), value) =>
+      if (value.isNaN || value.isInfinite) Double.PositiveInfinity
+      else {
+        val (lower, upper) = bounds(si)
+        math.max(lower.map(l => (l - value) / (1.0 + math.abs(l))).getOrElse(0.0),
+          upper.map(u => (value - u) / (1.0 + math.abs(u))).getOrElse(0.0))
+      }
+    }
+    val rows = sc.parallelize(compiled.rowSpecs.map(r => (r.rowId, (r.rhsUser, r.sense))))
+    val activity = compiled.userTermsAgg.map { case ((si, enc, row), c) => ((si, enc), (row, c)) }
+      .join(values).map { case (_, ((row, c), value)) => (row, c * value) }.reduceByKey(_ + _)
+    val violations = activity.rightOuterJoin(rows).map { case (_, (act, (rhs, sense))) =>
+      val residual = act.getOrElse(0.0) - rhs
+      if (residual.isNaN || residual.isInfinite) Double.PositiveInfinity
+      else (sense match {
+        case LpSense.Eq => math.abs(residual)
+        case LpSense.Le => math.max(0.0, residual)
+        case LpSense.Ge => math.max(0.0, -residual)
+      }) / (1.0 + math.abs(rhs))
+    }
+    boundViolations.union(violations).fold(0.0)(math.max)
+  }
+
+  /**
+    * Reconstructs user-facing values and diagnostics from a solver iterate. `integerOverrides`
+    * carries exact user-unit values (already rounded to integers) for integral solver columns,
+    * keyed by the global column index; an empty map reproduces the plain continuous
+    * reconstruction.
+    */
+  private[dsl] def buildSolution(
+    compiled: Compiled,
+    x: DVector,
+    status: LpStatus,
+    objectiveValue: Double,
+    iterations: Int,
+    residuals: LpResiduals,
+    integerOverrides: Map[Long, Double],
+    candidate: Option[CandidateInfo] = None,
+    stopReason: Option[StopReason] = None): LpSolution = {
+
+    val available = candidate.forall(_.available)
     val userValues = caches.checkpoint(
-      if (fixedRdds.isEmpty) varValues else sc.union(varValues +: fixedRdds))
+      if (available) reconstructValues(compiled, x, integerOverrides)
+      else sc.emptyRDD[((Int, String), Double)])
     // Detach the result before releasing the solver's checkpointed iterate and compiled inputs.
     userValues.count()
 
@@ -990,7 +1111,7 @@ private[dsl] final class LpCompiler(problem: LpProblem, config: SolveConfig) ext
       StructField("dual", DoubleType, nullable = true),
       StructField("note", StringType, nullable = true)))
     val rows = compiled.rowSpecs.map { rs =>
-      val act = activity.getOrElse(rs.rowId, 0.0)
+      val act = if (available) activity.getOrElse(rs.rowId, 0.0) else Double.NaN
       val slack = rs.sense match {
         case LpSense.Ge => act - rs.rhsUser
         case _ => rs.rhsUser - act
@@ -1006,6 +1127,8 @@ private[dsl] final class LpCompiler(problem: LpProblem, config: SolveConfig) ext
       residuals = residuals,
       constraints = constraintsDf,
       problem = problem,
-      userValues = caches.keep(userValues))
+      userValues = caches.keep(userValues),
+      candidate = candidate.getOrElse(CandidateInfo(true, status == LpStatus.Optimal, Some(iterations))),
+      stopReason = stopReason)
   }
 }

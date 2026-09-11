@@ -90,7 +90,7 @@ A numerical failure retries those tests on the last completed iterate before rai
 [cols="1,2,2",options="header"]
 |===
 |Strategy |Computation |Driver cost
-|`Cholesky` |Aggregate and factor the weighted Gramian once per outer iteration; reuse for both directions. |`O(m^2)` storage and `O(m^3)` factorization.
+|`Cholesky` |Aggregate the weighted Gramian and factor its exact contiguous independent blocks; reuse for both directions. |`O(m^2)` aggregation/storage; factorization `O(sum(block_size^3))`, worst case `O(m^3)`.
 |`ConjugateGradient` |Apply `v -> A*(W*(A^T*v))+Rd*v` in Spark; use a bounded partial-Cholesky preconditioner. |`O(m)` iteration vectors plus `O(m*rank)` preconditioner storage.
 |`Auto` |Cholesky through 1000 equality-form rows (or a lower `maxLocalConstraints` cap); CG above it. |Follows the selected strategy.
 |===
@@ -138,6 +138,13 @@ Initialization applies the regularized least-squares inverse with `W0 = I/(1+Rp)
 `G0 = A*W0*A^T+Rd`, `xTilde = W0*A^T*G0^(-1)*b`, and
 `yTilde = G0^(-1)*A*W0*c`, followed by the existing strictly positive shifts.
 Cholesky remains the unregularized reference, including its historical inverse-slack cap.
+Exact zero-separated contiguous blocks are factored independently with the same LAPACK
+routine. Any nonzero coupling prevents a split; no entries are dropped by tolerance.
+Blocks are detected anew for each weighted system. The packed accumulator is allocated
+within executor tasks to avoid shipping an `O(m^2)` zero value in the task closure;
+the dense aggregation and its memory requirements remain. See
+link:../benchmarks/allocation.md[the allocation workload measurements] for the performance
+impact and the limits of the synthetic Auto crossover on this workload.
 
 `MatrixFreeConfig` supplies constant scalar diagonal entries `Rp = 1e-8` and
 `Rd = 1e-8` by default. These are entries, not their square roots. They stay positive

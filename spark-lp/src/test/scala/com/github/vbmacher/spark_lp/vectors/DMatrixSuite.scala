@@ -8,6 +8,25 @@ import org.scalatest.funsuite.AnyFunSuite
 
 class DMatrixSuite extends AnyFunSuite with DataFrameSuiteBase {
 
+  test("packed Gramian combines dense and sparse rows with empty partitions") {
+    val matrix: DMatrix = sc.parallelize(Seq(
+      Vectors.dense(1.0, 2.0, 3.0),
+      Vectors.sparse(3, Seq(0 -> 4.0, 2 -> 6.0))), 8)
+    // Packed upper triangle of the explicit sum of the two outer products.
+    val expected = Array(17.0, 2.0, 4.0, 27.0, 6.0, 45.0)
+    Seq(1, 2, 3).foreach { depth =>
+      assert(matrix.gramianMatrix(3, depth).toArray.sameElements(expected))
+    }
+  }
+
+  test("packed Gramian of empty input is zero with or without partitions") {
+    val empty: DMatrix = sc.emptyRDD[org.apache.spark.mllib.linalg.Vector]
+    val partitions: DMatrix = sc.parallelize(Seq.empty[org.apache.spark.mllib.linalg.Vector], 8)
+    Seq(empty, partitions).foreach { matrix =>
+      assert(matrix.gramianMatrix(3).toArray.sameElements(Array.fill(6)(0.0)))
+    }
+  }
+
   test("transpose works") {
     val matrix = Array(
       Array(-1.0, -1.0, 1.0, 0.0),

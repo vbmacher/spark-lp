@@ -1,0 +1,21 @@
+Recorded 2026-09-11, Europe/Prague
+Host: Apple M2 Max (8 Avalanche + 4 Blizzard cores), aarch64, 64 GiB RAM
+OS: Linux 7.1.13-402.asahi.fc44.aarch64+16k, Fedora Asahi
+JDK: Amazon Corretto 11.0.26.4.1
+sbt: 1.10.7
+Scala: 2.12.20
+Spark: 3.5.3
+BLAS/LAPACK: Java fallback (native implementation unavailable on this environment)
+Spark master: local[4]
+Input partitions: 4, cached and materialized before timing
+Forked solver JVM: -Xms4G -Xmx4G
+Outer tolerance: 1e-8 (primal, dual, gap, original LP)
+Outer limit: 50; eta: 0.999; infeasibility tolerance: 1e-8
+CG relative tolerance: 1e-10; steps per rank: 1000
+CG Rp=Rd=1e-8; adaptive rank; preconditioner budget=256 MiB
+One 16-row warmup per backend; alternating backend order
+Main grid: two repeats; crossover and conditioning grids: three repeats
+20 ms sampling of JVM heap and /proc/self/status VmRSS
+Reported memory is total process usage (includes local Spark executors and retained JVM heap).
+No forced GC between cases; RSS is not an isolated backend allocation measurement.
+Base commit: d0e49390c604031b365f427515a48106d1fbcf31, with the accompanying issue #25 working-tree changes

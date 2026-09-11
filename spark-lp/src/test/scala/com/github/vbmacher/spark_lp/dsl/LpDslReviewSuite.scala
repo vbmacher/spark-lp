@@ -7,6 +7,17 @@ import org.scalatest.funsuite.AnyFunSuite
 
 class LpDslReviewSuite extends AnyFunSuite with DataFrameSuiteBase {
 
+  test("Auto uses the shared crossover and the DSL can lower the Cholesky resource cap") {
+    val limit = NewtonSolver.AutoCholeskyLimit.toLong
+    assert(SolveConfig().resolvedNewtonSolver(limit) == NewtonSolver.Cholesky)
+    assert(SolveConfig().resolvedNewtonSolver(limit + 1) == NewtonSolver.ConjugateGradient)
+    assert(SolveConfig(maxLocalConstraints = 0).resolvedNewtonSolver(1) == NewtonSolver.ConjugateGradient)
+    assert(SolveConfig(maxLocalConstraints = 10000).resolvedNewtonSolver(limit + 1) ==
+      NewtonSolver.ConjugateGradient)
+    assert(SolveConfig(newtonSolver = NewtonSolver.Cholesky).resolvedNewtonSolver(limit + 1) ==
+      NewtonSolver.Cholesky)
+  }
+
   test("composite keys cannot collide through embedded separators or escapes") {
     val keys = Seq(Seq("a", "b"), Seq("a\u001Fs:b"), Seq("a\\u001Fs:b"),
       Seq("a\u001Fs:b", "c"), Seq("a", "b\u001Fs:c"))

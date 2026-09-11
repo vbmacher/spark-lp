@@ -107,6 +107,7 @@ private[dsl] final class BranchAndBound(
           infeasibilityTolerance = config.infeasibilityTolerance,
           solver = config.resolvedNewtonSolver(compiled.numRows),
           cgTolerance = config.cgTolerance,
+          matrixFree = config.matrixFree,
           cgMaxIterations = config.cgMaxIterations)
       } catch {
         case e: LpNumericalException =>

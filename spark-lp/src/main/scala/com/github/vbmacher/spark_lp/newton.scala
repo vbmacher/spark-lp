@@ -48,7 +48,7 @@ object NewtonSolver {
 
   /** Largest Auto Cholesky row count. Prefer the direct solver for medium-sized allocation
     * systems where CG can require hundreds of distributed steps and preconditioner pivots.
-    * This is a workload-driven policy, not a universal measured crossover; see benchmarks/allocation.md.
+    * This is a workload-driven policy, not a universal measured crossover; see benchmarks/src/results/REPORT.md.
     */
   val AutoCholeskyLimit: Int = 10000
 }

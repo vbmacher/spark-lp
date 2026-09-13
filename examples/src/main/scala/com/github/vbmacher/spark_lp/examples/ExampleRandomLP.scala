@@ -15,7 +15,7 @@ import scala.util.Random
   * This example generates a random linear programming problem and solves it using LP.solve
   *
   * The example can be executed as follows:
-  * sbt 'test:run-main com.github.vbmacher.spark_lp.examples.ExampleRandomLP'
+  * sbt 'examplesSpark_3_5/runMain com.github.vbmacher.spark_lp.examples.ExampleRandomLP'
   */
 object ExampleRandomLP extends App {
 

@@ -13,40 +13,42 @@ From this repository, using JDK 11:
 [source,shell]
 ----
 sbt 'spark-lpSpark_3_52_12/publishLocal'
-sbt 'examplesSpark_3_5/runMain com.github.vbmacher.spark_lp.examples.ExampleAllocationDsl'
+sbt 'examplesSpark_3_5/runMain com.github.vbmacher.spark_lp.examples.ExampleWhiskasDsl'
 ----
 
 For a Spark 3.5.3 application using that local build:
 
 [source,scala]
 ----
-libraryDependencies += "com.github.vbmacher" %% "spark-lp" % "3.5.3_1.1.0"
+libraryDependencies += "com.github.vbmacher" %% "spark-lp" % "3.5.3_1.2.0-SNAPSHOT"
 ----
 
 Remote releases use the same `<spark-version>_<library-version>` scheme; choose an
 available release matching your Spark version. Native BLAS/LAPACK improves performance;
 the Java fallback also works.
 
-== Allocate at minimum cost
+== Blend ingredients at minimum cost
 
-Each offer gets a nonnegative decision variable. Demand creates one equality per region.
-The complete runnable example is included below.
+Each ingredient gets a nonnegative decision variable. Minimize the cost of a 100-gram
+blend subject to protein, fat, fibre and salt requirements. The runnable source lives
+in the link:../examples/README.md[examples module], alongside the corresponding
+standard-form model and other examples.
 
 [source,scala]
 ----
-include::../examples/src/main/scala/com/github/vbmacher/spark_lp/examples/ExampleAllocationDsl.scala[tag=allocation]
+include::../examples/src/main/scala/com/github/vbmacher/spark_lp/examples/ExampleWhiskasDsl.scala[]
 ----
 
 [mermaid]
 ----
 flowchart LR
-  O["Offers: id, region, cost"] --> V["One amount per id"]
+  O["Ingredients: cost and nutrients"] --> V["Grams of each ingredient"]
   V --> C["Minimize sum of cost times amount"]
-  V --> G["Sum amount per region"]
-  D["Demand: region, rhs"] --> G
+  V --> G["Total weight and weighted nutrients"]
+  D["Weight and nutrition requirements"] --> G
   C --> S[Solve]
   G --> S
-  S --> R["a = 4; b = 0; c = 2; cost = 8"]
+  S --> R["Chicken ≈ 33.33 g; beef ≈ 66.67 g; cost ≈ 0.9667"]
 ----
 
 == Small vocabulary

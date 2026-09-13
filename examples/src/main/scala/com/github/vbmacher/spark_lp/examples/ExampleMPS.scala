@@ -12,9 +12,11 @@ import java.io.File
   * This example reads a linear program in MPS format and solves it using LP.solve.
   *
   * The example can be executed as follows:
-  * sbt 'test:run-main com.github.vbmacher.spark_lp.examples.ExampleMPS <mps file>'
+  * sbt 'examplesSpark_3_5/runMain com.github.vbmacher.spark_lp.examples.ExampleMPS /absolute/path/problem.mps'
   */
 object ExampleMPS extends App {
+
+  require(args.length == 1, "Supply one MPS file path")
 
   implicit val spark: SparkSession = SparkSession.builder
     .appName("ExampleMPS")

@@ -5,6 +5,10 @@ import com.github.vbmacher.spark_lp.vectors.DVector
 import org.apache.spark.mllib.linalg.{DenseVector, Vectors}
 import org.apache.spark.sql.SparkSession
 
+/** Solves a two-ingredient minimum-cost blend through the standard-form core API.
+  * Nutrition inequalities are converted to equalities with explicit slack variables.
+  * Compare with [[ExampleWhiskasDsl]] for the same model expressed in the DSL.
+  */
 object ExampleWhiskas extends App {
 
   // This example is taken from PuLP
@@ -61,7 +65,7 @@ object ExampleWhiskas extends App {
   //   0.001*x1 + 0.005*x2 + s3 = 2.0
   //   0.002*x1 + 0.005*x2 + s4 = 0.4
 
-  // Now we will have 4 decision variables: x1, x2, s1, s2, s3, s4
+  // Now we will have 6 decision variables: x1, x2, s1, s2, s3, s4
 
   // Our matrix A will be:
   //   1.000  1.000  0.000  0.000  0.000  0.000
@@ -85,7 +89,7 @@ object ExampleWhiskas extends App {
   // ]                                                    s4 ]      ]
 
   implicit val spark: SparkSession = SparkSession.builder
-    .appName("ExampleRandomLP")
+    .appName("ExampleWhiskas")
     .master("local[2]")
     .getOrCreate()
 
@@ -128,4 +132,6 @@ object ExampleWhiskas extends App {
   println(s"Beef percent: $beefPercent")
   println(s"Chicken percent: $chickenPercent")
   println(s"Total Cost: $v")
+  x.unpersist()
+  spark.stop()
 }

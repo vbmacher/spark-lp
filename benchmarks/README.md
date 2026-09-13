@@ -1,140 +1,161 @@
-# Newton backend benchmarks (issue #25)
+# Benchmarks
 
-For progress reporting, candidate retention and cooperative stopping measurements (#27),
-see [progress-stopping.md](progress-stopping.md).
+This module measures Cholesky and CG on reproducible linear programs generated with Spark DataFrames. Campaigns are CSV case inventories; algorithm suites share the same generation, execution, and validation code.
 
-For the subsequent allocation workload investigation and exact block-Cholesky
-optimization, see [allocation.md](allocation.md). Those measurements expose a
-CG escalation case absent from the synthetic crossover grid below; this grid
-does not establish the preferred backend for that EMR workload.
-The timings below are historical measurements of commit `51f7498`, before block
-Cholesky and executor-side accumulator allocation. Reproduce that grid on that
-revision; the subsequent optimization changes direct-backend costs. Auto's cutoff
-has since been raised to 10000 rows for allocation workloads; these historical
-measurements do not validate that new cutoff as a universal crossover.
+- [Measured results](src/results/REPORT.md)
+- [Remaining runs and EMR plan](src/results/TODO.md)
+- [Case inventories](src/main/resources/)
 
-Both backends solve the same LPs with `tolerance=1e-8`, `maxIter=50`, `eta=0.999`;
-CG uses `cgTolerance=1e-10`, `cgMaxIterations=1000`, `Rp=Rd=1e-8` and the default
-256 MiB adaptive preconditioner budget. Only runs whose original-LP primal, dual
-and objective-gap residuals are all below `1e-8` qualify for timing comparisons.
+## Structure
 
-The historical shared `Auto` policy used Cholesky through **1000 equality-form rows**
-and CG above that. The DSL additionally honors a lower `maxLocalConstraints` resource
-cap; its default resource cap was 5000. The current shared cutoff and default DSL
-resource cap are both **10000**. Explicit Cholesky remains available above the cutoff.
-Increasing that resource cap alone does not change `Auto`.
+| Location | Responsibility |
+|---|---|
+| [spark_lp/Benchmark.scala](src/main/scala/com/github/vbmacher/spark_lp/Benchmark.scala) | Algorithm contract and registry |
+| [CholeskyBenchmark.scala](src/main/scala/com/github/vbmacher/spark_lp/CholeskyBenchmark.scala), [CGBenchmark.scala](src/main/scala/com/github/vbmacher/spark_lp/CGBenchmark.scala) | Algorithm instances implementing `Benchmark` |
+| [spark_lp/BenchmarkRunner.scala](src/main/scala/com/github/vbmacher/spark_lp/BenchmarkRunner.scala) | CLI parsing and `run(benchmark, config)` API |
+| [support/BenchmarkCase.scala](src/main/scala/support/BenchmarkCase.scala) | Shared CSV schema, parsing and case validation |
+| [support/DataGenerator.scala](src/main/scala/support/DataGenerator.scala) | Distributed coefficients, witnesses, input adapters and accuracy checks |
+| [support/Measurements.scala](src/main/scala/support/Measurements.scala) | JVM sampling, timing, progress phases, environment capture and watchdog |
+| `src/main/resources/*.csv` | Inputs for local, smoke and EMR runs, all with the same schema |
+| `src/results/data/*.csv` | Results: one observed run per row, including failures and source provenance |
+| `scripts/` | Campaign launch, artifact analysis, normalization and report generation |
 
-At 1000 rows, the well-scaled and narrower scaled cases favored CG, but the wider
-scaled case favored Cholesky (1.60 vs 1.94 seconds median). At 1500 rows that same
-scaled family favored CG (3.55 vs 1.66 seconds). Choosing 1000 as the last direct size
-kept the reference backend in the measured mixed region. It was a conservative default
-based on these workloads; the exact crossing between sampled row counts is unmeasured,
-and native BLAS, sparsity, conditioning, variable count and cluster latency can move it.
+`Auto` is an algorithm-selection policy. Benchmarks explicitly select Cholesky or CG so comparisons identify the algorithm used. Adding an algorithm requires a `Benchmark` implementation and registry entry; campaigns and the generator stay shared.
 
-Run from the repository root with JDK 11:
+## Case design
 
-```sh
-sbt "spark-lpSpark_3_52_12/Test/runMain com.github.vbmacher.spark_lp.NewtonBenchmark $PWD/benchmarks/results.csv"
-python3 benchmarks/summarize.py benchmarks/results.csv
+Every input CSV has this header:
+
+```csv
+id,m,n,nonzeros_per_row,family,seed,tolerance,heap_gib
+example,1000,10000,32,well,11,1e-8,4
 ```
 
-The harness uses Spark's existing test dependencies. Its arguments are the output
-CSV (absolute path because sbt project-matrix uses a synthetic working directory), optional comma-separated `m:variable_multiplier:nonzeros_per_column:row_scale_ratio`
-cases, and repeat count (default 2). For example:
+| Column | Meaning |
+|---|---|
+| `id` | Unique case identifier, supplied to the runner |
+| `m`, `n` | Equality rows and nonnegative variables; `0 < m < n` |
+| `nonzeros_per_row` | Target support before dependent-row expansion; includes the diagonal basis entry |
+| `family` | `well`, `wide`, `dependent`, `degenerate`, or `dense` |
+| `seed` | Seed for deterministic SQL hash expressions generating coefficients/witnesses |
+| `tolerance` | Maximum accepted normalized primal/dual/gap/objective error |
+| `heap_gib` | Planned driver heap; the launcher passes this to the JVM |
+
+The generator builds a diagonal basis in the first `m` columns. Each sparse row also receives up to `nonzeros_per_row-1` distinct nonbasis entries at a seed-dependent cyclic offset. Thus `nnz = m * min(nonzeros_per_row, n-m+1)` for ordinary sparse families. Structural zero columns remain present as variables.
+
+| Family | Modification and purpose |
+|---|---|
+| `well` | Diagonal basis plus moderate positive coefficients; reference sparse case |
+| `wide` | Multiplies row `i` by `10^(-6*i/(m-1))`; tests uneven row scaling |
+| `dependent` | Replaces each odd row by its preceding row plus `1e-4` times itself; tests near dependence. Support can grow, so count actual nonzeros. |
+| `degenerate` | Sets every fifth basis variable to zero at the optimum; tests degenerate optima |
+| `dense` | Generates all `m*n` coefficients; ignores the sparse support target |
+
+Known witnesses satisfy `x >= 0`, `s >= 0` and `x[j]*s[j]=0`. The generator sets `b=A*x` and `c=Aᵀ*y+s`, giving a feasible primal-dual pair and known optimum `bᵀ*y`. Validation independently evaluates the returned solution against these original equations.
+
+Generation uses `spark.range`, SQL expressions, joins and aggregations. Coefficients and `n`-length vectors stay distributed and cached with spill support. Only scalar statistics and the solver-required `m`-length RHS/dual vectors reach the driver. Sparse-vector conversion allocates one column at a time on executors; cost vectors are bounded by partition size. Choose enough partitions for the widest cases. The deterministic `dataframe-v1` fingerprint covers coefficients and witnesses using distributed integer summaries; it is a reproducibility fingerprint, not an exact cryptographic digest of every derived floating-point byte. Floating-point reduction order can affect the last bits of `b` and `c`.
+
+| Inventory | Question |
+|---|---|
+| `solver-scaling.csv` | How do solve time and memory change as rows, variables and support grow? |
+| `sparsity-and-conditioning.csv` | How do density, scaling, near dependence and degeneracy affect convergence and cost? |
+| `smoke.csv` | Do generation, execution and independent validation work for small examples of each family? |
+| `emr-scaling.csv` | How do the algorithms behave on larger distributed problems? Runs are pending; see TODO. |
+
+## Build and run
+
+Run commands from the repository root, with Java 11 and sbt 1.10.7 available. The module uses Spark 3.5.3 / Scala 2.12.20 and depends on the matching `spark-lp` matrix project. Spark is `Provided`; local execution uses `Test/runMain` to include Spark on the classpath. Timed suites are ordinary objects and do not run during `sbt test`.
 
 ```sh
-sbt "spark-lpSpark_3_52_12/Test/runMain com.github.vbmacher.spark_lp.NewtonBenchmark $PWD/benchmarks/crossover.csv 512:2:1:1,512:4:8:0.001,768:2:4:1,768:4:8:0.001,1000:2:4:1,256:4:256:0.001 3"
-sbt "spark-lpSpark_3_52_12/Test/runMain com.github.vbmacher.spark_lp.NewtonBenchmark $PWD/benchmarks/conditioning.csv 1000:4:8:0.001,1500:4:8:0.001 3"
-python3 benchmarks/summarize.py benchmarks/results.csv benchmarks/crossover.csv benchmarks/conditioning.csv
+sbt 'benchmarksSpark_3_52_12/Test/compile'
+mkdir -p /tmp/lp-smoke-cholesky
+sbt 'benchmarksSpark_3_52_12/Test/runMain com.github.vbmacher.spark_lp.BenchmarkRunner cholesky /tmp/lp-smoke-cholesky /absolute/path/to/spark-lp/benchmarks/src/main/resources/smoke.csv well-small 2 1 0'
+mkdir -p /tmp/lp-smoke-cg
+sbt 'benchmarksSpark_3_52_12/Test/runMain com.github.vbmacher.spark_lp.BenchmarkRunner cg /tmp/lp-smoke-cg /absolute/path/to/spark-lp/benchmarks/src/main/resources/smoke.csv well-small 2 1 0'
 ```
 
-## Workload and measurement contract
+Replace the absolute repository path. Arguments are `benchmark output-directory inventory.csv case-id partitions [repetitions=5] [warmups=1]`. Output must be a fresh, existing absolute directory. Warmups can be 0 or 1. The first two commands run one measured attempt with no warmup; they are pipeline checks, not a completed campaign.
 
-There are `n = multiplier*m` nonnegative variables. Column `j` of `A` has a unit
-entry at `j mod m` and `width-1` cyclic entries of magnitude `0.05/width`.
-Row `i` is scaled by `ratio^(i/(m-1))`. Thus width controls sparsity and the row
-scale ratio introduces up to six orders of magnitude of spread in the initial
-normal-equations diagonal. The first `m` columns have a strictly dominant diagonal.
-
-A known solution has the first `m` variables equal to 1 and the rest zero.
-Its dual is the all-ones vector. Define `b=A*x`, and `c=A^T*y+s`, with zero slack
-on the first `m` variables and unit slack on the others. This provides a feasible
-primal/dual optimum with objective `sum(b)` independently of either backend.
-The CSV records the absolute difference from that known objective.
-
-These are synthetic, structured LPs, including symmetric easy cases. Row scaling
-tests conditioning but does not cover every difficult spectrum, real application,
-or cluster. The focused Newton tests separately cover near-dependent rows, multiple
-optima, zero RHS rows, dependent feasible rows, and certificate behavior.
-
-Each backend first receives a 16-row warmup. Timed repeats alternate backend order. The main grid uses two repeats; the crossover and conditioning grids use three.
-The input RDDs are cached and materialized before timing; timing includes solver
-initialization, all Newton iterations, and release of the returned solution.
-Spark job counts cover that same interval. Outer iterations, total CG iterations
-(including restarts/escalations), and maximum actual factor rank come from solver
-instrumentation. A zero rank means Jacobi was sufficient, not an omitted measurement.
-
-Heap and resident process memory are sampled every 20 ms during each run. In
-`local[4]`, they include the driver, local Spark executors, cached input and runtime
-objects. There is no forced GC between cases, so retained heap/RSS can carry over;
-these are sampled total process peaks, not isolated per-backend allocation costs.
-For isolated memory comparisons, run one case/backend in a fresh Spark deployment.
-The preconditioner budget covers factor storage/workspace, not the whole JVM.
-
-`NumericalFailure`, `IterationLimit`, certificates, and stopped runs remain separate
-CSV statuses and are excluded from successful timing pairs. On exceptions, unavailable
-residuals are `NaN`, and inner/rank counters are `NA`; completed outer iterations and
-the exception are retained. Fatal process failures cannot produce a solver summary
-and must be reported separately if they occur. `summarize.py` rejects any claimed
-successful row with invalid final residuals.
-
-See [environment.txt](environment.txt) for the fixed recorded environment. Native
-BLAS/LAPACK was unavailable, so the direct backend used its Java fallback. A cluster
-with native linear algebra and higher Spark scheduling latency can cross over later.
-
-## Recorded results
-
-All **76 timed runs converged** at the same original-LP tolerance; there were no
-numerical failures, certificates, or iteration limits in this benchmark grid.
-Runs took four or five outer iterations. CG took 10–56 total inner iterations and required
-only Jacobi (maximum partial-Cholesky rank 0). The focused tests separately force
-rank escalation and validate pivoted factors against explicit matrices.
-
-The largest final primal, dual and gap residuals across all timed runs were
-`2.7e-10`, `5.96e-15`, `7.33e-09`, respectively.
-The CSV files retain every residual, known-objective error, iteration count, Spark-job
-count, sampled heap/RSS peak, status and wall time. The table uses median seconds;
-ratios above 1 favor CG. It is generated by the supplied summarizer.
-
-| m | n | nnz/column | min/max row scale | Cholesky seconds | CG seconds | Cholesky/CG |
-|---:|---:|---:|---:|---:|---:|---:|
-| 32 | 64 | 1 | 1.0 | 0.726 | 1.186 | 0.61 |
-| 256 | 1024 | 8 | 1.0 | 0.717 | 0.998 | 0.72 |
-| 256 | 1024 | 256 | 0.001 | 0.997 | 1.398 | 0.71 |
-| 512 | 1024 | 1 | 1.0 | 0.983 | 0.995 | 0.99 |
-| 512 | 2048 | 8 | 0.001 | 0.767 | 1.749 | 0.44 |
-| 768 | 1536 | 4 | 1.0 | 1.127 | 0.892 | 1.26 |
-| 768 | 3072 | 8 | 0.001 | 1.061 | 1.826 | 0.58 |
-| 1000 | 2000 | 4 | 0.001 | 1.648 | 1.409 | 1.17 |
-| 1000 | 2000 | 4 | 1.0 | 1.539 | 0.986 | 1.56 |
-| 1000 | 4000 | 8 | 0.001 | 1.599 | 1.937 | 0.83 |
-| 1500 | 6000 | 8 | 0.001 | 3.552 | 1.660 | 2.14 |
-| 4500 | 9000 | 1 | 1.0 | 71.003 | 1.228 | 57.83 |
-| 5000 | 10000 | 4 | 1.0 | 96.771 | 1.146 | 84.44 |
-| 5500 | 11000 | 1 | 0.001 | 128.551 | 1.132 | 113.60 |
-| 6500 | 26000 | 8 | 1.0 | 211.889 | 1.263 | 167.80 |
-
-Nonconverged runs: 0
-
-## Validation
-
-The implementation passed all 924 tests: 132 per Spark version across 2.4.8 and
-3.0.2–3.5.3. The examples compiled in the same build. Run the matrix with:
+To run both algorithms sequentially, each in fresh JVMs:
 
 ```sh
-sbt 'set Global / concurrentRestrictions := Seq(Tags.limitAll(2))' '+test'
+python3 benchmarks/scripts/run.py --campaign solver-scaling --smoke --output /absolute/artifacts/scaling-smoke
+python3 benchmarks/scripts/run.py --campaign solver-scaling --output /absolute/artifacts/scaling-run
+python3 benchmarks/scripts/run.py --campaign sparsity-and-conditioning --output /absolute/artifacts/conditioning-run
 ```
 
-Focused tests check explicit regularized products, initialization and recovered KKT
-directions, updated pivot order, preconditioner application, rank escalation, memory
-caps, a 65,536-row matrix-free system, original-LP convergence, and certificates.
+The launcher refuses to overwrite a run, pins BLAS threads to one, alternates backend order and preserves source snapshots, commands, environments, exits, event logs and JSONL measurements. It applies a local Cholesky workspace exclusion before launch. The runner limits each solve to 30 minutes; subsequent missing repetitions remain `Unrun`. Keep bulky artifacts outside this module.
+
+### EMR through AWS CLI
+
+Use AWS CLI credentials with access to the chosen cluster and S3 prefix. The primary node needs AWS CLI, Bash, `timeout`, `sha256sum` and `spark-submit`; its instance role needs read/write access to the artifact prefix. The local launcher requires `jq` and sbt, or a prebuilt assembly supplied with `--jar`.
+
+Create a dedicated cluster with `aws emr create-cluster`, or use an existing idle cluster. The following example uses existing IAM roles, a chosen subnet and EMR 7.6.0; replace the parameters and size the instances for the [campaign plan](src/results/TODO.md). [AWS CLI cluster creation](https://docs.aws.amazon.com/cli/latest/reference/emr/create-cluster.html).
+
+```sh
+export AWS_DEFAULT_REGION=us-east-1
+export BENCHMARK_S3_PREFIX=s3://your-bucket/spark-lp-benchmarks
+export BENCHMARK_SUBNET=subnet-REPLACE
+export BENCHMARK_SERVICE_ROLE=EMR_DefaultRole
+export BENCHMARK_INSTANCE_PROFILE=EMR_EC2_DefaultRole
+BENCHMARK_CLUSTER_ID=$(aws emr create-cluster \
+  --name spark-lp-benchmarks --release-label emr-7.6.0 --applications Name=Spark \
+  --service-role "$BENCHMARK_SERVICE_ROLE" \
+  --ec2-attributes "InstanceProfile=$BENCHMARK_INSTANCE_PROFILE,SubnetId=$BENCHMARK_SUBNET" \
+  --instance-groups InstanceGroupType=MASTER,InstanceType=m5.2xlarge,InstanceCount=1 \
+    InstanceGroupType=CORE,InstanceType=m5.2xlarge,InstanceCount=4 \
+  --log-uri "$BENCHMARK_S3_PREFIX/emr-logs/" --no-auto-terminate \
+  --query ClusterId --output text)
+aws emr wait cluster-running --cluster-id "$BENCHMARK_CLUSTER_ID"
+
+bash benchmarks/scripts/cluster.sh \
+  --region "$AWS_DEFAULT_REGION" --cluster-id "$BENCHMARK_CLUSTER_ID" \
+  --s3-prefix "$BENCHMARK_S3_PREFIX/runs" --benchmark cg \
+  --case emr-rows-1000-vars-100000-width-32
+```
+
+The launcher builds the assembly, uploads the inventory and source archive to a unique run prefix, captures cluster/instance metadata, and submits one `command-runner.jar` step with `aws emr add-steps`. The step stages local inputs on the primary node and invokes `BenchmarkRunner` in YARN client mode. Driver heap comes from the selected CSV row. Use `--help` for executor, partition and repetition arguments; run algorithms sequentially on the same idle cluster. Cholesky is excluded before submission if its estimated payload exceeds half either configured heap. [AWS CLI step submission](https://docs.aws.amazon.com/cli/latest/reference/emr/add-steps.html), [EMR command runner](https://docs.aws.amazon.com/emr/latest/ReleaseGuide/emr-commandrunner.html).
+
+Add `--dry-run --jar /absolute/path/benchmarks-assembly.jar` to inspect the generated step JSON without AWS calls or a build. A prebuilt jar is hashed, but its source digest is marked unrecorded because the launcher cannot establish which source produced it. A launcher build preserves a source archive and its SHA-256 digest. Each run retains the submitted arguments, assembly/inventory hashes and actual runtime environment.
+
+Submission prints the step ID and S3 run URI. Monitor and download using AWS CLI:
+
+```sh
+aws emr describe-step --cluster-id "$BENCHMARK_CLUSTER_ID" --step-id s-REPLACE
+aws s3 cp s3://your-bucket/spark-lp-benchmarks/runs/RUN-ID/ /absolute/artifacts/emr-run/ --recursive
+# After completing the planned batch and checking uploaded artifacts:
+aws emr terminate-clusters --cluster-ids "$BENCHMARK_CLUSTER_ID"
+```
+
+Raw measurements, environment, command, application log and exit status upload under `results/`; Spark event logs go directly to `events/`, and submission inputs remain under `input/`. The step attempts the result upload on failure as well as success, and preserves a nonzero process exit. A whole-application timeout also bounds generation/validation to `(warmups + repetitions) × 30 minutes + 10 minutes`. Node loss or forced termination can prevent uploads; reconcile missing attempts against the step/container logs before importing. Executor memory sampling remains a [TODO](src/results/TODO.md).
+
+## Results and environments
+
+```sh
+python3 benchmarks/scripts/report.py import-jsonl /absolute/artifacts/scaling-run --campaign solver-scaling-new-run --output /tmp/solver-scaling-new-run.csv
+python3 benchmarks/scripts/report.py render
+python3 benchmarks/scripts/report.py check
+```
+
+Inspect the imported CSV before placing it under `src/results/data/`. Its filename must equal `campaign_id`. Every result row includes dimensions, algorithm/suite, configuration, environment, repetition, status, timing, accuracy, memory observations and source URI/path/hash/line. The source configuration ID keeps full recorded settings separate even when a setting is not a report column. Empty numeric cells mean unavailable. Verify provenance against the preserved artifact tree. `check` validates normalized records and confirms the report matches them.
+
+The report groups only homogeneous cases/configurations, excludes warmups, reports successful solve-time median/range, and shows failure duration where no attempt converged. No failure becomes a successful timing. Constant columns move above each table; ID and Env remain explicit references. The environment table describes the recorded machine/OS/Spark/Java/EMR environment, not the machine generating the Markdown.
+
+No campaign results are currently recorded. Case inventories in `src/main/resources/` define the inputs for the [remaining runs](src/results/TODO.md). Import measurements from completed runs to populate the report's benchmark, environment and result tables.
+
+## Memory
+
+For `m` rows, `n` variables, `z=nnz`, `E` executors, `q` active tasks/executor and actual preconditioner rank `r`, the report uses these numeric payload allowances:
+
+```text
+C = (12*z + 104*n)/E
+P = 4*m*(m+1)
+Cholesky executor = C + 2*q*P + 8*q*m     O((z+n)/E + q*m²)
+Cholesky driver   = 16*m*m + 64*m        O(m²)
+CG executor       = C + 32*q*m          O((z+n)/E + q*m)
+CG driver         = 64*m + 32*m*r       O(m + m*r)
+```
+
+`C` assumes sparse values/indices, column references and twelve `n`-double vector equivalents. `P` is one packed triangle; reductions can hold two per task. CG fetches one Gramian column at a time, so executor scratch scales with `m`; partial factors stay on the driver. At fixed local topology the executor bounds simplify to `O(z+n+m²)` and `O(z+n+m)`. These are calculated payload estimates, not measured process peaks or rigorous upper bounds. Extra caches, DataFrame/JVM objects, shuffle buffers, native memory and retained garbage are additional. Missing topology/rank prevents a numeric estimate. Report values are MiB (`2^20` bytes).
+
+Local Spark shares one JVM for driver and executor work; RSS samples therefore cover both. Distributed runs must measure each executor and the driver separately. The generator adds distributed DataFrame/cache/shuffle costs and `O(m)` driver vectors; it does not collect the complete matrix or `n`-length solutions. The driver and executor allowances must both fit with headroom before a large direct run is attempted.

@@ -285,6 +285,20 @@ private[dsl] final class TypedDomain[K, Key](
   }
 }
 
+/** Materialized portable keys; import preserves canonical identity without encoding a second time. */
+private[dsl] final class EncodedDomain(data: RDD[(String, Seq[String])], spark: SparkSession) extends DomainAccess {
+  override def keyPairs(): RDD[(String, Seq[String])] = data
+  override def columnPairs(column: Column, context: String): RDD[(String, Double)] =
+    throw new LpModelException(s"$context: imported domains have no source coefficient columns")
+  override def attachValues(values: RDD[(String, Double)], setName: String): DataFrame = {
+    val rows = data.join(values).map { case (key, (display, value)) =>
+      Row(key, KeyCodec.displayName(setName, display), value)
+    }
+    spark.createDataFrame(rows, StructType(Seq(StructField("lp_key", StringType, false),
+      StructField("lp_variable", StringType, false), StructField("lp_value", DoubleType, false))))
+  }
+}
+
 /** Internal identity + metadata shared by [[LpVariable]] and [[LpVariableSet]]. */
 private[dsl] final class VarSetHandle(
   val problem: LpProblem,

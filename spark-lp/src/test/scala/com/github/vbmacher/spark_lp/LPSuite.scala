@@ -1,5 +1,7 @@
 package com.github.vbmacher.spark_lp
 
+import com.github.vbmacher.spark_lp.newton.NewtonSolver
+
 import TestingUtils._
 import com.holdenkarau.spark.testing.DataFrameSuiteBase
 import org.apache.spark.mllib.linalg.{DenseVector, Vectors}
@@ -51,8 +53,8 @@ class LPSuite extends AnyFunSuite with DataFrameSuiteBase {
   }
 
   test("automatic CG preconditioner rank obeys its storage budget") {
-    assert(newton.autoMaxRank(1000000) == 8)
-    assert(newton.autoMaxRank(10000000) == 0)
+    assert(newton.CgFactory.autoMaxRank(1000000) == 8)
+    assert(newton.CgFactory.autoMaxRank(10000000) == 0)
   }
 
   test("capped normal-equations weights keep D squared equal to D2") {
@@ -86,6 +88,8 @@ class LPSuite extends AnyFunSuite with DataFrameSuiteBase {
   }
 
   test("core Auto resolves from the known equality-form row count") {
+    assert(LP.resolveNewtonSolver(NewtonSolver.Auto, 10000) == NewtonSolver.Cholesky)
+    assert(LP.resolveNewtonSolver(NewtonSolver.Auto, 10001) == NewtonSolver.ConjugateGradient)
     assert(LP.resolveNewtonSolver(NewtonSolver.Auto, NewtonSolver.AutoCholeskyLimit) == NewtonSolver.Cholesky)
     assert(LP.resolveNewtonSolver(NewtonSolver.Auto, NewtonSolver.AutoCholeskyLimit + 1) ==
       NewtonSolver.ConjugateGradient)

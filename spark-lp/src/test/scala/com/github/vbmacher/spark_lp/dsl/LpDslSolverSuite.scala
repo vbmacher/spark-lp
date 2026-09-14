@@ -1,5 +1,7 @@
 package com.github.vbmacher.spark_lp.dsl
 
+import com.github.vbmacher.spark_lp.dsl.compiler.LpCompiler
+
 import com.github.vbmacher.spark_lp.LP
 import com.github.vbmacher.spark_lp.TestingUtils._
 import com.github.vbmacher.spark_lp.dsl.implicits._
@@ -16,6 +18,17 @@ object LpDslSolverSuiteState {
 }
 
 class LpDslSolverSuite extends AnyFunSuite with DataFrameSuiteBase {
+
+  test("Auto policy and explicit overrides remain independent of the historical 5000-row boundary") {
+    assert(SolveConfig().resolvedNewtonSolver(10000) == NewtonSolver.Cholesky)
+    assert(SolveConfig().resolvedNewtonSolver(10001) == NewtonSolver.ConjugateGradient)
+    Seq(1000, 1001, 5000, 5001).foreach { m =>
+      assert(SolveConfig().resolvedNewtonSolver(m) == NewtonSolver.Cholesky)
+      assert(SolveConfig(newtonSolver = NewtonSolver.Cholesky).resolvedNewtonSolver(m) == NewtonSolver.Cholesky)
+    }
+    assert(SolveConfig(maxLocalConstraints = 50).resolvedNewtonSolver(51) == NewtonSolver.ConjugateGradient)
+    assert(SolveConfig(newtonSolver = NewtonSolver.ConjugateGradient).resolvedNewtonSolver(1) == NewtonSolver.ConjugateGradient)
+  }
 
   // fixture from LPSuite; optimum 12.083 at (1.667, 5.833, 40, 0, 0, 13.333, 9.167)
   private val cArray = Array(2.0, 1.5, 0.0, 0.0, 0.0, 0.0, 0.0)

@@ -30,14 +30,20 @@ object dmatrix {
         if (ncol % 2 == 0) (ncol / 2) * (ncol + 1)
         else ncol * ((ncol + 1) / 2)
 
-      // Compute the upper triangular part of the gram matrix.
-      val GU = matrix.treeAggregate(new BDV[Double](nt))(
+      // Allocate the packed accumulator on executors, not in the serialized task closure.
+      // A dense zero value otherwise sends O(ncol^2) bytes before any rows are processed.
+      val GU = matrix.treeAggregate[BDV[Double]](null)(
         seqOp = (U, v) => {
-          BLAS.spr(1.0, v, U.data)
-          //NativeBLAS.dspr("U", ncol, 1.0, v, 1, U) //symmetric rk 1 update included in BLAS netlib-java
-          U
-        }, combOp = (U1, U2) => U1 += U2, depth)
-      GU // column major == BLAS packed columnwise format
+          val accumulator = if (U == null) new BDV[Double](nt) else U
+          BLAS.spr(1.0, v, accumulator.data)
+          accumulator
+        }, combOp = (U1, U2) => {
+          if (U1 == null) U2
+          else if (U2 == null) U1
+          else U1 += U2
+        }, depth)
+      // An entirely empty matrix has an all-zero Gramian, including with zero partitions.
+      if (GU == null) new BDV[Double](nt) else GU // BLAS packed columnwise format
     }
 
     /**
@@ -170,6 +176,45 @@ object dmatrix {
         // NOTE A DenseVector result is assumed here (not sparse safe).
         matrix.mapPartitions(partitionRows =>
           Iterator.single(new DenseVector(partitionRows.map(row => BLAS.dot(row, x)).toArray)))
+      }
+
+      /** Apply `A^T diag(w) A x` in one streaming pass over the matrix per partition.
+        * Fusing the dot product and scaled-row accumulation avoids reading A twice and
+        * materializing partition-sized intermediate vectors. Weights, when supplied,
+        * must have the same partition layout as A (see [[adjointProduct]]).
+        * Only the O(ncol) partition sums are reduced; the Gramian is never formed.
+        */
+      def gramianProduct(x: Broadcast[DenseVector], w: Option[DVector] = None,
+        depth: Int = 2): DenseVector = {
+        val n = x.value.size
+        val perPartition = w match {
+          case Some(weights) =>
+            matrix.zipPartitions(weights)((rows, weightPartition) => {
+              val p = x.value
+              val sum = Vectors.zeros(n).toDense
+              rows.checkedZip(weightPartition.next().values.toIterator).foreach { case (row, wi) =>
+                BLAS.axpy(wi * BLAS.dot(row, p), row, sum)
+              }
+              Iterator.single(sum)
+            })
+          case None =>
+            matrix.mapPartitions(rows => {
+              val p = x.value
+              val sum = Vectors.zeros(n).toDense
+              rows.foreach(row => BLAS.axpy(BLAS.dot(row, p), row, sum))
+              Iterator.single(sum)
+            })
+        }
+        def merge(left: DenseVector, right: DenseVector): DenseVector = {
+          if (left == null) right
+          else if (right == null) left
+          else {
+            BLAS.axpy(1.0, right, left)
+            left
+          }
+        }
+        val result = perPartition.treeAggregate[DenseVector](null)(merge, merge, depth)
+        if (result == null) Vectors.zeros(n).toDense else result
       }
 
       /**

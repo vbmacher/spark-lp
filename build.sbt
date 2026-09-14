@@ -10,7 +10,7 @@ ThisBuild / homepage := Some(url("https://github.com/vbmacher/spark-lp"))
 ThisBuild / versionScheme := Some("semver-spec")
 
 // CHANGE VERSION HERE:
-lazy val productVersion = "1.1.1"
+lazy val productVersion = "1.2.0-SNAPSHOT"
 ThisBuild / version := productVersion // needs to be defined at root, so isSnapshot setting is properly set
 
 lazy val scalaLibVersion = "2.12.20"
@@ -89,6 +89,26 @@ lazy val examples = projectMatrix
             libraryDependencies ++= Libs.jOptimizer +: sparkAxes.last._1.sparkLibs,
             publishArtifact := false))
 
+lazy val benchmarks = projectMatrix
+        .dependsOn(`spark-lp`)
+        .customRow(
+          scalaVersions = Seq(scalaLibVersion),
+          axisValues = Seq(sparkAxes.last._2, VirtualAxis.jvm),
+          _.settings(
+            name := "benchmarks",
+            fork := true,
+            Test / parallelExecution := false,
+            javaOptions ++= Seq("-Xms4G", "-Xmx4G"),
+            libraryDependencies ++= sparkAxes.last._1.sparkLibs.flatMap(r => Seq(r % Provided, r % Test)) ++
+              Seq(Libs.log4jImpl % Test) ++ Libs.scalaTestLibs,
+            assembly / assemblyMergeStrategy := {
+              case PathList("META-INF", "services", _*) => MergeStrategy.concat
+              case PathList("META-INF", _*) => MergeStrategy.discard
+              case _ => MergeStrategy.first
+            },
+            publish / skip := true,
+            publishArtifact := false))
+
 lazy val root = (project in file("."))
-        .aggregate(`spark-lp`.projectRefs ++ examples.projectRefs: _*)
+        .aggregate(`spark-lp`.projectRefs ++ examples.projectRefs ++ benchmarks.projectRefs: _*)
         .settings(publishArtifact := false)

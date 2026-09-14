@@ -45,7 +45,7 @@ def public_identifier(value):
 
 def public_result_row(row):
     """Export measurements through an allowlist; infrastructure stays in raw artifacts."""
-    result = {key: row.get(key) for key in CSV_FIELDS}
+    result = {key: row.get(key) for key in PUBLIC_FIELDS}
     for key in ('campaign_id', 'case_id'):
         result[key] = public_identifier(result[key])
     if result.get('spark_master') == 'yarn':
@@ -313,6 +313,7 @@ def render_table(columns, rows, extract_shared=True):
 
 
 def render_tables(campaigns):
+    from bencher_export import result_filename
     plan_columns = ['ID', 'Type', 'Rows m', 'Variables n', 'Campaign / case', 'Purpose',
                     'Control', 'Fixture family', 'Seed', 'Nonzeros', 'Density (%)',
                     'Nonzeros / column', 'Nonzeros / row', 'Row-scale ratio', 'Tolerance', 'Outer limit',
@@ -353,7 +354,6 @@ def render_tables(campaigns):
             warmup_outcomes = ', '.join(f'{k} ×{v}' for k, v in sorted(
                 collections.Counter(r['status'] for r in warmups).items())) or 'unrecorded'
             benchmark_id = f'{prefixes.get(c["campaign_id"], c["campaign_id"].upper())}-{index:02d}'
-            benchmark_id = benchmark_id.removeprefix('RERUN-20260914-')
             suite = configs[cfg_id].get('suite', ALGORITHM_SUITES.get(configs[cfg_id]['algorithm']))
             if suite:
                 benchmark_id += f' · [{suite.split(".")[-1]}](../main/scala/{suite.replace(".", "/")}.scala)'
@@ -426,7 +426,7 @@ def render_tables(campaigns):
             heap = cfg.get('heap_gib', environment.get('heap_gib'))
             repetitions = len({r['repetition'] for r in group})
             budget = cfg.get('preconditioner_memory_bytes')
-            filename = c['campaign_id'] + '.csv'
+            filename = result_filename(c['campaign_id'], cfg)
             plan = [benchmark_id, cfg['algorithm'], f'{m:,}', f'{n:,}', f'{title} / {name}',
                     purpose or 'unrecorded', control, parameter(case['shape'].get('family')), parameter(case['shape'].get('seed')),
                     'unrecorded' if z is None else f'{z:,}',
@@ -459,7 +459,7 @@ def render_tables(campaigns):
 def render_report(campaigns, executor_memory=()):
     measured = [r for c in campaigns for r in c['records'] if not r['warmup']]
     warmups = sum(r['warmup'] for c in campaigns for r in c['records'])
-    report = (f'# Benchmarks\n\nCaptured evidence: {len(campaigns)} campaign files, '
+    report = (f'# Benchmarks\n\nCaptured evidence: {len(campaigns)} campaigns, '
               f'{len(measured)} measured slots and {warmups} warmup records. '
               'Tables include partial batches, failures and resource exclusions. '
               'Warmups are shown separately and excluded from solve statistics; '
@@ -469,7 +469,7 @@ def render_report(campaigns, executor_memory=()):
                    'Whole-application peaks include generation, warmup, preparation, solve and validation, '
                    'with 1,000 ms polling and per-stage peak logging. These are per-executor observations; '
                    'JVM non-heap does not cover all native memory. '
-                   'Source: [executor-memory-20260914.csv](executor-memory-20260914.csv).\n\n'
+                   'Source: [executor-memory.bmf.json](data/executor-memory.bmf.json).\n\n'
                    + render_table(['Case', 'Backend', 'Variant', 'Executor', 'Peak heap', 'Peak RSS',
                                    'Peak JVM non-heap', 'Scope'],
                        [[r['case'], r['backend'], r['variant'], r['executor_id'],
@@ -479,7 +479,7 @@ def render_report(campaigns, executor_memory=()):
     return report
 
 
-# Each physical CSV record is a measured attempt. Empty numeric cells mean unavailable.
+# Flattened public evidence fields used to sanitize imported attempts. Empty values mean unavailable.
 CASE_FIELDS = 'case_id,m,n,nnz,fixture_family,seed,nonzeros_per_column,nonzeros_per_row,row_scale_ratio,blocks,fixture_hash'.split(',')
 ENV_FIELDS = 'computer,os,spark_version,java_version,blas,spark_master'.split(',')
 CONFIG_FIELDS = ('source_configuration_id,suite,algorithm,implementation,scenario,control,tolerance,outer_limit,eta,cg_tolerance,'
@@ -489,7 +489,7 @@ RESULT_FIELDS = ('repetition,attempt,warmup,status,solve_seconds,outer_iteration
                  'rank_escalations,max_rank,accuracy_basis,primal,dual,gap,objective,objective_error,min_x,min_s,'
                  'peak_heap_bytes,peak_rss_bytes,memory_scope,spark_jobs').split(',')
 SOURCE_FIELDS = 'source_path,source_revision,source_sha256,source_line'.split(',')
-CSV_FIELDS = ['campaign_id', 'configuration_id', 'environment_id'] + CASE_FIELDS + CONFIG_FIELDS + RESULT_FIELDS + SOURCE_FIELDS
+PUBLIC_FIELDS = ['campaign_id', 'configuration_id', 'environment_id'] + CASE_FIELDS + CONFIG_FIELDS + RESULT_FIELDS + SOURCE_FIELDS
 ALGORITHM_SUITES = {'Cholesky': 'com.github.vbmacher.spark_lp.CholeskyBenchmark',
                     'CG': 'com.github.vbmacher.spark_lp.CGBenchmark'}
 
@@ -541,33 +541,33 @@ def flat_rows(c):
         yield public_result_row(row)
 
 
-def write_campaign(c, path):
+def public_campaign(c):
+    """Normalize and sanitize captured evidence before storing the Bencher metadata."""
     validate(c)
+    rows = [{key: '' if value is None else str(value) for key, value in row.items()}
+            for row in flat_rows(c)]
+    return campaign_from_rows(public_identifier(c['campaign_id']), rows)
+
+
+def write_campaign(c, path):
+    from bencher_export import read_bundle, write_bundle
     path = Path(path)
-    path = path.with_name(public_identifier(path.name))
-    if path.suffix != '.csv':
-        raise ValueError('Measured campaign output must have a .csv extension')
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open('x', newline='', encoding='utf-8') as out:
-        writer = csv.DictWriter(out, fieldnames=CSV_FIELDS, lineterminator='\n')
-        writer.writeheader()
-        writer.writerows(sorted(flat_rows(c), key=lambda r: (r['case_id'], r['algorithm'], r['configuration_id'], r['repetition'], r['attempt'])))
+    campaigns, memory = read_bundle(path / 'data') if (path / 'manifest.json').exists() else ([], [])
+    c = public_campaign(c)
+    if any(existing['campaign_id'] == c['campaign_id'] for existing in campaigns):
+        raise ValueError('Campaign already exists; use a new campaign ID')
+    write_bundle(campaigns + [c], memory, path)
 
 
-def read_campaign(path):
-    with Path(path).open(newline='', encoding='utf-8') as source:
-        reader = csv.DictReader(source)
-        if reader.fieldnames != CSV_FIELDS:
-            raise ValueError(f'Unexpected result columns in {path}')
-        rows = list(reader)
-    c = campaign(Path(path).stem, Path(path).stem.replace('-', ' ').capitalize(), [])
+def campaign_from_rows(cid, rows):
+    c = campaign(cid, cid.replace('-', ' ').capitalize(), [])
     for v in rows:
         if None in v or any(value is None for value in v.values()):
-            raise ValueError('Result CSV row width differs from its header')
+            raise ValueError('Incomplete evidence record')
         if any(omit_storage_locations(value) != value for value in v.values()):
-            raise ValueError('Result CSV contains private infrastructure information')
+            raise ValueError('Evidence contains private infrastructure information')
         if v['campaign_id'] != c['campaign_id']:
-            raise ValueError('Campaign ID differs from filename')
+            raise ValueError('Campaign ID differs from evidence')
         if v['configuration_id'] != 'cfg-' + digest(canonical({k:v[k] for k in CONFIG_FIELDS}).encode())[:16]:
             raise ValueError('Configuration ID differs from settings')
         if v['environment_id'] != 'env-' + digest(canonical({k:v[k] for k in ENV_FIELDS}).encode())[:12]:
@@ -630,18 +630,8 @@ def main():
             parser.error('campaign must be a stable lowercase slug')
         write_campaign(import_jsonl(args.directory, args.campaign, args.artifact_uri), args.output)
     else:
-        campaigns = []
-        for path in sorted(args.data.glob('*.csv')):
-            c = read_campaign(path)
-            if path.stem != c['campaign_id']:
-                raise ValueError(f'Campaign file must be named {c["campaign_id"]}.csv: {path}')
-            validate(c)
-            campaigns.append(c)
-        if len({c['campaign_id'] for c in campaigns}) != len(campaigns):
-            raise ValueError('Duplicate campaign ID')
-        memory_path = args.data.parent / 'executor-memory-20260914.csv'
-        with memory_path.open(newline='') if memory_path.exists() else io.StringIO('') as source:
-            executor_memory = list(csv.DictReader(source))
+        from bencher_export import read_bundle
+        campaigns, executor_memory = read_bundle(args.data)
         generated = render_report(campaigns, executor_memory)
         if args.command == 'check' and args.report.read_text() != generated:
             raise ValueError('REPORT.md is stale; run report.py render')

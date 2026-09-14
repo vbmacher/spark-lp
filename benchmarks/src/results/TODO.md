@@ -18,7 +18,7 @@ Use the [case inventories and execution protocol](../../README.md). Apply the do
 
 - [ ] Reconcile each inventory/configuration/repetition with records and process exits, distinguishing unknown evidence, unrun slots, resource exclusions and attempted failures.
 - [ ] Validate every claimed success against independent normalized primal, dual, gap and objective errors and the case's nonnegativity tolerance.
-- [ ] Import outstanding artifacts into campaign CSVs and regenerate the report. Keep raw evidence private; publish generic runtime settings, relative evidence filenames and checksums only.
+- [ ] Import outstanding artifacts into the Bencher bundle and regenerate the report. Keep raw evidence private; publish generic runtime settings, relative evidence filenames and checksums only.
 - [ ] Separate generation, preparation, core solve, validation and release timings, and show unsuccessful durations separately from successful solve statistics.
 - [ ] Report driver and executor memory separately; identify combined local RSS and whole-application peaks accurately.
 - [ ] Run `python3 benchmarks/scripts/report.py check` on the complete imported result set.

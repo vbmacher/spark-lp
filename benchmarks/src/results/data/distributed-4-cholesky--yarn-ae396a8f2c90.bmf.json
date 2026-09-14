@@ -1,0 +1,46 @@
+{
+  "distributed-rows-10000-vars-10000000-width-64 / Cholesky / cfg-6fb2f0f8830e6674": {
+    "measured-attempted-count": {
+      "value": 0
+    },
+    "measured-converged-count": {
+      "value": 0
+    },
+    "measured-excluded-count": {
+      "value": 0
+    },
+    "measured-failed-count": {
+      "value": 0
+    },
+    "measured-records-count": {
+      "value": 5
+    },
+    "measured-unknown-count": {
+      "value": 0
+    },
+    "measured-unrun-count": {
+      "value": 5
+    },
+    "warmup-attempted-count": {
+      "value": 1
+    },
+    "warmup-converged-count": {
+      "value": 0
+    },
+    "warmup-excluded-count": {
+      "value": 0
+    },
+    "warmup-failed-count": {
+      "value": 1
+    },
+    "warmup-records-count": {
+      "value": 1
+    },
+    "warmup-unknown-count": {
+      "value": 0
+    },
+    "warmup-unrun-count": {
+      "value": 0
+    }
+  }
+}

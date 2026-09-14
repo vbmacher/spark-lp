@@ -1,0 +1,3482 @@
+{
+  "primary-100-10-20-well-11-1e-08-4 / CG / cfg-e57599231c883a6e": {
+    "cg-restarts": {
+      "lower_value": 0,
+      "upper_value": 0,
+      "value": 0
+    },
+    "cg-steps": {
+      "lower_value": 236,
+      "upper_value": 236,
+      "value": 236
+    },
+    "combined-process-heap-bytes-max": {
+      "value": 3083218240
+    },
+    "combined-process-rss-bytes-max": {
+      "value": 4033380352
+    },
+    "dual-max": {
+      "value": 5.6798484843171e-17
+    },
+    "gap-max": {
+      "value": 1.228301551319294e-10
+    },
+    "latency": {
+      "lower_value": 8903802764.0,
+      "upper_value": 9807903154.0,
+      "value": 9038165269.0
+    },
+    "maximum-rank": {
+      "lower_value": 0,
+      "upper_value": 0,
+      "value": 0
+    },
+    "measured-attempted-count": {
+      "value": 5
+    },
+    "measured-converged-count": {
+      "value": 5
+    },
+    "measured-excluded-count": {
+      "value": 0
+    },
+    "measured-failed-count": {
+      "value": 0
+    },
+    "measured-records-count": {
+      "value": 5
+    },
+    "measured-unknown-count": {
+      "value": 0
+    },
+    "measured-unrun-count": {
+      "value": 0
+    },
+    "objective-error-max": {
+      "value": 1.1021666524852772e-10
+    },
+    "outer-iterations": {
+      "lower_value": 9,
+      "upper_value": 9,
+      "value": 9
+    },
+    "primal-max": {
+      "value": 1.2573420679217622e-10
+    },
+    "warmup-attempted-count": {
+      "value": 1
+    },
+    "warmup-converged-count": {
+      "value": 1
+    },
+    "warmup-excluded-count": {
+      "value": 0
+    },
+    "warmup-failed-count": {
+      "value": 0
+    },
+    "warmup-records-count": {
+      "value": 1
+    },
+    "warmup-unknown-count": {
+      "value": 0
+    },
+    "warmup-unrun-count": {
+      "value": 0
+    }
+  },
+  "primary-100-10-20-well-11-1e-08-4 / Cholesky / cfg-ccf9b49ed878ed68": {
+    "cg-restarts": {
+      "lower_value": 0,
+      "upper_value": 0,
+      "value": 0
+    },
+    "cg-steps": {
+      "lower_value": 0,
+      "upper_value": 0,
+      "value": 0
+    },
+    "combined-process-heap-bytes-max": {
+      "value": 3291191808
+    },
+    "combined-process-rss-bytes-max": {
+      "value": 4176887808
+    },
+    "dual-max": {
+      "value": 4.927669046895368e-17
+    },
+    "gap-max": {
+      "value": 2.5556182977800095e-11
+    },
+    "latency": {
+      "lower_value": 3420101624.0,
+      "upper_value": 4273038926.0,
+      "value": 3848667015.0
+    },
+    "maximum-rank": {
+      "lower_value": 0,
+      "upper_value": 0,
+      "value": 0
+    },
+    "measured-attempted-count": {
+      "value": 5
+    },
+    "measured-converged-count": {
+      "value": 5
+    },
+    "measured-excluded-count": {
+      "value": 0
+    },
+    "measured-failed-count": {
+      "value": 0
+    },
+    "measured-records-count": {
+      "value": 5
+    },
+    "measured-unknown-count": {
+      "value": 0
+    },
+    "measured-unrun-count": {
+      "value": 0
+    },
+    "objective-error-max": {
+      "value": 1.294230396653107e-11
+    },
+    "outer-iterations": {
+      "lower_value": 9,
+      "upper_value": 9,
+      "value": 9
+    },
+    "primal-max": {
+      "value": 1.7226587251165238e-16
+    },
+    "warmup-attempted-count": {
+      "value": 1
+    },
+    "warmup-converged-count": {
+      "value": 1
+    },
+    "warmup-excluded-count": {
+      "value": 0
+    },
+    "warmup-failed-count": {
+      "value": 0
+    },
+    "warmup-records-count": {
+      "value": 1
+    },
+    "warmup-unknown-count": {
+      "value": 0
+    },
+    "warmup-unrun-count": {
+      "value": 0
+    }
+  },
+  "primary-100-10-20-well-29-1e-08-4 / CG / cfg-e57599231c883a6e": {
+    "cg-restarts": {
+      "lower_value": 0,
+      "upper_value": 0,
+      "value": 0
+    },
+    "cg-steps": {
+      "lower_value": 200,
+      "upper_value": 200,
+      "value": 200
+    },
+    "combined-process-heap-bytes-max": {
+      "value": 3043112864
+    },
+    "combined-process-rss-bytes-max": {
+      "value": 4031004672
+    },
+    "dual-max": {
+      "value": 1.0784856729893141e-15
+    },
+    "gap-max": {
+      "value": 6.311310930566894e-09
+    },
+    "latency": {
+      "lower_value": 7313947197.999999,
+      "upper_value": 8068285590.0,
+      "value": 7697525614.0
+    },
+    "maximum-rank": {
+      "lower_value": 0,
+      "upper_value": 0,
+      "value": 0
+    },
+    "measured-attempted-count": {
+      "value": 5
+    },
+    "measured-converged-count": {
+      "value": 5
+    },
+    "measured-excluded-count": {
+      "value": 0
+    },
+    "measured-failed-count": {
+      "value": 0
+    },
+    "measured-records-count": {
+      "value": 5
+    },
+    "measured-unknown-count": {
+      "value": 0
+    },
+    "measured-unrun-count": {
+      "value": 0
+    },
+    "objective-error-max": {
+      "value": 4.061587993529097e-09
+    },
+    "outer-iterations": {
+      "lower_value": 7,
+      "upper_value": 7,
+      "value": 7
+    },
+    "primal-max": {
+      "value": 3.5268717992409424e-15
+    },
+    "warmup-attempted-count": {
+      "value": 1
+    },
+    "warmup-converged-count": {
+      "value": 1
+    },
+    "warmup-excluded-count": {
+      "value": 0
+    },
+    "warmup-failed-count": {
+      "value": 0
+    },
+    "warmup-records-count": {
+      "value": 1
+    },
+    "warmup-unknown-count": {
+      "value": 0
+    },
+    "warmup-unrun-count": {
+      "value": 0
+    }
+  },
+  "primary-100-10-20-well-29-1e-08-4 / Cholesky / cfg-ccf9b49ed878ed68": {
+    "cg-restarts": {
+      "lower_value": 0,
+      "upper_value": 0,
+      "value": 0
+    },
+    "cg-steps": {
+      "lower_value": 0,
+      "upper_value": 0,
+      "value": 0
+    },
+    "combined-process-heap-bytes-max": {
+      "value": 3263121632
+    },
+    "combined-process-rss-bytes-max": {
+      "value": 3976052736
+    },
+    "dual-max": {
+      "value": 4.8073169457081144e-17
+    },
+    "gap-max": {
+      "value": 6.311384858470824e-09
+    },
+    "latency": {
+      "lower_value": 2393242578.0,
+      "upper_value": 2601395202.0,
+      "value": 2439857061.9999995
+    },
+    "maximum-rank": {
+      "lower_value": 0,
+      "upper_value": 0,
+      "value": 0
+    },
+    "measured-attempted-count": {
+      "value": 5
+    },
+    "measured-converged-count": {
+      "value": 5
+    },
+    "measured-excluded-count": {
+      "value": 0
+    },
+    "measured-failed-count": {
+      "value": 0
+    },
+    "measured-records-count": {
+      "value": 5
+    },
+    "measured-unknown-count": {
+      "value": 0
+    },
+    "measured-unrun-count": {
+      "value": 0
+    },
+    "objective-error-max": {
+      "value": 4.061585703726783e-09
+    },
+    "outer-iterations": {
+      "lower_value": 7,
+      "upper_value": 7,
+      "value": 7
+    },
+    "primal-max": {
+      "value": 2.8958502353177173e-16
+    },
+    "warmup-attempted-count": {
+      "value": 1
+    },
+    "warmup-converged-count": {
+      "value": 1
+    },
+    "warmup-excluded-count": {
+      "value": 0
+    },
+    "warmup-failed-count": {
+      "value": 0
+    },
+    "warmup-records-count": {
+      "value": 1
+    },
+    "warmup-unknown-count": {
+      "value": 0
+    },
+    "warmup-unrun-count": {
+      "value": 0
+    }
+  },
+  "primary-100-10-20-well-47-1e-08-4 / CG / cfg-e57599231c883a6e": {
+    "cg-restarts": {
+      "lower_value": 0,
+      "upper_value": 0,
+      "value": 0
+    },
+    "cg-steps": {
+      "lower_value": 207,
+      "upper_value": 207,
+      "value": 207
+    },
+    "combined-process-heap-bytes-max": {
+      "value": 3139149440
+    },
+    "combined-process-rss-bytes-max": {
+      "value": 4068442112
+    },
+    "dual-max": {
+      "value": 2.352634299140917e-15
+    },
+    "gap-max": {
+      "value": 4.826966358358448e-09
+    },
+    "latency": {
+      "lower_value": 7762948606.0,
+      "upper_value": 11130299800.0,
+      "value": 8193370966.0
+    },
+    "maximum-rank": {
+      "lower_value": 0,
+      "upper_value": 0,
+      "value": 0
+    },
+    "measured-attempted-count": {
+      "value": 5
+    },
+    "measured-converged-count": {
+      "value": 5
+    },
+    "measured-excluded-count": {
+      "value": 0
+    },
+    "measured-failed-count": {
+      "value": 0
+    },
+    "measured-records-count": {
+      "value": 5
+    },
+    "measured-unknown-count": {
+      "value": 0
+    },
+    "measured-unrun-count": {
+      "value": 0
+    },
+    "objective-error-max": {
+      "value": 3.6116557469034562e-09
+    },
+    "outer-iterations": {
+      "lower_value": 7,
+      "upper_value": 7,
+      "value": 7
+    },
+    "primal-max": {
+      "value": 3.1221835779247394e-14
+    },
+    "warmup-attempted-count": {
+      "value": 1
+    },
+    "warmup-converged-count": {
+      "value": 1
+    },
+    "warmup-excluded-count": {
+      "value": 0
+    },
+    "warmup-failed-count": {
+      "value": 0
+    },
+    "warmup-records-count": {
+      "value": 1
+    },
+    "warmup-unknown-count": {
+      "value": 0
+    },
+    "warmup-unrun-count": {
+      "value": 0
+    }
+  },
+  "primary-100-10-20-well-47-1e-08-4 / Cholesky / cfg-ccf9b49ed878ed68": {
+    "cg-restarts": {
+      "lower_value": 0,
+      "upper_value": 0,
+      "value": 0
+    },
+    "cg-steps": {
+      "lower_value": 0,
+      "upper_value": 0,
+      "value": 0
+    },
+    "combined-process-heap-bytes-max": {
+      "value": 3328123376
+    },
+    "combined-process-rss-bytes-max": {
+      "value": 4106502144
+    },
+    "dual-max": {
+      "value": 4.851573207079273e-17
+    },
+    "gap-max": {
+      "value": 4.827045200098927e-09
+    },
+    "latency": {
+      "lower_value": 2321649472.0000005,
+      "upper_value": 2607003105.0000005,
+      "value": 2421167884.0
+    },
+    "maximum-rank": {
+      "lower_value": 0,
+      "upper_value": 0,
+      "value": 0
+    },
+    "measured-attempted-count": {
+      "value": 5
+    },
+    "measured-converged-count": {
+      "value": 5
+    },
+    "measured-excluded-count": {
+      "value": 0
+    },
+    "measured-failed-count": {
+      "value": 0
+    },
+    "measured-records-count": {
+      "value": 5
+    },
+    "measured-unknown-count": {
+      "value": 0
+    },
+    "measured-unrun-count": {
+      "value": 0
+    },
+    "objective-error-max": {
+      "value": 3.6116696404585003e-09
+    },
+    "outer-iterations": {
+      "lower_value": 7,
+      "upper_value": 7,
+      "value": 7
+    },
+    "primal-max": {
+      "value": 2.863211322802637e-16
+    },
+    "warmup-attempted-count": {
+      "value": 1
+    },
+    "warmup-converged-count": {
+      "value": 1
+    },
+    "warmup-excluded-count": {
+      "value": 0
+    },
+    "warmup-failed-count": {
+      "value": 0
+    },
+    "warmup-records-count": {
+      "value": 1
+    },
+    "warmup-unknown-count": {
+      "value": 0
+    },
+    "warmup-unrun-count": {
+      "value": 0
+    }
+  },
+  "primary-1000-10-20-well-11-1e-08-4 / CG / cfg-e57599231c883a6e": {
+    "cg-restarts": {
+      "lower_value": 0,
+      "upper_value": 0,
+      "value": 0
+    },
+    "cg-steps": {
+      "lower_value": 268,
+      "upper_value": 268,
+      "value": 268
+    },
+    "combined-process-heap-bytes-max": {
+      "value": 3402039840
+    },
+    "combined-process-rss-bytes-max": {
+      "value": 4273913856
+    },
+    "dual-max": {
+      "value": 5.136444570809853e-17
+    },
+    "gap-max": {
+      "value": 2.0906791640120604e-11
+    },
+    "latency": {
+      "lower_value": 9758260948.0,
+      "upper_value": 10174278235.0,
+      "value": 9910814419.0
+    },
+    "maximum-rank": {
+      "lower_value": 0,
+      "upper_value": 0,
+      "value": 0
+    },
+    "measured-attempted-count": {
+      "value": 5
+    },
+    "measured-converged-count": {
+      "value": 5
+    },
+    "measured-excluded-count": {
+      "value": 0
+    },
+    "measured-failed-count": {
+      "value": 0
+    },
+    "measured-records-count": {
+      "value": 5
+    },
+    "measured-unknown-count": {
+      "value": 0
+    },
+    "measured-unrun-count": {
+      "value": 0
+    },
+    "objective-error-max": {
+      "value": 1.0667690934951832e-11
+    },
+    "outer-iterations": {
+      "lower_value": 9,
+      "upper_value": 9,
+      "value": 9
+    },
+    "primal-max": {
+      "value": 3.105306513476261e-12
+    },
+    "warmup-attempted-count": {
+      "value": 1
+    },
+    "warmup-converged-count": {
+      "value": 1
+    },
+    "warmup-excluded-count": {
+      "value": 0
+    },
+    "warmup-failed-count": {
+      "value": 0
+    },
+    "warmup-records-count": {
+      "value": 1
+    },
+    "warmup-unknown-count": {
+      "value": 0
+    },
+    "warmup-unrun-count": {
+      "value": 0
+    }
+  },
+  "primary-1000-10-20-well-11-1e-08-4 / Cholesky / cfg-ccf9b49ed878ed68": {
+    "cg-restarts": {
+      "lower_value": 0,
+      "upper_value": 0,
+      "value": 0
+    },
+    "cg-steps": {
+      "lower_value": 0,
+      "upper_value": 0,
+      "value": 0
+    },
+    "combined-process-heap-bytes-max": {
+      "value": 3180302320
+    },
+    "combined-process-rss-bytes-max": {
+      "value": 4205608960
+    },
+    "dual-max": {
+      "value": 5.207605512573091e-17
+    },
+    "gap-max": {
+      "value": 2.8183012035534177e-11
+    },
+    "latency": {
+      "lower_value": 4515469095.0,
+      "upper_value": 5237633078.0,
+      "value": 4640987640.000001
+    },
+    "maximum-rank": {
+      "lower_value": 0,
+      "upper_value": 0,
+      "value": 0
+    },
+    "measured-attempted-count": {
+      "value": 5
+    },
+    "measured-converged-count": {
+      "value": 5
+    },
+    "measured-excluded-count": {
+      "value": 0
+    },
+    "measured-failed-count": {
+      "value": 0
+    },
+    "measured-records-count": {
+      "value": 5
+    },
+    "measured-unknown-count": {
+      "value": 0
+    },
+    "measured-unrun-count": {
+      "value": 0
+    },
+    "objective-error-max": {
+      "value": 1.794351077867407e-11
+    },
+    "outer-iterations": {
+      "lower_value": 9,
+      "upper_value": 9,
+      "value": 9
+    },
+    "primal-max": {
+      "value": 1.7656704427340703e-16
+    },
+    "warmup-attempted-count": {
+      "value": 1
+    },
+    "warmup-converged-count": {
+      "value": 1
+    },
+    "warmup-excluded-count": {
+      "value": 0
+    },
+    "warmup-failed-count": {
+      "value": 0
+    },
+    "warmup-records-count": {
+      "value": 1
+    },
+    "warmup-unknown-count": {
+      "value": 0
+    },
+    "warmup-unrun-count": {
+      "value": 0
+    }
+  },
+  "primary-1000-10-20-well-29-1e-08-4 / CG / cfg-e57599231c883a6e": {
+    "cg-restarts": {
+      "lower_value": 0,
+      "upper_value": 0,
+      "value": 0
+    },
+    "cg-steps": {
+      "lower_value": 272,
+      "upper_value": 272,
+      "value": 272
+    },
+    "combined-process-heap-bytes-max": {
+      "value": 3398659904
+    },
+    "combined-process-rss-bytes-max": {
+      "value": 4356636672
+    },
+    "dual-max": {
+      "value": 5.2588045939931826e-17
+    },
+    "gap-max": {
+      "value": 1.223788063177003e-11
+    },
+    "latency": {
+      "lower_value": 10371319385.0,
+      "upper_value": 15875730170.0,
+      "value": 12678056156.0
+    },
+    "maximum-rank": {
+      "lower_value": 0,
+      "upper_value": 0,
+      "value": 0
+    },
+    "measured-attempted-count": {
+      "value": 5
+    },
+    "measured-converged-count": {
+      "value": 5
+    },
+    "measured-excluded-count": {
+      "value": 0
+    },
+    "measured-failed-count": {
+      "value": 0
+    },
+    "measured-records-count": {
+      "value": 5
+    },
+    "measured-unknown-count": {
+      "value": 0
+    },
+    "measured-unrun-count": {
+      "value": 0
+    },
+    "objective-error-max": {
+      "value": 8.754306705376786e-12
+    },
+    "outer-iterations": {
+      "lower_value": 9,
+      "upper_value": 9,
+      "value": 9
+    },
+    "primal-max": {
+      "value": 2.1104295653698547e-12
+    },
+    "warmup-attempted-count": {
+      "value": 1
+    },
+    "warmup-converged-count": {
+      "value": 1
+    },
+    "warmup-excluded-count": {
+      "value": 0
+    },
+    "warmup-failed-count": {
+      "value": 0
+    },
+    "warmup-records-count": {
+      "value": 1
+    },
+    "warmup-unknown-count": {
+      "value": 0
+    },
+    "warmup-unrun-count": {
+      "value": 0
+    }
+  },
+  "primary-1000-10-20-well-29-1e-08-4 / Cholesky / cfg-ccf9b49ed878ed68": {
+    "cg-restarts": {
+      "lower_value": 0,
+      "upper_value": 0,
+      "value": 0
+    },
+    "cg-steps": {
+      "lower_value": 0,
+      "upper_value": 0,
+      "value": 0
+    },
+    "combined-process-heap-bytes-max": {
+      "value": 3290759640
+    },
+    "combined-process-rss-bytes-max": {
+      "value": 4277207040
+    },
+    "dual-max": {
+      "value": 5.2145964774624516e-17
+    },
+    "gap-max": {
+      "value": 1.1280704624302537e-11
+    },
+    "latency": {
+      "lower_value": 5850943765.0,
+      "upper_value": 6194074437.0,
+      "value": 5983159091.999999
+    },
+    "maximum-rank": {
+      "lower_value": 0,
+      "upper_value": 0,
+      "value": 0
+    },
+    "measured-attempted-count": {
+      "value": 5
+    },
+    "measured-converged-count": {
+      "value": 5
+    },
+    "measured-excluded-count": {
+      "value": 0
+    },
+    "measured-failed-count": {
+      "value": 0
+    },
+    "measured-records-count": {
+      "value": 5
+    },
+    "measured-unknown-count": {
+      "value": 0
+    },
+    "measured-unrun-count": {
+      "value": 0
+    },
+    "objective-error-max": {
+      "value": 7.797130697905958e-12
+    },
+    "outer-iterations": {
+      "lower_value": 9,
+      "upper_value": 9,
+      "value": 9
+    },
+    "primal-max": {
+      "value": 1.778737473404529e-16
+    },
+    "warmup-attempted-count": {
+      "value": 1
+    },
+    "warmup-converged-count": {
+      "value": 1
+    },
+    "warmup-excluded-count": {
+      "value": 0
+    },
+    "warmup-failed-count": {
+      "value": 0
+    },
+    "warmup-records-count": {
+      "value": 1
+    },
+    "warmup-unknown-count": {
+      "value": 0
+    },
+    "warmup-unrun-count": {
+      "value": 0
+    }
+  },
+  "primary-1000-10-20-well-47-1e-08-4 / CG / cfg-e57599231c883a6e": {
+    "cg-restarts": {
+      "lower_value": 0,
+      "upper_value": 0,
+      "value": 0
+    },
+    "cg-steps": {
+      "lower_value": 262,
+      "upper_value": 262,
+      "value": 262
+    },
+    "combined-process-heap-bytes-max": {
+      "value": 3071658624
+    },
+    "combined-process-rss-bytes-max": {
+      "value": 4103241728
+    },
+    "dual-max": {
+      "value": 6.689885195156141e-16
+    },
+    "gap-max": {
+      "value": 8.51394256243669e-09
+    },
+    "latency": {
+      "lower_value": 13223933050.0,
+      "upper_value": 15327498890.0,
+      "value": 14409935266.0
+    },
+    "maximum-rank": {
+      "lower_value": 0,
+      "upper_value": 0,
+      "value": 0
+    },
+    "measured-attempted-count": {
+      "value": 5
+    },
+    "measured-converged-count": {
+      "value": 5
+    },
+    "measured-excluded-count": {
+      "value": 0
+    },
+    "measured-failed-count": {
+      "value": 0
+    },
+    "measured-records-count": {
+      "value": 5
+    },
+    "measured-unknown-count": {
+      "value": 0
+    },
+    "measured-unrun-count": {
+      "value": 0
+    },
+    "objective-error-max": {
+      "value": 6.173692671132344e-09
+    },
+    "outer-iterations": {
+      "lower_value": 8,
+      "upper_value": 8,
+      "value": 8
+    },
+    "primal-max": {
+      "value": 1.7044592668062113e-15
+    },
+    "warmup-attempted-count": {
+      "value": 1
+    },
+    "warmup-converged-count": {
+      "value": 1
+    },
+    "warmup-excluded-count": {
+      "value": 0
+    },
+    "warmup-failed-count": {
+      "value": 0
+    },
+    "warmup-records-count": {
+      "value": 1
+    },
+    "warmup-unknown-count": {
+      "value": 0
+    },
+    "warmup-unrun-count": {
+      "value": 0
+    }
+  },
+  "primary-1000-10-20-well-47-1e-08-4 / Cholesky / cfg-ccf9b49ed878ed68": {
+    "cg-restarts": {
+      "lower_value": 0,
+      "upper_value": 0,
+      "value": 0
+    },
+    "cg-steps": {
+      "lower_value": 0,
+      "upper_value": 0,
+      "value": 0
+    },
+    "combined-process-heap-bytes-max": {
+      "value": 3057415696
+    },
+    "combined-process-rss-bytes-max": {
+      "value": 4002594816
+    },
+    "dual-max": {
+      "value": 5.0865523564507105e-17
+    },
+    "gap-max": {
+      "value": 8.514058088116053e-09
+    },
+    "latency": {
+      "lower_value": 4952770404.0,
+      "upper_value": 5429191242.000001,
+      "value": 5337011323.0
+    },
+    "maximum-rank": {
+      "lower_value": 0,
+      "upper_value": 0,
+      "value": 0
+    },
+    "measured-attempted-count": {
+      "value": 5
+    },
+    "measured-converged-count": {
+      "value": 5
+    },
+    "measured-excluded-count": {
+      "value": 0
+    },
+    "measured-failed-count": {
+      "value": 0
+    },
+    "measured-records-count": {
+      "value": 5
+    },
+    "measured-unknown-count": {
+      "value": 0
+    },
+    "measured-unrun-count": {
+      "value": 0
+    },
+    "objective-error-max": {
+      "value": 6.173690718585672e-09
+    },
+    "outer-iterations": {
+      "lower_value": 8,
+      "upper_value": 8,
+      "value": 8
+    },
+    "primal-max": {
+      "value": 2.9251072577191313e-16
+    },
+    "warmup-attempted-count": {
+      "value": 1
+    },
+    "warmup-converged-count": {
+      "value": 1
+    },
+    "warmup-excluded-count": {
+      "value": 0
+    },
+    "warmup-failed-count": {
+      "value": 0
+    },
+    "warmup-records-count": {
+      "value": 1
+    },
+    "warmup-unknown-count": {
+      "value": 0
+    },
+    "warmup-unrun-count": {
+      "value": 0
+    }
+  },
+  "primary-2500-10-20-well-11-1e-08-4 / CG / cfg-e57599231c883a6e": {
+    "cg-restarts": {
+      "lower_value": 0,
+      "upper_value": 0,
+      "value": 0
+    },
+    "cg-steps": {
+      "lower_value": 291,
+      "upper_value": 291,
+      "value": 291
+    },
+    "combined-process-heap-bytes-max": {
+      "value": 3215781096
+    },
+    "combined-process-rss-bytes-max": {
+      "value": 4255137792
+    },
+    "dual-max": {
+      "value": 5.587605390718316e-17
+    },
+    "gap-max": {
+      "value": 1.8485672720385072e-09
+    },
+    "latency": {
+      "lower_value": 14805359448.0,
+      "upper_value": 18662115712.000004,
+      "value": 16978935764.0
+    },
+    "maximum-rank": {
+      "lower_value": 0,
+      "upper_value": 0,
+      "value": 0
+    },
+    "measured-attempted-count": {
+      "value": 5
+    },
+    "measured-converged-count": {
+      "value": 5
+    },
+    "measured-excluded-count": {
+      "value": 0
+    },
+    "measured-failed-count": {
+      "value": 0
+    },
+    "measured-records-count": {
+      "value": 5
+    },
+    "measured-unknown-count": {
+      "value": 0
+    },
+    "measured-unrun-count": {
+      "value": 0
+    },
+    "objective-error-max": {
+      "value": 1.350104934427162e-09
+    },
+    "outer-iterations": {
+      "lower_value": 9,
+      "upper_value": 9,
+      "value": 9
+    },
+    "primal-max": {
+      "value": 2.5525302003534484e-10
+    },
+    "warmup-attempted-count": {
+      "value": 1
+    },
+    "warmup-converged-count": {
+      "value": 1
+    },
+    "warmup-excluded-count": {
+      "value": 0
+    },
+    "warmup-failed-count": {
+      "value": 0
+    },
+    "warmup-records-count": {
+      "value": 1
+    },
+    "warmup-unknown-count": {
+      "value": 0
+    },
+    "warmup-unrun-count": {
+      "value": 0
+    }
+  },
+  "primary-2500-10-20-well-11-1e-08-4 / Cholesky / cfg-ccf9b49ed878ed68": {
+    "cg-restarts": {
+      "lower_value": 0,
+      "upper_value": 0,
+      "value": 0
+    },
+    "cg-steps": {
+      "lower_value": 0,
+      "upper_value": 0,
+      "value": 0
+    },
+    "combined-process-heap-bytes-max": {
+      "value": 2654821024
+    },
+    "combined-process-rss-bytes-max": {
+      "value": 3965616128
+    },
+    "dual-max": {
+      "value": 5.1419668993722426e-17
+    },
+    "gap-max": {
+      "value": 1.6834449211374126e-09
+    },
+    "latency": {
+      "lower_value": 26961981918.0,
+      "upper_value": 28235635696.0,
+      "value": 27246212589.000004
+    },
+    "maximum-rank": {
+      "lower_value": 0,
+      "upper_value": 0,
+      "value": 0
+    },
+    "measured-attempted-count": {
+      "value": 5
+    },
+    "measured-converged-count": {
+      "value": 5
+    },
+    "measured-excluded-count": {
+      "value": 0
+    },
+    "measured-failed-count": {
+      "value": 0
+    },
+    "measured-records-count": {
+      "value": 5
+    },
+    "measured-unknown-count": {
+      "value": 0
+    },
+    "measured-unrun-count": {
+      "value": 0
+    },
+    "objective-error-max": {
+      "value": 1.1849513241240661e-09
+    },
+    "outer-iterations": {
+      "lower_value": 9,
+      "upper_value": 9,
+      "value": 9
+    },
+    "primal-max": {
+      "value": 5.5836005915416544e-15
+    },
+    "warmup-attempted-count": {
+      "value": 1
+    },
+    "warmup-converged-count": {
+      "value": 1
+    },
+    "warmup-excluded-count": {
+      "value": 0
+    },
+    "warmup-failed-count": {
+      "value": 0
+    },
+    "warmup-records-count": {
+      "value": 1
+    },
+    "warmup-unknown-count": {
+      "value": 0
+    },
+    "warmup-unrun-count": {
+      "value": 0
+    }
+  },
+  "primary-2500-10-20-well-29-1e-08-4 / CG / cfg-e57599231c883a6e": {
+    "cg-restarts": {
+      "lower_value": 0,
+      "upper_value": 0,
+      "value": 0
+    },
+    "cg-steps": {
+      "lower_value": 291,
+      "upper_value": 291,
+      "value": 291
+    },
+    "combined-process-heap-bytes-max": {
+      "value": 3087881824
+    },
+    "combined-process-rss-bytes-max": {
+      "value": 4081876992
+    },
+    "dual-max": {
+      "value": 5.268438901214557e-17
+    },
+    "gap-max": {
+      "value": 4.847482556060962e-10
+    },
+    "latency": {
+      "lower_value": 14500276884.0,
+      "upper_value": 17537606845.0,
+      "value": 17037401721.999998
+    },
+    "maximum-rank": {
+      "lower_value": 0,
+      "upper_value": 0,
+      "value": 0
+    },
+    "measured-attempted-count": {
+      "value": 5
+    },
+    "measured-converged-count": {
+      "value": 5
+    },
+    "measured-excluded-count": {
+      "value": 0
+    },
+    "measured-failed-count": {
+      "value": 0
+    },
+    "measured-records-count": {
+      "value": 5
+    },
+    "measured-unknown-count": {
+      "value": 0
+    },
+    "measured-unrun-count": {
+      "value": 0
+    },
+    "objective-error-max": {
+      "value": 3.176404413617464e-10
+    },
+    "outer-iterations": {
+      "lower_value": 9,
+      "upper_value": 9,
+      "value": 9
+    },
+    "primal-max": {
+      "value": 1.7330827191047288e-11
+    },
+    "warmup-attempted-count": {
+      "value": 1
+    },
+    "warmup-converged-count": {
+      "value": 1
+    },
+    "warmup-excluded-count": {
+      "value": 0
+    },
+    "warmup-failed-count": {
+      "value": 0
+    },
+    "warmup-records-count": {
+      "value": 1
+    },
+    "warmup-unknown-count": {
+      "value": 0
+    },
+    "warmup-unrun-count": {
+      "value": 0
+    }
+  },
+  "primary-2500-10-20-well-29-1e-08-4 / Cholesky / cfg-ccf9b49ed878ed68": {
+    "cg-restarts": {
+      "lower_value": 0,
+      "upper_value": 0,
+      "value": 0
+    },
+    "cg-steps": {
+      "lower_value": 0,
+      "upper_value": 0,
+      "value": 0
+    },
+    "combined-process-heap-bytes-max": {
+      "value": 2631799136
+    },
+    "combined-process-rss-bytes-max": {
+      "value": 4521394176
+    },
+    "dual-max": {
+      "value": 5.173487299349739e-17
+    },
+    "gap-max": {
+      "value": 4.037388771686691e-10
+    },
+    "latency": {
+      "lower_value": 27464264468.000004,
+      "upper_value": 28518775610.0,
+      "value": 28012939833.999996
+    },
+    "maximum-rank": {
+      "lower_value": 0,
+      "upper_value": 0,
+      "value": 0
+    },
+    "measured-attempted-count": {
+      "value": 5
+    },
+    "measured-converged-count": {
+      "value": 5
+    },
+    "measured-excluded-count": {
+      "value": 0
+    },
+    "measured-failed-count": {
+      "value": 0
+    },
+    "measured-records-count": {
+      "value": 5
+    },
+    "measured-unknown-count": {
+      "value": 0
+    },
+    "measured-unrun-count": {
+      "value": 0
+    },
+    "objective-error-max": {
+      "value": 2.366230933964222e-10
+    },
+    "outer-iterations": {
+      "lower_value": 9,
+      "upper_value": 9,
+      "value": 9
+    },
+    "primal-max": {
+      "value": 1.8054958368385837e-16
+    },
+    "warmup-attempted-count": {
+      "value": 1
+    },
+    "warmup-converged-count": {
+      "value": 1
+    },
+    "warmup-excluded-count": {
+      "value": 0
+    },
+    "warmup-failed-count": {
+      "value": 0
+    },
+    "warmup-records-count": {
+      "value": 1
+    },
+    "warmup-unknown-count": {
+      "value": 0
+    },
+    "warmup-unrun-count": {
+      "value": 0
+    }
+  },
+  "primary-2500-10-20-well-47-1e-08-4 / CG / cfg-e57599231c883a6e": {
+    "cg-restarts": {
+      "lower_value": 0,
+      "upper_value": 0,
+      "value": 0
+    },
+    "cg-steps": {
+      "lower_value": 289,
+      "upper_value": 289,
+      "value": 289
+    },
+    "combined-process-heap-bytes-max": {
+      "value": 3270439064
+    },
+    "combined-process-rss-bytes-max": {
+      "value": 4305207296
+    },
+    "dual-max": {
+      "value": 5.2873253943886236e-17
+    },
+    "gap-max": {
+      "value": 3.378592235698014e-10
+    },
+    "latency": {
+      "lower_value": 15730952780.0,
+      "upper_value": 17453869428.0,
+      "value": 17026926962.000002
+    },
+    "maximum-rank": {
+      "lower_value": 0,
+      "upper_value": 0,
+      "value": 0
+    },
+    "measured-attempted-count": {
+      "value": 5
+    },
+    "measured-converged-count": {
+      "value": 5
+    },
+    "measured-excluded-count": {
+      "value": 0
+    },
+    "measured-failed-count": {
+      "value": 0
+    },
+    "measured-records-count": {
+      "value": 5
+    },
+    "measured-unknown-count": {
+      "value": 0
+    },
+    "measured-unrun-count": {
+      "value": 0
+    },
+    "objective-error-max": {
+      "value": 2.9971377032917734e-10
+    },
+    "outer-iterations": {
+      "lower_value": 9,
+      "upper_value": 9,
+      "value": 9
+    },
+    "primal-max": {
+      "value": 1.9913408995737803e-10
+    },
+    "warmup-attempted-count": {
+      "value": 1
+    },
+    "warmup-converged-count": {
+      "value": 1
+    },
+    "warmup-excluded-count": {
+      "value": 0
+    },
+    "warmup-failed-count": {
+      "value": 0
+    },
+    "warmup-records-count": {
+      "value": 1
+    },
+    "warmup-unknown-count": {
+      "value": 0
+    },
+    "warmup-unrun-count": {
+      "value": 0
+    }
+  },
+  "primary-2500-10-20-well-47-1e-08-4 / Cholesky / cfg-ccf9b49ed878ed68": {
+    "cg-restarts": {
+      "lower_value": 0,
+      "upper_value": 0,
+      "value": 0
+    },
+    "cg-steps": {
+      "lower_value": 0,
+      "upper_value": 0,
+      "value": 0
+    },
+    "combined-process-heap-bytes-max": {
+      "value": 2634547672
+    },
+    "combined-process-rss-bytes-max": {
+      "value": 4179623936
+    },
+    "dual-max": {
+      "value": 5.0637385271699526e-17
+    },
+    "gap-max": {
+      "value": 9.573732675484887e-11
+    },
+    "latency": {
+      "lower_value": 28096018375.0,
+      "upper_value": 28749484971.0,
+      "value": 28486888575.0
+    },
+    "maximum-rank": {
+      "lower_value": 0,
+      "upper_value": 0,
+      "value": 0
+    },
+    "measured-attempted-count": {
+      "value": 5
+    },
+    "measured-converged-count": {
+      "value": 5
+    },
+    "measured-excluded-count": {
+      "value": 0
+    },
+    "measured-failed-count": {
+      "value": 0
+    },
+    "measured-records-count": {
+      "value": 5
+    },
+    "measured-unknown-count": {
+      "value": 0
+    },
+    "measured-unrun-count": {
+      "value": 0
+    },
+    "objective-error-max": {
+      "value": 5.7590833752503814e-11
+    },
+    "outer-iterations": {
+      "lower_value": 9,
+      "upper_value": 9,
+      "value": 9
+    },
+    "primal-max": {
+      "value": 1.1382550838309157e-14
+    },
+    "warmup-attempted-count": {
+      "value": 1
+    },
+    "warmup-converged-count": {
+      "value": 1
+    },
+    "warmup-excluded-count": {
+      "value": 0
+    },
+    "warmup-failed-count": {
+      "value": 0
+    },
+    "warmup-records-count": {
+      "value": 1
+    },
+    "warmup-unknown-count": {
+      "value": 0
+    },
+    "warmup-unrun-count": {
+      "value": 0
+    }
+  },
+  "primary-4000-10-20-well-11-1e-08-4 / CG / cfg-e57599231c883a6e": {
+    "cg-restarts": {
+      "lower_value": 0,
+      "upper_value": 0,
+      "value": 0
+    },
+    "cg-steps": {
+      "lower_value": 297,
+      "upper_value": 297,
+      "value": 297
+    },
+    "combined-process-heap-bytes-max": {
+      "value": 3398280368
+    },
+    "combined-process-rss-bytes-max": {
+      "value": 4372611072
+    },
+    "dual-max": {
+      "value": 5.987511515565835e-17
+    },
+    "gap-max": {
+      "value": 7.533845726199239e-10
+    },
+    "latency": {
+      "lower_value": 14169777153.0,
+      "upper_value": 23436342794.0,
+      "value": 18199311401.000004
+    },
+    "maximum-rank": {
+      "lower_value": 0,
+      "upper_value": 0,
+      "value": 0
+    },
+    "measured-attempted-count": {
+      "value": 5
+    },
+    "measured-converged-count": {
+      "value": 5
+    },
+    "measured-excluded-count": {
+      "value": 0
+    },
+    "measured-failed-count": {
+      "value": 0
+    },
+    "measured-records-count": {
+      "value": 5
+    },
+    "measured-unknown-count": {
+      "value": 0
+    },
+    "measured-unrun-count": {
+      "value": 0
+    },
+    "objective-error-max": {
+      "value": 5.885299593253399e-10
+    },
+    "outer-iterations": {
+      "lower_value": 9,
+      "upper_value": 9,
+      "value": 9
+    },
+    "primal-max": {
+      "value": 6.031116739250167e-10
+    },
+    "warmup-attempted-count": {
+      "value": 1
+    },
+    "warmup-converged-count": {
+      "value": 1
+    },
+    "warmup-excluded-count": {
+      "value": 0
+    },
+    "warmup-failed-count": {
+      "value": 0
+    },
+    "warmup-records-count": {
+      "value": 1
+    },
+    "warmup-unknown-count": {
+      "value": 0
+    },
+    "warmup-unrun-count": {
+      "value": 0
+    }
+  },
+  "primary-4000-10-20-well-11-1e-08-4 / Cholesky / cfg-ccf9b49ed878ed68": {
+    "cg-restarts": {
+      "lower_value": 0,
+      "upper_value": 0,
+      "value": 0
+    },
+    "cg-steps": {
+      "lower_value": 0,
+      "upper_value": 0,
+      "value": 0
+    },
+    "combined-process-heap-bytes-max": {
+      "value": 2464756320
+    },
+    "combined-process-rss-bytes-max": {
+      "value": 4027269120
+    },
+    "dual-max": {
+      "value": 5.1744835559922817e-17
+    },
+    "gap-max": {
+      "value": 4.266298630912603e-10
+    },
+    "latency": {
+      "lower_value": 100796758911.0,
+      "upper_value": 103132154992.0,
+      "value": 102222760242.0
+    },
+    "maximum-rank": {
+      "lower_value": 0,
+      "upper_value": 0,
+      "value": 0
+    },
+    "measured-attempted-count": {
+      "value": 5
+    },
+    "measured-converged-count": {
+      "value": 5
+    },
+    "measured-excluded-count": {
+      "value": 0
+    },
+    "measured-failed-count": {
+      "value": 0
+    },
+    "measured-records-count": {
+      "value": 5
+    },
+    "measured-unknown-count": {
+      "value": 0
+    },
+    "measured-unrun-count": {
+      "value": 0
+    },
+    "objective-error-max": {
+      "value": 2.617700248661207e-10
+    },
+    "outer-iterations": {
+      "lower_value": 9,
+      "upper_value": 9,
+      "value": 9
+    },
+    "primal-max": {
+      "value": 1.819763689686805e-16
+    },
+    "warmup-attempted-count": {
+      "value": 1
+    },
+    "warmup-converged-count": {
+      "value": 1
+    },
+    "warmup-excluded-count": {
+      "value": 0
+    },
+    "warmup-failed-count": {
+      "value": 0
+    },
+    "warmup-records-count": {
+      "value": 1
+    },
+    "warmup-unknown-count": {
+      "value": 0
+    },
+    "warmup-unrun-count": {
+      "value": 0
+    }
+  },
+  "primary-4000-10-20-well-29-1e-08-4 / CG / cfg-e57599231c883a6e": {
+    "cg-restarts": {
+      "lower_value": 0,
+      "upper_value": 0,
+      "value": 0
+    },
+    "cg-steps": {
+      "lower_value": 292,
+      "upper_value": 292,
+      "value": 292
+    },
+    "combined-process-heap-bytes-max": {
+      "value": 3259516992
+    },
+    "combined-process-rss-bytes-max": {
+      "value": 4242292736
+    },
+    "dual-max": {
+      "value": 5.345072459572264e-17
+    },
+    "gap-max": {
+      "value": 1.89347095919443e-10
+    },
+    "latency": {
+      "lower_value": 18004294833.0,
+      "upper_value": 22921289040.999996,
+      "value": 20957344830.0
+    },
+    "maximum-rank": {
+      "lower_value": 0,
+      "upper_value": 0,
+      "value": 0
+    },
+    "measured-attempted-count": {
+      "value": 5
+    },
+    "measured-converged-count": {
+      "value": 5
+    },
+    "measured-excluded-count": {
+      "value": 0
+    },
+    "measured-failed-count": {
+      "value": 0
+    },
+    "measured-records-count": {
+      "value": 5
+    },
+    "measured-unknown-count": {
+      "value": 0
+    },
+    "measured-unrun-count": {
+      "value": 0
+    },
+    "objective-error-max": {
+      "value": 8.222147779470834e-11
+    },
+    "outer-iterations": {
+      "lower_value": 9,
+      "upper_value": 9,
+      "value": 9
+    },
+    "primal-max": {
+      "value": 1.7827704908964273e-10
+    },
+    "warmup-attempted-count": {
+      "value": 1
+    },
+    "warmup-converged-count": {
+      "value": 1
+    },
+    "warmup-excluded-count": {
+      "value": 0
+    },
+    "warmup-failed-count": {
+      "value": 0
+    },
+    "warmup-records-count": {
+      "value": 1
+    },
+    "warmup-unknown-count": {
+      "value": 0
+    },
+    "warmup-unrun-count": {
+      "value": 0
+    }
+  },
+  "primary-4000-10-20-well-29-1e-08-4 / Cholesky / cfg-ccf9b49ed878ed68": {
+    "cg-restarts": {
+      "lower_value": 0,
+      "upper_value": 0,
+      "value": 0
+    },
+    "cg-steps": {
+      "lower_value": 0,
+      "upper_value": 0,
+      "value": 0
+    },
+    "combined-process-heap-bytes-max": {
+      "value": 2347524416
+    },
+    "combined-process-rss-bytes-max": {
+      "value": 4076355584
+    },
+    "dual-max": {
+      "value": 5.2166146332168574e-17
+    },
+    "gap-max": {
+      "value": 2.3729000602486854e-10
+    },
+    "latency": {
+      "lower_value": 101831491395.0,
+      "upper_value": 102514733366.0,
+      "value": 102127889705.0
+    },
+    "maximum-rank": {
+      "lower_value": 0,
+      "upper_value": 0,
+      "value": 0
+    },
+    "measured-attempted-count": {
+      "value": 5
+    },
+    "measured-converged-count": {
+      "value": 5
+    },
+    "measured-excluded-count": {
+      "value": 0
+    },
+    "measured-failed-count": {
+      "value": 0
+    },
+    "measured-records-count": {
+      "value": 5
+    },
+    "measured-unknown-count": {
+      "value": 0
+    },
+    "measured-unrun-count": {
+      "value": 0
+    },
+    "objective-error-max": {
+      "value": 1.3016193922376446e-10
+    },
+    "outer-iterations": {
+      "lower_value": 9,
+      "upper_value": 9,
+      "value": 9
+    },
+    "primal-max": {
+      "value": 1.821067580310554e-16
+    },
+    "warmup-attempted-count": {
+      "value": 1
+    },
+    "warmup-converged-count": {
+      "value": 1
+    },
+    "warmup-excluded-count": {
+      "value": 0
+    },
+    "warmup-failed-count": {
+      "value": 0
+    },
+    "warmup-records-count": {
+      "value": 1
+    },
+    "warmup-unknown-count": {
+      "value": 0
+    },
+    "warmup-unrun-count": {
+      "value": 0
+    }
+  },
+  "primary-4000-10-20-well-47-1e-08-4 / CG / cfg-e57599231c883a6e": {
+    "cg-restarts": {
+      "lower_value": 0,
+      "upper_value": 0,
+      "value": 0
+    },
+    "cg-steps": {
+      "lower_value": 297,
+      "upper_value": 297,
+      "value": 297
+    },
+    "combined-process-heap-bytes-max": {
+      "value": 3272975872
+    },
+    "combined-process-rss-bytes-max": {
+      "value": 4847681536
+    },
+    "dual-max": {
+      "value": 5.217063058376303e-17
+    },
+    "gap-max": {
+      "value": 7.533842767570478e-11
+    },
+    "latency": {
+      "lower_value": 11751285470.0,
+      "upper_value": 21345326554.0,
+      "value": 17817550542.000004
+    },
+    "maximum-rank": {
+      "lower_value": 0,
+      "upper_value": 0,
+      "value": 0
+    },
+    "measured-attempted-count": {
+      "value": 5
+    },
+    "measured-converged-count": {
+      "value": 5
+    },
+    "measured-excluded-count": {
+      "value": 0
+    },
+    "measured-failed-count": {
+      "value": 0
+    },
+    "measured-records-count": {
+      "value": 5
+    },
+    "measured-unknown-count": {
+      "value": 0
+    },
+    "measured-unrun-count": {
+      "value": 0
+    },
+    "objective-error-max": {
+      "value": 5.8090223311291816e-11
+    },
+    "outer-iterations": {
+      "lower_value": 9,
+      "upper_value": 9,
+      "value": 9
+    },
+    "primal-max": {
+      "value": 6.739309379544903e-11
+    },
+    "warmup-attempted-count": {
+      "value": 1
+    },
+    "warmup-converged-count": {
+      "value": 1
+    },
+    "warmup-excluded-count": {
+      "value": 0
+    },
+    "warmup-failed-count": {
+      "value": 0
+    },
+    "warmup-records-count": {
+      "value": 1
+    },
+    "warmup-unknown-count": {
+      "value": 0
+    },
+    "warmup-unrun-count": {
+      "value": 0
+    }
+  },
+  "primary-4000-10-20-well-47-1e-08-4 / Cholesky / cfg-ccf9b49ed878ed68": {
+    "cg-restarts": {
+      "lower_value": 0,
+      "upper_value": 0,
+      "value": 0
+    },
+    "cg-steps": {
+      "lower_value": 0,
+      "upper_value": 0,
+      "value": 0
+    },
+    "combined-process-heap-bytes-max": {
+      "value": 2286327280
+    },
+    "combined-process-rss-bytes-max": {
+      "value": 4039852032
+    },
+    "dual-max": {
+      "value": 5.146274406229217e-17
+    },
+    "gap-max": {
+      "value": 4.8431119241195566e-11
+    },
+    "latency": {
+      "lower_value": 101893280892.0,
+      "upper_value": 102770492063.0,
+      "value": 102194230855.0
+    },
+    "maximum-rank": {
+      "lower_value": 0,
+      "upper_value": 0,
+      "value": 0
+    },
+    "measured-attempted-count": {
+      "value": 5
+    },
+    "measured-converged-count": {
+      "value": 5
+    },
+    "measured-excluded-count": {
+      "value": 0
+    },
+    "measured-failed-count": {
+      "value": 0
+    },
+    "measured-records-count": {
+      "value": 5
+    },
+    "measured-unknown-count": {
+      "value": 0
+    },
+    "measured-unrun-count": {
+      "value": 0
+    },
+    "objective-error-max": {
+      "value": 3.118252335014649e-11
+    },
+    "outer-iterations": {
+      "lower_value": 9,
+      "upper_value": 9,
+      "value": 9
+    },
+    "primal-max": {
+      "value": 1.8035558399419435e-16
+    },
+    "warmup-attempted-count": {
+      "value": 1
+    },
+    "warmup-converged-count": {
+      "value": 1
+    },
+    "warmup-excluded-count": {
+      "value": 0
+    },
+    "warmup-failed-count": {
+      "value": 0
+    },
+    "warmup-records-count": {
+      "value": 1
+    },
+    "warmup-unknown-count": {
+      "value": 0
+    },
+    "warmup-unrun-count": {
+      "value": 0
+    }
+  },
+  "primary-500-10-20-well-11-1e-08-4 / CG / cfg-e57599231c883a6e": {
+    "cg-restarts": {
+      "lower_value": 0,
+      "upper_value": 0,
+      "value": 0
+    },
+    "cg-steps": {
+      "lower_value": 256,
+      "upper_value": 256,
+      "value": 256
+    },
+    "combined-process-heap-bytes-max": {
+      "value": 3171126704
+    },
+    "combined-process-rss-bytes-max": {
+      "value": 4139925504
+    },
+    "dual-max": {
+      "value": 3.6625792865011925e-16
+    },
+    "gap-max": {
+      "value": 2.7730274979208355e-09
+    },
+    "latency": {
+      "lower_value": 12910527650.999998,
+      "upper_value": 13870925949.0,
+      "value": 13706637793.999998
+    },
+    "maximum-rank": {
+      "lower_value": 0,
+      "upper_value": 0,
+      "value": 0
+    },
+    "measured-attempted-count": {
+      "value": 5
+    },
+    "measured-converged-count": {
+      "value": 5
+    },
+    "measured-excluded-count": {
+      "value": 0
+    },
+    "measured-failed-count": {
+      "value": 0
+    },
+    "measured-records-count": {
+      "value": 5
+    },
+    "measured-unknown-count": {
+      "value": 0
+    },
+    "measured-unrun-count": {
+      "value": 0
+    },
+    "objective-error-max": {
+      "value": 1.988156020923628e-09
+    },
+    "outer-iterations": {
+      "lower_value": 8,
+      "upper_value": 8,
+      "value": 8
+    },
+    "primal-max": {
+      "value": 8.867938811726352e-16
+    },
+    "warmup-attempted-count": {
+      "value": 1
+    },
+    "warmup-converged-count": {
+      "value": 1
+    },
+    "warmup-excluded-count": {
+      "value": 0
+    },
+    "warmup-failed-count": {
+      "value": 0
+    },
+    "warmup-records-count": {
+      "value": 1
+    },
+    "warmup-unknown-count": {
+      "value": 0
+    },
+    "warmup-unrun-count": {
+      "value": 0
+    }
+  },
+  "primary-500-10-20-well-11-1e-08-4 / Cholesky / cfg-ccf9b49ed878ed68": {
+    "cg-restarts": {
+      "lower_value": 0,
+      "upper_value": 0,
+      "value": 0
+    },
+    "cg-steps": {
+      "lower_value": 0,
+      "upper_value": 0,
+      "value": 0
+    },
+    "combined-process-heap-bytes-max": {
+      "value": 3576061216
+    },
+    "combined-process-rss-bytes-max": {
+      "value": 4544397312
+    },
+    "dual-max": {
+      "value": 5.253175193312211e-17
+    },
+    "gap-max": {
+      "value": 2.7730694031432793e-09
+    },
+    "latency": {
+      "lower_value": 2718943955.0,
+      "upper_value": 3192842114.0,
+      "value": 2826212490.9999995
+    },
+    "maximum-rank": {
+      "lower_value": 0,
+      "upper_value": 0,
+      "value": 0
+    },
+    "measured-attempted-count": {
+      "value": 5
+    },
+    "measured-converged-count": {
+      "value": 5
+    },
+    "measured-excluded-count": {
+      "value": 0
+    },
+    "measured-failed-count": {
+      "value": 0
+    },
+    "measured-records-count": {
+      "value": 5
+    },
+    "measured-unknown-count": {
+      "value": 0
+    },
+    "measured-unrun-count": {
+      "value": 0
+    },
+    "objective-error-max": {
+      "value": 1.9881544259151556e-09
+    },
+    "outer-iterations": {
+      "lower_value": 8,
+      "upper_value": 8,
+      "value": 8
+    },
+    "primal-max": {
+      "value": 2.8239831544054275e-16
+    },
+    "warmup-attempted-count": {
+      "value": 1
+    },
+    "warmup-converged-count": {
+      "value": 1
+    },
+    "warmup-excluded-count": {
+      "value": 0
+    },
+    "warmup-failed-count": {
+      "value": 0
+    },
+    "warmup-records-count": {
+      "value": 1
+    },
+    "warmup-unknown-count": {
+      "value": 0
+    },
+    "warmup-unrun-count": {
+      "value": 0
+    }
+  },
+  "primary-500-10-20-well-29-1e-08-4 / CG / cfg-e57599231c883a6e": {
+    "cg-restarts": {
+      "lower_value": 0,
+      "upper_value": 0,
+      "value": 0
+    },
+    "cg-steps": {
+      "lower_value": 263,
+      "upper_value": 263,
+      "value": 263
+    },
+    "combined-process-heap-bytes-max": {
+      "value": 3149123496
+    },
+    "combined-process-rss-bytes-max": {
+      "value": 4155998208
+    },
+    "dual-max": {
+      "value": 5.1858781257353364e-17
+    },
+    "gap-max": {
+      "value": 3.9927974333752874e-11
+    },
+    "latency": {
+      "lower_value": 9466059696.999998,
+      "upper_value": 14462871779.0,
+      "value": 10565478730.999998
+    },
+    "maximum-rank": {
+      "lower_value": 0,
+      "upper_value": 0,
+      "value": 0
+    },
+    "measured-attempted-count": {
+      "value": 5
+    },
+    "measured-converged-count": {
+      "value": 5
+    },
+    "measured-excluded-count": {
+      "value": 0
+    },
+    "measured-failed-count": {
+      "value": 0
+    },
+    "measured-records-count": {
+      "value": 5
+    },
+    "measured-unknown-count": {
+      "value": 0
+    },
+    "measured-unrun-count": {
+      "value": 0
+    },
+    "objective-error-max": {
+      "value": 2.82628743727025e-11
+    },
+    "outer-iterations": {
+      "lower_value": 9,
+      "upper_value": 9,
+      "value": 9
+    },
+    "primal-max": {
+      "value": 4.696449069465831e-12
+    },
+    "warmup-attempted-count": {
+      "value": 1
+    },
+    "warmup-converged-count": {
+      "value": 1
+    },
+    "warmup-excluded-count": {
+      "value": 0
+    },
+    "warmup-failed-count": {
+      "value": 0
+    },
+    "warmup-records-count": {
+      "value": 1
+    },
+    "warmup-unknown-count": {
+      "value": 0
+    },
+    "warmup-unrun-count": {
+      "value": 0
+    }
+  },
+  "primary-500-10-20-well-29-1e-08-4 / Cholesky / cfg-ccf9b49ed878ed68": {
+    "cg-restarts": {
+      "lower_value": 0,
+      "upper_value": 0,
+      "value": 0
+    },
+    "cg-steps": {
+      "lower_value": 0,
+      "upper_value": 0,
+      "value": 0
+    },
+    "combined-process-heap-bytes-max": {
+      "value": 3442996224
+    },
+    "combined-process-rss-bytes-max": {
+      "value": 4371070976
+    },
+    "dual-max": {
+      "value": 5.110866085845791e-17
+    },
+    "gap-max": {
+      "value": 3.828610171928799e-11
+    },
+    "latency": {
+      "lower_value": 3157787813.9999995,
+      "upper_value": 3580155881.0,
+      "value": 3285727703.0
+    },
+    "maximum-rank": {
+      "lower_value": 0,
+      "upper_value": 0,
+      "value": 0
+    },
+    "measured-attempted-count": {
+      "value": 5
+    },
+    "measured-converged-count": {
+      "value": 5
+    },
+    "measured-excluded-count": {
+      "value": 0
+    },
+    "measured-failed-count": {
+      "value": 0
+    },
+    "measured-records-count": {
+      "value": 5
+    },
+    "measured-unknown-count": {
+      "value": 0
+    },
+    "measured-unrun-count": {
+      "value": 0
+    },
+    "objective-error-max": {
+      "value": 2.6620580468215197e-11
+    },
+    "outer-iterations": {
+      "lower_value": 9,
+      "upper_value": 9,
+      "value": 9
+    },
+    "primal-max": {
+      "value": 1.8088895108924845e-16
+    },
+    "warmup-attempted-count": {
+      "value": 1
+    },
+    "warmup-converged-count": {
+      "value": 1
+    },
+    "warmup-excluded-count": {
+      "value": 0
+    },
+    "warmup-failed-count": {
+      "value": 0
+    },
+    "warmup-records-count": {
+      "value": 1
+    },
+    "warmup-unknown-count": {
+      "value": 0
+    },
+    "warmup-unrun-count": {
+      "value": 0
+    }
+  },
+  "primary-500-10-20-well-47-1e-08-4 / CG / cfg-e57599231c883a6e": {
+    "cg-restarts": {
+      "lower_value": 0,
+      "upper_value": 0,
+      "value": 0
+    },
+    "cg-steps": {
+      "lower_value": 261,
+      "upper_value": 261,
+      "value": 261
+    },
+    "combined-process-heap-bytes-max": {
+      "value": 3227765248
+    },
+    "combined-process-rss-bytes-max": {
+      "value": 4157931520
+    },
+    "dual-max": {
+      "value": 5.919831382388906e-16
+    },
+    "gap-max": {
+      "value": 3.2930975666504862e-09
+    },
+    "latency": {
+      "lower_value": 8913759104.0,
+      "upper_value": 9721726474.0,
+      "value": 8980021269.0
+    },
+    "maximum-rank": {
+      "lower_value": 0,
+      "upper_value": 0,
+      "value": 0
+    },
+    "measured-attempted-count": {
+      "value": 5
+    },
+    "measured-converged-count": {
+      "value": 5
+    },
+    "measured-excluded-count": {
+      "value": 0
+    },
+    "measured-failed-count": {
+      "value": 0
+    },
+    "measured-records-count": {
+      "value": 5
+    },
+    "measured-unknown-count": {
+      "value": 0
+    },
+    "measured-unrun-count": {
+      "value": 0
+    },
+    "objective-error-max": {
+      "value": 2.4840242723055758e-09
+    },
+    "outer-iterations": {
+      "lower_value": 8,
+      "upper_value": 8,
+      "value": 8
+    },
+    "primal-max": {
+      "value": 1.3001494048349606e-15
+    },
+    "warmup-attempted-count": {
+      "value": 1
+    },
+    "warmup-converged-count": {
+      "value": 1
+    },
+    "warmup-excluded-count": {
+      "value": 0
+    },
+    "warmup-failed-count": {
+      "value": 0
+    },
+    "warmup-records-count": {
+      "value": 1
+    },
+    "warmup-unknown-count": {
+      "value": 0
+    },
+    "warmup-unrun-count": {
+      "value": 0
+    }
+  },
+  "primary-500-10-20-well-47-1e-08-4 / Cholesky / cfg-ccf9b49ed878ed68": {
+    "cg-restarts": {
+      "lower_value": 0,
+      "upper_value": 0,
+      "value": 0
+    },
+    "cg-steps": {
+      "lower_value": 0,
+      "upper_value": 0,
+      "value": 0
+    },
+    "combined-process-heap-bytes-max": {
+      "value": 3124517888
+    },
+    "combined-process-rss-bytes-max": {
+      "value": 3948773376
+    },
+    "dual-max": {
+      "value": 5.2101970087255425e-17
+    },
+    "gap-max": {
+      "value": 3.293143541059861e-09
+    },
+    "latency": {
+      "lower_value": 2748792771.0,
+      "upper_value": 3167938990.9999995,
+      "value": 2808013565.9999995
+    },
+    "maximum-rank": {
+      "lower_value": 0,
+      "upper_value": 0,
+      "value": 0
+    },
+    "measured-attempted-count": {
+      "value": 5
+    },
+    "measured-converged-count": {
+      "value": 5
+    },
+    "measured-excluded-count": {
+      "value": 0
+    },
+    "measured-failed-count": {
+      "value": 0
+    },
+    "measured-records-count": {
+      "value": 5
+    },
+    "measured-unknown-count": {
+      "value": 0
+    },
+    "measured-unrun-count": {
+      "value": 0
+    },
+    "objective-error-max": {
+      "value": 2.484024083885866e-09
+    },
+    "outer-iterations": {
+      "lower_value": 8,
+      "upper_value": 8,
+      "value": 8
+    },
+    "primal-max": {
+      "value": 3.040166539053523e-16
+    },
+    "warmup-attempted-count": {
+      "value": 1
+    },
+    "warmup-converged-count": {
+      "value": 1
+    },
+    "warmup-excluded-count": {
+      "value": 0
+    },
+    "warmup-failed-count": {
+      "value": 0
+    },
+    "warmup-records-count": {
+      "value": 1
+    },
+    "warmup-unknown-count": {
+      "value": 0
+    },
+    "warmup-unrun-count": {
+      "value": 0
+    }
+  },
+  "primary-5000-10-20-well-11-1e-08-4 / CG / cfg-e57599231c883a6e": {
+    "cg-restarts": {
+      "lower_value": 0,
+      "upper_value": 0,
+      "value": 0
+    },
+    "cg-steps": {
+      "lower_value": 307,
+      "upper_value": 307,
+      "value": 307
+    },
+    "combined-process-heap-bytes-max": {
+      "value": 2942585800
+    },
+    "combined-process-rss-bytes-max": {
+      "value": 4017766400
+    },
+    "dual-max": {
+      "value": 5.32821946105825e-17
+    },
+    "gap-max": {
+      "value": 1.6795442522995796e-10
+    },
+    "latency": {
+      "lower_value": 11724681653.000002,
+      "upper_value": 22776460934.0,
+      "value": 20596648270.000004
+    },
+    "maximum-rank": {
+      "lower_value": 0,
+      "upper_value": 0,
+      "value": 0
+    },
+    "measured-attempted-count": {
+      "value": 5
+    },
+    "measured-converged-count": {
+      "value": 5
+    },
+    "measured-excluded-count": {
+      "value": 0
+    },
+    "measured-failed-count": {
+      "value": 0
+    },
+    "measured-records-count": {
+      "value": 5
+    },
+    "measured-unknown-count": {
+      "value": 0
+    },
+    "measured-unrun-count": {
+      "value": 0
+    },
+    "objective-error-max": {
+      "value": 1.1573324791839356e-10
+    },
+    "outer-iterations": {
+      "lower_value": 9,
+      "upper_value": 9,
+      "value": 9
+    },
+    "primal-max": {
+      "value": 1.414626431122936e-10
+    },
+    "warmup-attempted-count": {
+      "value": 1
+    },
+    "warmup-converged-count": {
+      "value": 1
+    },
+    "warmup-excluded-count": {
+      "value": 0
+    },
+    "warmup-failed-count": {
+      "value": 0
+    },
+    "warmup-records-count": {
+      "value": 1
+    },
+    "warmup-unknown-count": {
+      "value": 0
+    },
+    "warmup-unrun-count": {
+      "value": 0
+    }
+  },
+  "primary-5000-10-20-well-11-1e-08-4 / Cholesky / cfg-ccf9b49ed878ed68": {
+    "cg-restarts": {
+      "lower_value": 0,
+      "upper_value": 0,
+      "value": 0
+    },
+    "cg-steps": {
+      "lower_value": 0,
+      "upper_value": 0,
+      "value": 0
+    },
+    "combined-process-heap-bytes-max": {
+      "value": 2338513056
+    },
+    "combined-process-rss-bytes-max": {
+      "value": 4240556032
+    },
+    "dual-max": {
+      "value": 5.12815260622173e-17
+    },
+    "gap-max": {
+      "value": 1.3886558399539477e-10
+    },
+    "latency": {
+      "lower_value": 194578701809.0,
+      "upper_value": 196577544540.00003,
+      "value": 194985675564.00003
+    },
+    "maximum-rank": {
+      "lower_value": 0,
+      "upper_value": 0,
+      "value": 0
+    },
+    "measured-attempted-count": {
+      "value": 5
+    },
+    "measured-converged-count": {
+      "value": 5
+    },
+    "measured-excluded-count": {
+      "value": 0
+    },
+    "measured-failed-count": {
+      "value": 0
+    },
+    "measured-records-count": {
+      "value": 5
+    },
+    "measured-unknown-count": {
+      "value": 0
+    },
+    "measured-unrun-count": {
+      "value": 0
+    },
+    "objective-error-max": {
+      "value": 8.664228473584476e-11
+    },
+    "outer-iterations": {
+      "lower_value": 9,
+      "upper_value": 9,
+      "value": 9
+    },
+    "primal-max": {
+      "value": 1.2836617798463823e-14
+    },
+    "warmup-attempted-count": {
+      "value": 1
+    },
+    "warmup-converged-count": {
+      "value": 1
+    },
+    "warmup-excluded-count": {
+      "value": 0
+    },
+    "warmup-failed-count": {
+      "value": 0
+    },
+    "warmup-records-count": {
+      "value": 1
+    },
+    "warmup-unknown-count": {
+      "value": 0
+    },
+    "warmup-unrun-count": {
+      "value": 0
+    }
+  },
+  "primary-5000-10-20-well-29-1e-08-4 / CG / cfg-e57599231c883a6e": {
+    "cg-restarts": {
+      "lower_value": 0,
+      "upper_value": 0,
+      "value": 0
+    },
+    "cg-steps": {
+      "lower_value": 290,
+      "upper_value": 290,
+      "value": 290
+    },
+    "combined-process-heap-bytes-max": {
+      "value": 3051573552
+    },
+    "combined-process-rss-bytes-max": {
+      "value": 4213538816
+    },
+    "dual-max": {
+      "value": 5.3022531242590954e-17
+    },
+    "gap-max": {
+      "value": 8.17711001216322e-11
+    },
+    "latency": {
+      "lower_value": 11565452050.0,
+      "upper_value": 22596096759.0,
+      "value": 14449257399.0
+    },
+    "maximum-rank": {
+      "lower_value": 0,
+      "upper_value": 0,
+      "value": 0
+    },
+    "measured-attempted-count": {
+      "value": 5
+    },
+    "measured-converged-count": {
+      "value": 5
+    },
+    "measured-excluded-count": {
+      "value": 0
+    },
+    "measured-failed-count": {
+      "value": 0
+    },
+    "measured-records-count": {
+      "value": 5
+    },
+    "measured-unknown-count": {
+      "value": 0
+    },
+    "measured-unrun-count": {
+      "value": 0
+    },
+    "objective-error-max": {
+      "value": 2.0709208234242564e-11
+    },
+    "outer-iterations": {
+      "lower_value": 9,
+      "upper_value": 9,
+      "value": 9
+    },
+    "primal-max": {
+      "value": 4.159341195559998e-11
+    },
+    "warmup-attempted-count": {
+      "value": 1
+    },
+    "warmup-converged-count": {
+      "value": 1
+    },
+    "warmup-excluded-count": {
+      "value": 0
+    },
+    "warmup-failed-count": {
+      "value": 0
+    },
+    "warmup-records-count": {
+      "value": 1
+    },
+    "warmup-unknown-count": {
+      "value": 0
+    },
+    "warmup-unrun-count": {
+      "value": 0
+    }
+  },
+  "primary-5000-10-20-well-29-1e-08-4 / Cholesky / cfg-ccf9b49ed878ed68": {
+    "cg-restarts": {
+      "lower_value": 0,
+      "upper_value": 0,
+      "value": 0
+    },
+    "cg-steps": {
+      "lower_value": 0,
+      "upper_value": 0,
+      "value": 0
+    },
+    "combined-process-heap-bytes-max": {
+      "value": 2236147776
+    },
+    "combined-process-rss-bytes-max": {
+      "value": 4015276032
+    },
+    "dual-max": {
+      "value": 5.2381849624019463e-17
+    },
+    "gap-max": {
+      "value": 1.1348147692086394e-10
+    },
+    "latency": {
+      "lower_value": 194638460813.0,
+      "upper_value": 195642129284.0,
+      "value": 195085696188.0
+    },
+    "maximum-rank": {
+      "lower_value": 0,
+      "upper_value": 0,
+      "value": 0
+    },
+    "measured-attempted-count": {
+      "value": 5
+    },
+    "measured-converged-count": {
+      "value": 5
+    },
+    "measured-excluded-count": {
+      "value": 0
+    },
+    "measured-failed-count": {
+      "value": 0
+    },
+    "measured-records-count": {
+      "value": 5
+    },
+    "measured-unknown-count": {
+      "value": 0
+    },
+    "measured-unrun-count": {
+      "value": 0
+    },
+    "objective-error-max": {
+      "value": 5.2418329570459665e-11
+    },
+    "outer-iterations": {
+      "lower_value": 9,
+      "upper_value": 9,
+      "value": 9
+    },
+    "primal-max": {
+      "value": 1.8037677438251e-16
+    },
+    "warmup-attempted-count": {
+      "value": 1
+    },
+    "warmup-converged-count": {
+      "value": 1
+    },
+    "warmup-excluded-count": {
+      "value": 0
+    },
+    "warmup-failed-count": {
+      "value": 0
+    },
+    "warmup-records-count": {
+      "value": 1
+    },
+    "warmup-unknown-count": {
+      "value": 0
+    },
+    "warmup-unrun-count": {
+      "value": 0
+    }
+  },
+  "primary-5000-10-20-well-47-1e-08-4 / CG / cfg-e57599231c883a6e": {
+    "cg-restarts": {
+      "lower_value": 0,
+      "upper_value": 0,
+      "value": 0
+    },
+    "cg-steps": {
+      "lower_value": 302,
+      "upper_value": 302,
+      "value": 302
+    },
+    "combined-process-heap-bytes-max": {
+      "value": 2956380256
+    },
+    "combined-process-rss-bytes-max": {
+      "value": 4544446464
+    },
+    "dual-max": {
+      "value": 6.696944573111383e-17
+    },
+    "gap-max": {
+      "value": 7.794703400520065e-10
+    },
+    "latency": {
+      "lower_value": 11446447028.0,
+      "upper_value": 20507731222.0,
+      "value": 12610422741.0
+    },
+    "maximum-rank": {
+      "lower_value": 0,
+      "upper_value": 0,
+      "value": 0
+    },
+    "measured-attempted-count": {
+      "value": 5
+    },
+    "measured-converged-count": {
+      "value": 5
+    },
+    "measured-excluded-count": {
+      "value": 0
+    },
+    "measured-failed-count": {
+      "value": 0
+    },
+    "measured-records-count": {
+      "value": 5
+    },
+    "measured-unknown-count": {
+      "value": 0
+    },
+    "measured-unrun-count": {
+      "value": 0
+    },
+    "objective-error-max": {
+      "value": 7.270953632902521e-10
+    },
+    "outer-iterations": {
+      "lower_value": 9,
+      "upper_value": 9,
+      "value": 9
+    },
+    "primal-max": {
+      "value": 5.187766757042467e-10
+    },
+    "warmup-attempted-count": {
+      "value": 1
+    },
+    "warmup-converged-count": {
+      "value": 1
+    },
+    "warmup-excluded-count": {
+      "value": 0
+    },
+    "warmup-failed-count": {
+      "value": 0
+    },
+    "warmup-records-count": {
+      "value": 1
+    },
+    "warmup-unknown-count": {
+      "value": 0
+    },
+    "warmup-unrun-count": {
+      "value": 0
+    }
+  },
+  "primary-5000-10-20-well-47-1e-08-4 / Cholesky / cfg-ccf9b49ed878ed68": {
+    "cg-restarts": {
+      "lower_value": 0,
+      "upper_value": 0,
+      "value": 0
+    },
+    "cg-steps": {
+      "lower_value": 0,
+      "upper_value": 0,
+      "value": 0
+    },
+    "combined-process-heap-bytes-max": {
+      "value": 2319632632
+    },
+    "combined-process-rss-bytes-max": {
+      "value": 4852072448
+    },
+    "dual-max": {
+      "value": 5.0923560773280844e-17
+    },
+    "gap-max": {
+      "value": 3.3800956779605667e-10
+    },
+    "latency": {
+      "lower_value": 194122866798.00003,
+      "upper_value": 195558294311.0,
+      "value": 195300505224.0
+    },
+    "maximum-rank": {
+      "lower_value": 0,
+      "upper_value": 0,
+      "value": 0
+    },
+    "measured-attempted-count": {
+      "value": 5
+    },
+    "measured-converged-count": {
+      "value": 5
+    },
+    "measured-excluded-count": {
+      "value": 0
+    },
+    "measured-failed-count": {
+      "value": 0
+    },
+    "measured-records-count": {
+      "value": 5
+    },
+    "measured-unknown-count": {
+      "value": 0
+    },
+    "measured-unrun-count": {
+      "value": 0
+    },
+    "objective-error-max": {
+      "value": 2.8562862410880564e-10
+    },
+    "outer-iterations": {
+      "lower_value": 9,
+      "upper_value": 9,
+      "value": 9
+    },
+    "primal-max": {
+      "value": 2.8697005907363234e-14
+    },
+    "warmup-attempted-count": {
+      "value": 1
+    },
+    "warmup-converged-count": {
+      "value": 1
+    },
+    "warmup-excluded-count": {
+      "value": 0
+    },
+    "warmup-failed-count": {
+      "value": 0
+    },
+    "warmup-records-count": {
+      "value": 1
+    },
+    "warmup-unknown-count": {
+      "value": 0
+    },
+    "warmup-unrun-count": {
+      "value": 0
+    }
+  },
+  "primary-6000-10-20-well-11-1e-08-4 / CG / cfg-e57599231c883a6e": {
+    "cg-restarts": {
+      "lower_value": 0,
+      "upper_value": 0,
+      "value": 0
+    },
+    "cg-steps": {
+      "lower_value": 301,
+      "upper_value": 301,
+      "value": 301
+    },
+    "combined-process-heap-bytes-max": {
+      "value": 3586305536
+    },
+    "combined-process-rss-bytes-max": {
+      "value": 4627169280
+    },
+    "dual-max": {
+      "value": 5.903407983671824e-17
+    },
+    "gap-max": {
+      "value": 6.061153553174874e-10
+    },
+    "latency": {
+      "lower_value": 12266645381.0,
+      "upper_value": 18608706135.0,
+      "value": 14837637346.000002
+    },
+    "maximum-rank": {
+      "lower_value": 0,
+      "upper_value": 0,
+      "value": 0
+    },
+    "measured-attempted-count": {
+      "value": 5
+    },
+    "measured-converged-count": {
+      "value": 5
+    },
+    "measured-excluded-count": {
+      "value": 0
+    },
+    "measured-failed-count": {
+      "value": 0
+    },
+    "measured-records-count": {
+      "value": 5
+    },
+    "measured-unknown-count": {
+      "value": 0
+    },
+    "measured-unrun-count": {
+      "value": 0
+    },
+    "objective-error-max": {
+      "value": 4.5956861899421264e-10
+    },
+    "outer-iterations": {
+      "lower_value": 9,
+      "upper_value": 9,
+      "value": 9
+    },
+    "primal-max": {
+      "value": 6.120137392919206e-10
+    },
+    "warmup-attempted-count": {
+      "value": 1
+    },
+    "warmup-converged-count": {
+      "value": 1
+    },
+    "warmup-excluded-count": {
+      "value": 0
+    },
+    "warmup-failed-count": {
+      "value": 0
+    },
+    "warmup-records-count": {
+      "value": 1
+    },
+    "warmup-unknown-count": {
+      "value": 0
+    },
+    "warmup-unrun-count": {
+      "value": 0
+    }
+  },
+  "primary-6000-10-20-well-11-1e-08-4 / Cholesky / cfg-ccf9b49ed878ed68": {
+    "cg-restarts": {
+      "lower_value": 0,
+      "upper_value": 0,
+      "value": 0
+    },
+    "cg-steps": {
+      "lower_value": 0,
+      "upper_value": 0,
+      "value": 0
+    },
+    "combined-process-heap-bytes-max": {
+      "value": 2480458576
+    },
+    "combined-process-rss-bytes-max": {
+      "value": 4382408704
+    },
+    "dual-max": {
+      "value": 5.04808894692039e-17
+    },
+    "gap-max": {
+      "value": 3.3089451177581565e-10
+    },
+    "latency": {
+      "lower_value": 333231632139.0,
+      "upper_value": 334524808548.0,
+      "value": 333484757453.0
+    },
+    "maximum-rank": {
+      "lower_value": 0,
+      "upper_value": 0,
+      "value": 0
+    },
+    "measured-attempted-count": {
+      "value": 5
+    },
+    "measured-converged-count": {
+      "value": 5
+    },
+    "measured-excluded-count": {
+      "value": 0
+    },
+    "measured-failed-count": {
+      "value": 0
+    },
+    "measured-records-count": {
+      "value": 5
+    },
+    "measured-unknown-count": {
+      "value": 0
+    },
+    "measured-unrun-count": {
+      "value": 0
+    },
+    "objective-error-max": {
+      "value": 1.8434375117738543e-10
+    },
+    "outer-iterations": {
+      "lower_value": 9,
+      "upper_value": 9,
+      "value": 9
+    },
+    "primal-max": {
+      "value": 1.8243734161756702e-16
+    },
+    "warmup-attempted-count": {
+      "value": 1
+    },
+    "warmup-converged-count": {
+      "value": 1
+    },
+    "warmup-excluded-count": {
+      "value": 0
+    },
+    "warmup-failed-count": {
+      "value": 0
+    },
+    "warmup-records-count": {
+      "value": 1
+    },
+    "warmup-unknown-count": {
+      "value": 0
+    },
+    "warmup-unrun-count": {
+      "value": 0
+    }
+  },
+  "primary-6000-10-20-well-29-1e-08-4 / CG / cfg-e57599231c883a6e": {
+    "cg-restarts": {
+      "lower_value": 0,
+      "upper_value": 0,
+      "value": 0
+    },
+    "cg-steps": {
+      "lower_value": 300,
+      "upper_value": 300,
+      "value": 300
+    },
+    "combined-process-heap-bytes-max": {
+      "value": 3026507344
+    },
+    "combined-process-rss-bytes-max": {
+      "value": 4294492160
+    },
+    "dual-max": {
+      "value": 5.693301633153824e-17
+    },
+    "gap-max": {
+      "value": 5.023908858577184e-10
+    },
+    "latency": {
+      "lower_value": 12394046799.0,
+      "upper_value": 13436437250.0,
+      "value": 12528467442.0
+    },
+    "maximum-rank": {
+      "lower_value": 0,
+      "upper_value": 0,
+      "value": 0
+    },
+    "measured-attempted-count": {
+      "value": 5
+    },
+    "measured-converged-count": {
+      "value": 5
+    },
+    "measured-excluded-count": {
+      "value": 0
+    },
+    "measured-failed-count": {
+      "value": 0
+    },
+    "measured-records-count": {
+      "value": 5
+    },
+    "measured-unknown-count": {
+      "value": 0
+    },
+    "measured-unrun-count": {
+      "value": 0
+    },
+    "objective-error-max": {
+      "value": 3.3819417947918404e-10
+    },
+    "outer-iterations": {
+      "lower_value": 9,
+      "upper_value": 9,
+      "value": 9
+    },
+    "primal-max": {
+      "value": 3.2520091957414063e-10
+    },
+    "warmup-attempted-count": {
+      "value": 1
+    },
+    "warmup-converged-count": {
+      "value": 1
+    },
+    "warmup-excluded-count": {
+      "value": 0
+    },
+    "warmup-failed-count": {
+      "value": 0
+    },
+    "warmup-records-count": {
+      "value": 1
+    },
+    "warmup-unknown-count": {
+      "value": 0
+    },
+    "warmup-unrun-count": {
+      "value": 0
+    }
+  },
+  "primary-6000-10-20-well-29-1e-08-4 / Cholesky / cfg-ccf9b49ed878ed68": {
+    "cg-restarts": {
+      "lower_value": 0,
+      "upper_value": 0,
+      "value": 0
+    },
+    "cg-steps": {
+      "lower_value": 0,
+      "upper_value": 0,
+      "value": 0
+    },
+    "combined-process-heap-bytes-max": {
+      "value": 2157609392
+    },
+    "combined-process-rss-bytes-max": {
+      "value": 4098703360
+    },
+    "dual-max": {
+      "value": 5.2430178854677393e-17
+    },
+    "gap-max": {
+      "value": 4.925993862902344e-10
+    },
+    "latency": {
+      "lower_value": 333632297163.0,
+      "upper_value": 333632297163.0,
+      "value": 333632297163.0
+    },
+    "maximum-rank": {
+      "lower_value": 0,
+      "upper_value": 0,
+      "value": 0
+    },
+    "measured-attempted-count": {
+      "value": 1
+    },
+    "measured-converged-count": {
+      "value": 1
+    },
+    "measured-excluded-count": {
+      "value": 0
+    },
+    "measured-failed-count": {
+      "value": 0
+    },
+    "measured-records-count": {
+      "value": 1
+    },
+    "measured-unknown-count": {
+      "value": 0
+    },
+    "measured-unrun-count": {
+      "value": 0
+    },
+    "objective-error-max": {
+      "value": 3.283947608475845e-10
+    },
+    "outer-iterations": {
+      "lower_value": 9,
+      "upper_value": 9,
+      "value": 9
+    },
+    "primal-max": {
+      "value": 7.582089263698166e-15
+    },
+    "warmup-attempted-count": {
+      "value": 1
+    },
+    "warmup-converged-count": {
+      "value": 1
+    },
+    "warmup-excluded-count": {
+      "value": 0
+    },
+    "warmup-failed-count": {
+      "value": 0
+    },
+    "warmup-records-count": {
+      "value": 1
+    },
+    "warmup-unknown-count": {
+      "value": 0
+    },
+    "warmup-unrun-count": {
+      "value": 0
+    }
+  }
+}

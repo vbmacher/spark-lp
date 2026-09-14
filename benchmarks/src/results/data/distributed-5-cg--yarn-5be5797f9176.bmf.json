@@ -1,0 +1,89 @@
+{
+  "distributed-rows-50000-vars-10000000-width-64 / CG / cfg-8f5b750c2b495ec4": {
+    "cg-restarts": {
+      "lower_value": 0,
+      "upper_value": 0,
+      "value": 0
+    },
+    "cg-steps": {
+      "lower_value": 440,
+      "upper_value": 440,
+      "value": 440
+    },
+    "driver-heap-bytes-max": {
+      "value": 1999349760
+    },
+    "driver-rss-bytes-max": {
+      "value": 3011358720
+    },
+    "dual-max": {
+      "value": 8.511239802248092e-15
+    },
+    "gap-max": {
+      "value": 7.460453286547091e-10
+    },
+    "latency": {
+      "lower_value": 153389244310.0,
+      "upper_value": 154589009580.0,
+      "value": 154301158825.99997
+    },
+    "maximum-rank": {
+      "lower_value": 0,
+      "upper_value": 0,
+      "value": 0
+    },
+    "measured-attempted-count": {
+      "value": 5
+    },
+    "measured-converged-count": {
+      "value": 5
+    },
+    "measured-excluded-count": {
+      "value": 0
+    },
+    "measured-failed-count": {
+      "value": 0
+    },
+    "measured-records-count": {
+      "value": 5
+    },
+    "measured-unknown-count": {
+      "value": 0
+    },
+    "measured-unrun-count": {
+      "value": 0
+    },
+    "objective-error-max": {
+      "value": 5.759032449404801e-10
+    },
+    "outer-iterations": {
+      "lower_value": 12,
+      "upper_value": 12,
+      "value": 12
+    },
+    "primal-max": {
+      "value": 2.2601555755324926e-11
+    },
+    "warmup-attempted-count": {
+      "value": 1
+    },
+    "warmup-converged-count": {
+      "value": 1
+    },
+    "warmup-excluded-count": {
+      "value": 0
+    },
+    "warmup-failed-count": {
+      "value": 0
+    },
+    "warmup-records-count": {
+      "value": 1
+    },
+    "warmup-unknown-count": {
+      "value": 0
+    },
+    "warmup-unrun-count": {
+      "value": 0
+    }
+  }
+}

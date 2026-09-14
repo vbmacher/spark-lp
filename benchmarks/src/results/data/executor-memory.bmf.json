@@ -1,0 +1,90 @@
+{
+  "distributed-rows-1000-vars-100000-width-32 / cg / original / executor 1": {
+    "executor-heap-bytes-max": {
+      "value": 1344058440
+    },
+    "executor-jvm-nonheap-bytes-max": {
+      "value": 211189864
+    },
+    "executor-rss-bytes-max": {
+      "value": 2380390400
+    }
+  },
+  "distributed-rows-1000-vars-100000-width-32 / cg / original / executor 2": {
+    "executor-heap-bytes-max": {
+      "value": 1480547808
+    },
+    "executor-jvm-nonheap-bytes-max": {
+      "value": 218090000
+    },
+    "executor-rss-bytes-max": {
+      "value": 2518634496
+    }
+  },
+  "distributed-rows-1000-vars-100000-width-32 / cg / original / executor 3": {
+    "executor-heap-bytes-max": {
+      "value": 1483368480
+    },
+    "executor-jvm-nonheap-bytes-max": {
+      "value": 210796288
+    },
+    "executor-rss-bytes-max": {
+      "value": 2804817920
+    }
+  },
+  "distributed-rows-1000-vars-100000-width-32 / cg / original / executor 4": {
+    "executor-heap-bytes-max": {
+      "value": 1529714864
+    },
+    "executor-jvm-nonheap-bytes-max": {
+      "value": 216534344
+    },
+    "executor-rss-bytes-max": {
+      "value": 2479296512
+    }
+  },
+  "distributed-rows-1000-vars-100000-width-32 / cholesky / original / executor 1": {
+    "executor-heap-bytes-max": {
+      "value": 1928385472
+    },
+    "executor-jvm-nonheap-bytes-max": {
+      "value": 244976824
+    },
+    "executor-rss-bytes-max": {
+      "value": 3123724288
+    }
+  },
+  "distributed-rows-1000-vars-100000-width-32 / cholesky / original / executor 2": {
+    "executor-heap-bytes-max": {
+      "value": 1894522896
+    },
+    "executor-jvm-nonheap-bytes-max": {
+      "value": 243336680
+    },
+    "executor-rss-bytes-max": {
+      "value": 3283890176
+    }
+  },
+  "distributed-rows-1000-vars-100000-width-32 / cholesky / original / executor 3": {
+    "executor-heap-bytes-max": {
+      "value": 1541903784
+    },
+    "executor-jvm-nonheap-bytes-max": {
+      "value": 243193904
+    },
+    "executor-rss-bytes-max": {
+      "value": 2705326080
+    }
+  },
+  "distributed-rows-1000-vars-100000-width-32 / cholesky / original / executor 4": {
+    "executor-heap-bytes-max": {
+      "value": 1445709664
+    },
+    "executor-jvm-nonheap-bytes-max": {
+      "value": 241951520
+    },
+    "executor-rss-bytes-max": {
+      "value": 3234816000
+    }
+  }
+}

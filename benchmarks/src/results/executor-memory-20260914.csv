@@ -1,9 +1,0 @@
-case,backend,variant,executor_id,peak_heap_bytes,peak_rss_bytes,peak_jvm_nonheap_bytes,scope
-distributed-rows-1000-vars-100000-width-32,cg,original,2,1480547808,2518634496,218090000,whole application including warmup and generation
-distributed-rows-1000-vars-100000-width-32,cg,original,1,1344058440,2380390400,211189864,whole application including warmup and generation
-distributed-rows-1000-vars-100000-width-32,cg,original,4,1529714864,2479296512,216534344,whole application including warmup and generation
-distributed-rows-1000-vars-100000-width-32,cg,original,3,1483368480,2804817920,210796288,whole application including warmup and generation
-distributed-rows-1000-vars-100000-width-32,cholesky,original,2,1894522896,3283890176,243336680,whole application including warmup and generation
-distributed-rows-1000-vars-100000-width-32,cholesky,original,1,1928385472,3123724288,244976824,whole application including warmup and generation
-distributed-rows-1000-vars-100000-width-32,cholesky,original,4,1445709664,3234816000,241951520,whole application including warmup and generation
-distributed-rows-1000-vars-100000-width-32,cholesky,original,3,1541903784,2705326080,243193904,whole application including warmup and generation

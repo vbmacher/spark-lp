@@ -1,4 +1,4 @@
-package support
+package com.github.vbmacher.spark_lp.support
 
 /** One campaign-independent mathematical case: m equality rows, n variables,
   * target nonzeros per row, family, seed, accuracy threshold and driver heap GiB.

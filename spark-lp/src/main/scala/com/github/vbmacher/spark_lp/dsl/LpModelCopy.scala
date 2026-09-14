@@ -13,6 +13,7 @@ final class LpModelCopy private[dsl](source: LpProblem, val model: LpProblem) {
     throw new LpModelException("Variable is not part of the copied source model"))
 
   private def term(original: LpTerm): LpTerm = original match {
+    case FilteredCoeffTerm(inner, excluded) => FilteredCoeffTerm(term(inner), excluded)
     case t: KeyCoeffTerm => t.copy(handle = handle(t.handle))
     case t: ConstCoeffTerm => t.copy(handle = handle(t.handle))
     case t: ColumnCoeffTerm => t.copy(handle = handle(t.handle))

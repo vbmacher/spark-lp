@@ -402,3 +402,19 @@ canonical identity as the declared domain. Repeated lookups refer to the same va
 a key launches no Spark jobs and collects no domain data. Null/empty encoded keys are rejected
 immediately; absent or incompatible encoded keys are rejected during compilation (or result access).
 A model copy rebinds selected handles through `copy.variable(selected)`.
+
+=== Expression inspection and immutable edits
+
+`expression.constant` is local metadata. `expression.coefficients` returns a distributed
+`RDD[LpCoefficient]`, keyed by model-local `LpVariableId(family, key)`. Repeated terms are summed and
+exactly canceled coefficients omitted. This call validates lazy source data with Spark actions;
+coefficient data remains distributed. `expression.coefficient(variable)` returns one coefficient
+with a Spark action, or zero when the expression has no term for that variable.
+
+`withCoefficient(variable, value)`, `withoutCoefficient(variable)` and `withConstant(value)` derive
+new expressions without reading sources or changing the originals. Selected keyed members can be
+edited in family-wide relational expressions. Cross-model handles and non-finite updates are rejected.
+`pending.withRhs(value)` returns a distinct pending constraint preserving its name and normalized
+left-hand side. Its RHS is the normalized constant (expression constants are already moved to the
+right); it does not replace a constraint already added to a model. Source plans must stay stable
+through inspection actions, just as for solving.

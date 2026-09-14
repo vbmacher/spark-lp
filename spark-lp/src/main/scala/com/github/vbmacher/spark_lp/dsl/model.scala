@@ -33,7 +33,40 @@ private[dsl] object LpSense {
   */
 final class LpExpr private[dsl](
   private[dsl] val terms: Vector[LpTerm],
-  private[dsl] val constant: Double) {
+  val constant: Double) {
+
+  /** Distributed aggregated coefficients. Evaluates source validation actions, never collects the matrix. */
+  def coefficients(implicit spark: SparkSession): RDD[LpCoefficient] =
+    LpExpressionData.expand(this).map { case ((family, key), value) =>
+      LpCoefficient(LpVariableId(family, key), value)
+    }
+
+  /** Scalar action returning one aggregated coefficient; missing coefficients are zero. */
+  def coefficient(variable: LpVariable): Double = {
+    implicit val spark: SparkSession = variable.handle.problem.spark
+    val id = (variable.handle.setIndex, variable.selectedKey.getOrElse(""))
+    LpExpressionData.expand(this, Some(variable.handle.problem))
+      .filter(_._1 == id)
+      .values.fold(0.0)(_ + _)
+  }
+
+  def withConstant(value: Double): LpExpr = {
+    LpExpressionData.check(value)
+    new LpExpr(terms, value)
+  }
+
+  /** Replaces one coefficient without changing this expression or reading a distributed source. */
+  def withCoefficient(variable: LpVariable, value: Double): LpExpr = {
+    LpExpressionData.check(value)
+    LpExpressionData.owner(this, Some(variable.handle.problem))
+    val key = variable.selectedKey.getOrElse("")
+    val kept = terms.map { term =>
+      if (term.handle eq variable.handle) FilteredCoeffTerm(term, Set(key)) else term
+    }
+    new LpExpr(kept ++ (if (value == 0.0) Vector.empty else variable.toExpr(value).terms), constant)
+  }
+
+  def withoutCoefficient(variable: LpVariable): LpExpr = withCoefficient(variable, 0.0)
 
   private[dsl] def plus(other: LpExpr): LpExpr = new LpExpr(terms ++ other.terms, constant + other.constant)
 
@@ -73,6 +106,11 @@ private[dsl] final case class KeyCoeffTerm(handle: VarSetHandle, key: String, co
   override def scaledBy(factor: Double): LpTerm = copy(coeff = coeff * factor)
 }
 
+private[dsl] final case class FilteredCoeffTerm(inner: LpTerm, excluded: Set[String]) extends LpTerm {
+  override def handle: VarSetHandle = inner.handle
+  override def scaledBy(factor: Double): LpTerm = copy(inner = inner.scaledBy(factor))
+}
+
 /** A coefficient held in a Spark column, resolved against the set's own domain. */
 private[dsl] final case class ColumnCoeffTerm(handle: VarSetHandle, column: Column, scale: Double) extends LpTerm {
   override def scaledBy(factor: Double): LpTerm = copy(scale = scale * factor)
@@ -91,8 +129,14 @@ private[dsl] final case class WeightedCoeffTerm(
 final class LpConstraint private[dsl](
   private[dsl] val terms: Vector[LpTerm],
   private[dsl] val sense: LpSense,
-  private[dsl] val rhs: Double,
+  val rhs: Double,
   private[dsl] val explicitName: Option[String]) {
+
+  /** Returns a separate pending constraint with the same name and normalized left-hand side. */
+  def withRhs(value: Double): LpConstraint = {
+    LpExpressionData.check(value)
+    new LpConstraint(terms, sense, value, explicitName)
+  }
 
   private[dsl] def withName(name: String): LpConstraint = new LpConstraint(terms, sense, rhs, Some(name))
 }

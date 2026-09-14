@@ -104,8 +104,7 @@ private[dsl] final class LpCompiler(problem: LpProblem, config: SolveConfig) ext
     * coefficient matrix is never densified.
     */
   private[dsl] def compile(): Compiled = {
-    val objective = problem.objective.getOrElse(
-      fail(s"Problem '${problem.name}' has no objective; add one with += or setObjective"))
+    val objective = problem.objective.getOrElse(LpExpr.zero)
     if (notFinite(objective.constant)) {
       fail(s"Problem '${problem.name}': non-finite objective constant ${objective.constant}")
     }

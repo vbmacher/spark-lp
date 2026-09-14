@@ -51,6 +51,14 @@ flowchart LR
 
 Mermaid blocks need a Mermaid-capable AsciiDoc renderer; plain Asciidoctor shows their source.
 
+== Feasibility models
+
+An omitted objective means constant zero for continuous, integer and binary models.
+Add constraints and call `solve()` to find a feasible point. Normal feasibility,
+termination and unavailable-candidate semantics apply. The implicit objective does
+not mutate the model: a later `model += objective` or `setObjective` sets an explicit
+objective for subsequent solves.
+
 == DSL vocabulary
 
 [cols="1,2",options="header"]

@@ -600,3 +600,20 @@ perform Spark actions; full rendering sorts and transfers one partition at a tim
 partition bounds driver transfer memory. No implicit `toString` triggers model evaluation. Output is
 for human review and does not promise a machine-readable LP-file dialect. Models and caller writers
 remain unchanged/open apart from the requested text write.
+
+=== LP-file export
+
+`val names = LpExport.lp(model.inspect, java.nio.file.Paths.get("model.lp"))` writes original linear
+algebra in a CPLEX-style LP dialect: objective sense/offset, named rows, explicit bounds, integer and
+binary declarations. Internal solver slacks/splits are excluded. Quadratic objectives are rejected.
+Numbers use full Double precision; repeated terms aggregate. The default `ExportNaming.Normalized`
+assigns deterministic `vN`/`rN` names and returns distributed reversible mappings to original IDs/names.
+`Original` requires unique, nonreserved ASCII identifier names of at most 200 characters; invalid names
+fail explicitly. Close the mapping after use to release its caches.
+
+The destination is a local UTF-8 file whose parent directory exists. Existing files are rejected unless
+`overwrite=true`. A temporary sibling is completed before moving it into place; failures remove the
+partial temporary file. Export validates and materializes lazy algebra with Spark actions, then sorts
+and streams partitions, without collecting the coefficient matrix. Keep source data stable until export
+and mapping use finish. Repeated exports of stable sources are deterministic. The dialect is checked
+against the independent HiGHS reader when SciPy's bundled HiGHS binding is available in the test environment.

@@ -1,7 +1,7 @@
 package com.github.vbmacher.spark_lp.dsl
 
 import com.github.vbmacher.spark_lp.LP
-import com.github.vbmacher.spark_lp.dsl.LpCompiler.Compiled
+import com.github.vbmacher.spark_lp.dsl.compiler.{Compiled, LpCompiler}
 import com.github.vbmacher.spark_lp.vectors.DVector
 import org.apache.spark.mllib.linalg.DenseVector
 import org.apache.spark.sql.SparkSession
@@ -107,7 +107,7 @@ private[dsl] final class BranchAndBound(
           infeasibilityTolerance = config.infeasibilityTolerance,
           solver = config.resolvedNewtonSolver(compiled.numRows),
           cgTolerance = config.cgTolerance,
-          matrixFree = config.matrixFree,
+          cgConfig = config.cgConfig,
           cgMaxIterations = config.cgMaxIterations)
       } catch {
         case e: LpNumericalException =>

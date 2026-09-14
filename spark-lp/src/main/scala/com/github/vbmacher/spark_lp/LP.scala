@@ -1,5 +1,7 @@
 package com.github.vbmacher.spark_lp
 
+import com.github.vbmacher.spark_lp.newton.{CgConfig, NewtonSolver}
+
 import com.github.vbmacher.spark_lp.dsl.LpNumericalException
 import com.github.vbmacher.spark_lp.newton.{NewtonSystem, NewtonSystemFactory}
 import com.github.vbmacher.spark_lp.vectors.dense_vector.implicits.DenseVectorOps
@@ -106,7 +108,7 @@ object LP extends LazyLogging {
     *                               accepted (matrix-free solver only).
     * @param cgMaxIterations        CG step limit per normal-equations solve; values < 1 select
     *                               `min(max(100, 2m), 1000)` (matrix-free solver only).
-    * @param matrixFree             primal/dual regularization and bounded preconditioner controls.
+    * @param cgConfig             primal/dual regularization and bounded preconditioner controls.
     * @param spark                  a SparkSession instance.
     * @return optimal value and the corresponding solution vector.
     */
@@ -123,10 +125,10 @@ object LP extends LazyLogging {
     solver: NewtonSolver = NewtonSolver.Auto,
     cgTolerance: Double = 1e-10,
     cgMaxIterations: Int = 0,
-    matrixFree: MatrixFreeConfig = MatrixFreeConfig()
+    cgConfig: CgConfig = CgConfig()
   )(implicit spark: SparkSession): (Double, DVector) = {
     val summary = solveSummary(c, AT, b, tolerance, maxIter, etaIter, valueCap, eps, infeasibilityTolerance,
-      solver, cgTolerance, cgMaxIterations, matrixFree = matrixFree)
+      solver, cgTolerance, cgMaxIterations, cgConfig = cgConfig)
     (summary.objectiveValue, summary.x)
   }
 
@@ -163,7 +165,7 @@ object LP extends LazyLogging {
     cgTolerance: Double = 1e-10,
     cgMaxIterations: Int = 0,
     stopAfterIteration: Option[Int => Boolean] = None,
-    matrixFree: MatrixFreeConfig = MatrixFreeConfig(),
+    cgConfig: CgConfig = CgConfig(),
     control: SolveControl = SolveControl(),
     candidateViolation: Option[DVector => Double] = None,
     nanoTime: () => Long = () => System.nanoTime(),
@@ -181,8 +183,8 @@ object LP extends LazyLogging {
 
       val resolvedSolver = resolveNewtonSolver(solver, b.size)
       val systemFactory: NewtonSystemFactory = resolvedSolver match {
-        case NewtonSolver.ConjugateGradient => new newton.CgFactory(cgTolerance, cgMaxIterations, config = matrixFree, monitor = monitor)
-        case _ => new newton.DirectFactory(monitor)
+        case NewtonSolver.ConjugateGradient => new newton.CgFactory(cgTolerance, cgMaxIterations, config = cgConfig, monitor = monitor)
+        case _ => new newton.CholeskyFactory(monitor)
       }
       logger.info(s"Normal-equations solver: $resolvedSolver, rows=${b.size}, " +
         s"matrixPartitions=${AT.getNumPartitions}, autoCholeskyLimit=${NewtonSolver.AutoCholeskyLimit}")
@@ -283,8 +285,8 @@ object LP extends LazyLogging {
             val dLambdaAffRightSide = rb.combine(-1.0, -1.0, matrix.adjointProduct(D2.entrywiseProd(hAff)))
             val dLambdaAff = newtonSystem.solve(dLambdaAffRightSide, newtonAbsTolerance)
             dLambdaAffBroadcast = rebroadcast(dLambdaAffBroadcast, dLambdaAff)
-            val (dxAff0, dsAff0) = newton.recoverDirections(
-              weights, hAff, rc, AT.product(dLambdaAffBroadcast), rho)
+            val (dxAff0, dsAff0) = weights.recoverDirections(
+              hAff, rc, AT.product(dLambdaAffBroadcast), rho)
             val dxAff = temporary.cache(dxAff0)
             val dsAff = temporary.cache(dsAff0)
 
@@ -310,8 +312,8 @@ object LP extends LazyLogging {
             val dLambdaRightSide = rb.combine(-1.0, -1.0, matrix.adjointProduct(D2.entrywiseProd(h)))
             val dLambda = newtonSystem.solve(dLambdaRightSide, newtonAbsTolerance)
             dLambdaBroadcast = rebroadcast(dLambdaBroadcast, dLambda)
-            val (dx0, ds0) = newton.recoverDirections(
-              weights, h, rc, AT.product(dLambdaBroadcast), rho)
+            val (dx0, ds0) = weights.recoverDirections(
+              h, rc, AT.product(dLambdaBroadcast), rho)
             val dx = temporary.cache(dx0)
             val ds = temporary.cache(ds0)
 
@@ -410,9 +412,8 @@ object LP extends LazyLogging {
             if (!bestCandidate.exists(_.x eq x0)) caches.release(x0)
             caches.release(s0)
             val terminal = converged || earlyTermination.nonEmpty
-            monitor.report(SolveProgress(SolvePhase.OuterIteration, iter, 0.0,
-              objectiveValue = Some(cTx), primalResidual = Some(covg1), dualResidual = Some(covg2),
-              dualityGap = Some(covg3), feasible = Some(feasible)), terminal = terminal)
+            monitor.report(SolvePhase.OuterIteration,
+              iterate = Some(IterationProgress(cTx, covg1, covg2, covg3, feasible)), terminal = terminal)
             if (!terminal) {
               if (monitor.callback(stopAfterIteration.exists(_(iter)))) throw SolveStopped(StopReason.UserRequested)
               if (progress.exists(_.observe(iter, feasible, cTx, violation, covg1, covg2, covg3)))
@@ -592,11 +593,8 @@ object LP extends LazyLogging {
   }
 
   /** Resolves Auto from the already-local equality-form row count. */
-  private[spark_lp] def resolveNewtonSolver(solver: NewtonSolver, equations: Int): NewtonSolver = solver match {
-    case NewtonSolver.Auto if equations <= NewtonSolver.AutoCholeskyLimit => NewtonSolver.Cholesky
-    case NewtonSolver.Auto => NewtonSolver.ConjugateGradient
-    case s => s
-  }
+  private[spark_lp] def resolveNewtonSolver(solver: NewtonSolver, equations: Int): NewtonSolver =
+    NewtonSolver.resolve(solver, equations)
 
   /** W = (S/X + Rp)^(-1), evaluated without forming the potentially overflowing X/S.
     * No inverse-slack cap: the same diagonal participates in the operator and recovery.

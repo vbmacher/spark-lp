@@ -161,7 +161,7 @@ and partial-Cholesky preconditioner, and retains rank escalation, monitoring, an
 bounded-inexact acceptance policy. Retrying the wrapper with a stronger preconditioner
 preserves the current solution and cumulative iteration counts without forming a Gramian.
 
-`MatrixFreeConfig` supplies constant scalar diagonal entries `Rp = 1e-8` and
+`CgConfig` supplies constant scalar diagonal entries `Rp = 1e-8` and
 `Rd = 1e-8` by default. These are entries, not their square roots. They stay positive
 throughout a solve. Larger values can improve conditioning but require more outer
 iterations; very small values can lose their effect to roundoff. Scale the LP before
@@ -216,20 +216,31 @@ partial Cholesky. General quadratic programming is outside this implementation.
 
 [source,scala]
 ----
-import com.github.vbmacher.spark_lp.MatrixFreeConfig
+import com.github.vbmacher.spark_lp.newton.CgConfig
 
 val config = SolveConfig(
   newtonSolver = NewtonSolver.ConjugateGradient,
   cgTolerance = 1e-10,
   cgMaxIterations = 1000,
-  matrixFree = MatrixFreeConfig(
+  cgConfig = CgConfig(
     primalRegularization = 1e-8,
     dualRegularization = 1e-8,
     preconditionerRank = 50,
     preconditionerMemoryBytes = 128L * 1024 * 1024))
 ----
 
+`CgConfig` configures the matrix-free conjugate-gradient backend only. Cholesky remains
+the direct alternative, selected through `newtonSolver`; it ignores CG tuning.
+The former `MatrixFreeConfig` type and `matrixFree` argument are now named `CgConfig`
+and `cgConfig`. Import core solver choices and settings directly from
+`com.github.vbmacher.spark_lp.newton`. The DSL continues to expose `NewtonSolver`
+through its wildcard import.
+
 == Opt-in progress policy
+
+Both backends report the same initialization, system-setup, inner-solve and outer-iteration
+phases. See link:usage.adoc#_progress_and_cooperative_stopping_continuous_models[progress usage]
+for callbacks, metric groups, cancellation and result ownership.
 
 `SolveControl.stagnation = Some(StagnationConfig(...))` enables separate outer and inner
 progress windows. Defaults are 10 outer iterations of patience, absolute improvement `1e-10`

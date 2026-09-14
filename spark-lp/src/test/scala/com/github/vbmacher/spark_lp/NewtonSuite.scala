@@ -1,12 +1,13 @@
 package com.github.vbmacher.spark_lp
 
+import com.github.vbmacher.spark_lp.newton.{CgConfig, NewtonSolver}
+
 import breeze.linalg.{DenseMatrix => BDM, DenseVector => BDV, diag, norm}
 import com.github.vbmacher.spark_lp.vectors.{DMatrix, DVector}
 import com.github.vbmacher.spark_lp.vectors.dmatrix.implicits._
 import com.holdenkarau.spark.testing.DataFrameSuiteBase
 import org.apache.spark.mllib.linalg.{DenseVector, Vectors}
 import org.apache.spark.sql.SparkSession
-import org.apache.spark.wrappers.Broadcasts
 import org.scalatest.funsuite.AnyFunSuite
 
 class NewtonSuite extends AnyFunSuite with DataFrameSuiteBase {
@@ -21,12 +22,12 @@ class NewtonSuite extends AnyFunSuite with DataFrameSuiteBase {
     val g = BDM.eye[Double](5)
     g(0, 1) = 0.1
     g(3, 4) = 0.1
-    assert(newton.choleskyBlockEnds(packed(g), 5).sameElements(Array(2, 3, 5)))
+    assert(newton.CholeskyFactory.blockEnds(packed(g), 5).sameElements(Array(2, 3, 5)))
     g(1, 3) = 1e-100
-    assert(newton.choleskyBlockEnds(packed(g), 5).sameElements(Array(5)))
+    assert(newton.CholeskyFactory.blockEnds(packed(g), 5).sameElements(Array(5)))
     g(1, 3) = 0.0
     g(0, 4) = 0.1
-    assert(newton.choleskyBlockEnds(packed(g), 5).sameElements(Array(5)))
+    assert(newton.CholeskyFactory.blockEnds(packed(g), 5).sameElements(Array(5)))
   }
 
   test("block Cholesky solves weighted independent systems and preserves both right-hand sides") {
@@ -35,7 +36,7 @@ class NewtonSuite extends AnyFunSuite with DataFrameSuiteBase {
       (0.0, 0.0, 0.0, 2.0, -1.0))
     val w = BDV(0.5, 2.0, 3.0, 0.7, 1.2)
     val weights = newton.Weights(vector(w.toArray.map(math.sqrt)), vector(w.toArray))
-    val system = newton.CholeskyFactory.build(matrix(b), 5, Some(weights))
+    val system = new newton.CholeskyFactory().build(matrix(b), 5, Some(weights))
     try {
       Seq(BDV(1.0, 2.0, 3.0, 4.0, 5.0), BDV(-3.0, 0.0, 1.0, -1.0, 2.0)).foreach { rhs =>
         val input = new DenseVector(rhs.toArray)
@@ -47,11 +48,11 @@ class NewtonSuite extends AnyFunSuite with DataFrameSuiteBase {
   }
 
   test("matrix-free configuration rejects invalid regularization and memory settings") {
-    intercept[IllegalArgumentException](MatrixFreeConfig(primalRegularization = 0.0))
-    intercept[IllegalArgumentException](MatrixFreeConfig(dualRegularization = Double.NaN))
-    intercept[IllegalArgumentException](MatrixFreeConfig(primalRegularization = Double.PositiveInfinity))
-    intercept[IllegalArgumentException](MatrixFreeConfig(preconditionerRank = -1))
-    intercept[IllegalArgumentException](MatrixFreeConfig(preconditionerMemoryBytes = -1L))
+    intercept[IllegalArgumentException](CgConfig(primalRegularization = 0.0))
+    intercept[IllegalArgumentException](CgConfig(dualRegularization = Double.NaN))
+    intercept[IllegalArgumentException](CgConfig(primalRegularization = Double.PositiveInfinity))
+    intercept[IllegalArgumentException](CgConfig(preconditionerRank = -1))
+    intercept[IllegalArgumentException](CgConfig(preconditionerMemoryBytes = -1L))
   }
 
   test("partial Cholesky selects the updated Schur diagonal and applies the explicit preconditioner") {
@@ -120,8 +121,8 @@ class NewtonSuite extends AnyFunSuite with DataFrameSuiteBase {
       Vectors.sparse(m, entries)
     }.cache()
     val pivots = scala.collection.mutable.ArrayBuffer.empty[Int]
-    val monitor = new SolveMonitor(SolveControl(onProgress = Some { e =>
-      if (e.phase == SolvePhase.Preconditioner) e.preconditionerRank.foreach(pivots += _)
+    val monitor = new SolveMonitor(SolveControl(onProgress = { e =>
+      if (e.phase == SolvePhase.SystemSetup) e.work.flatMap(_.preconditionerRank).foreach(pivots += _)
     }))
     val factory = new newton.CgFactory(1e-10, 1, monitor = monitor)
     val rhs = new DenseVector(Array.tabulate(m)(i => (i % 7 + 1).toDouble))
@@ -137,10 +138,10 @@ class NewtonSuite extends AnyFunSuite with DataFrameSuiteBase {
           val p = sc.broadcast(solution)
           try {
             val scale = if (weights.isDefined) 1.0 else 1.0 / (1.0 + factory.primalRegularization)
-            val actual = newton.regularizedProduct(new DMatrixOps(rows), weights.map(_.squared),
+            val actual = newton.CgFactory.regularizedProduct(new DMatrixOps(rows), weights.map(_.squared),
               p, factory.dualRegularization, scale)
             assert(norm(new BDV(actual.values) - new BDV(rhs.values)) / norm(new BDV(rhs.values)) < 1e-10)
-          } finally Broadcasts.destroyAsync(p)
+          } finally p.destroy()
         } finally system.release()
       }
     } finally rows.unpersist()
@@ -161,17 +162,17 @@ class NewtonSuite extends AnyFunSuite with DataFrameSuiteBase {
     val g = b.t * w * b + delta * BDM.eye[Double](2)
     val p = sc.broadcast(new DenseVector(Array(0.7, -0.3)))
     try {
-      val actual = newton.regularizedProduct(new DMatrixOps(rows), Some(weights.squared), p, delta)
+      val actual = newton.CgFactory.regularizedProduct(new DMatrixOps(rows), Some(weights.squared), p, delta)
       assert(norm(new BDV(actual.values) - g * new BDV(p.value.values)) < 1e-12)
-    } finally Broadcasts.destroyAsync(p)
-    val factory = new newton.CgFactory(1e-12, 50, config = MatrixFreeConfig(rho, delta))
+    } finally p.destroy()
+    val factory = new newton.CgFactory(1e-12, 50, config = CgConfig(rho, delta))
     val system = factory.build(rows, 2, Some(weights))
     try {
       Seq(-x *:* s, BDV(-0.3, 0.2, -0.5)).foreach { q =>
         val h = rc + q /:/ x
         val rhs = -rb - b.t * w * h
         val dy = new BDV(system.solve(new DenseVector(rhs.toArray)).values)
-        val (dxv, dsv) = newton.recoverDirections(weights, vector(h.toArray), vector(rc.toArray),
+        val (dxv, dsv) = weights.recoverDirections(vector(h.toArray), vector(rc.toArray),
           vector((b * dy).toArray), rho)
         val dx = local(dxv)
         val ds = local(dsv)
@@ -199,7 +200,7 @@ class NewtonSuite extends AnyFunSuite with DataFrameSuiteBase {
     val expectedX = xh + (0.5 * comp / sh.toArray.sum)
     val expectedS = sh + (0.5 * comp / xh.toArray.sum)
     val result = Initialize.init(vector(c.toArray), matrix(b), new DenseVector(rhs.toArray),
-      new newton.CgFactory(1e-12, 50, config = MatrixFreeConfig(rho, delta))(spark))
+      new newton.CgFactory(1e-12, 50, config = CgConfig(rho, delta))(spark))
     assert(norm(new BDV(result.lambda.values) - y) < 1e-10)
     assert(norm(local(result.x) - expectedX) < 1e-10)
     assert(norm(local(result.s) - expectedS) < 1e-10)
@@ -208,7 +209,7 @@ class NewtonSuite extends AnyFunSuite with DataFrameSuiteBase {
   test("explicit rank obeys memory budget and failed inner solves cannot accept a loose defect") {
     val b = BDM((1.0, 2.0), (2.0, -0.5), (0.0, 1.0))
     val factory = new newton.CgFactory(1e-14, 1, config =
-      MatrixFreeConfig(preconditionerRank = 100, preconditionerMemoryBytes = 0))(spark)
+      CgConfig(preconditionerRank = 100, preconditionerMemoryBytes = 0))(spark)
     val system = factory.build(matrix(b), 2, None)
     try {
       intercept[IllegalStateException](system.solve(new DenseVector(Array(1.0, 3.0))))
@@ -260,7 +261,7 @@ class NewtonSuite extends AnyFunSuite with DataFrameSuiteBase {
       assert(math.abs(result.objectiveValue - 1.0) < 1e-7)
     } finally result.x.unpersist()
     val limited = LP.solveSummary(vector(Array(1.0, 2.0)), rows, new DenseVector(Array(1.0, 1.0)),
-      solver = NewtonSolver.ConjugateGradient, maxIter = 1, matrixFree = MatrixFreeConfig(100.0, 100.0))
+      solver = NewtonSolver.ConjugateGradient, maxIter = 1, cgConfig = CgConfig(100.0, 100.0))
     try {
       assert(limited.termination == LP.Termination.IterationLimit)
       assert(limited.primalResidual > 1e-8 || limited.dualResidual > 1e-8 || limited.dualityGap > 1e-8)
@@ -270,7 +271,7 @@ class NewtonSuite extends AnyFunSuite with DataFrameSuiteBase {
   test("matrix-free systems exceed the packed Gramian dimension limit with bounded factor storage") {
     val m = 65536
     val rows = sc.parallelize(Seq(Vectors.sparse(m, Seq(0 -> 1.0))), 1)
-    val factory = new newton.CgFactory(1e-12, 20, config = MatrixFreeConfig(
+    val factory = new newton.CgFactory(1e-12, 20, config = CgConfig(
       preconditionerRank = m, preconditionerMemoryBytes = 32L * m * 2))(spark)
     val system = factory.build(rows, m, None)
     val rhs = new Array[Double](m)

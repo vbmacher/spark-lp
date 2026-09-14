@@ -129,7 +129,7 @@ final class LpNumericalException private[spark_lp](
   *                    (matrix-free solver only).
   * @param cgMaxIterations conjugate-gradient step limit per normal-equations solve; values < 1
   *                        select `min(max(100, 2m), 1000)` (matrix-free solver only).
-  * @param matrixFree primal/dual regularization and bounded preconditioner controls (CG only).
+  * @param cgConfig primal/dual regularization and bounded preconditioner controls (CG only).
   */
 final case class SolveConfig(
   tolerance: Double = 1e-8,
@@ -144,7 +144,7 @@ final case class SolveConfig(
   cgMaxIterations: Int = 0,
   mip: MipConfig = MipConfig(),
   stopAfterIteration: Option[Int => Boolean] = None,
-  matrixFree: com.github.vbmacher.spark_lp.MatrixFreeConfig = com.github.vbmacher.spark_lp.MatrixFreeConfig(),
+  cgConfig: com.github.vbmacher.spark_lp.newton.CgConfig = com.github.vbmacher.spark_lp.newton.CgConfig(),
   control: com.github.vbmacher.spark_lp.SolveControl = com.github.vbmacher.spark_lp.SolveControl()) {
 
   com.github.vbmacher.spark_lp.LP.validateParameters(
@@ -152,12 +152,8 @@ final case class SolveConfig(
   require(maxLocalConstraints >= 0, "maxLocalConstraints must be nonnegative")
 
   /** The concrete normal-equations solver for a model with `m` equality-form rows. */
-  private[dsl] def resolvedNewtonSolver(m: Long): NewtonSolver = newtonSolver match {
-    case NewtonSolver.Auto =>
-      if (m <= math.min(maxLocalConstraints, NewtonSolver.AutoCholeskyLimit.toLong)) NewtonSolver.Cholesky
-      else NewtonSolver.ConjugateGradient
-    case s => s
-  }
+  private[dsl] def resolvedNewtonSolver(m: Long): NewtonSolver =
+    NewtonSolver.resolve(newtonSolver, m, maxLocalConstraints)
 }
 
 /** Limits for the driver-side branch-and-bound search. */

@@ -13,7 +13,7 @@ From this repository, using JDK 11:
 [source,shell]
 ----
 sbt 'spark-lpSpark_3_52_12/publishLocal'
-sbt 'examplesSpark_3_5/runMain com.github.vbmacher.spark_lp.examples.ExampleWhiskasDsl'
+sbt 'examplesSpark_3_5/runMain com.github.vbmacher.spark_lp.examples.ExampleWhiskas'
 ----
 
 For a Spark 3.5.3 application using that local build:
@@ -31,12 +31,12 @@ the Java fallback also works.
 
 Each ingredient gets a nonnegative decision variable. Minimize the cost of a 100-gram
 blend subject to protein, fat, fibre and salt requirements. The runnable source lives
-in the link:../examples/README.md[examples module], alongside the corresponding
-standard-form model and other examples.
+in the link:../examples/README.md[examples module], alongside the other PuLP case
+studies and the MPS file importer.
 
 [source,scala]
 ----
-include::../examples/src/main/scala/com/github/vbmacher/spark_lp/examples/ExampleWhiskasDsl.scala[]
+include::../examples/src/main/scala/com/github/vbmacher/spark_lp/examples/ExampleWhiskas.scala[]
 ----
 
 [mermaid]
@@ -48,7 +48,7 @@ flowchart LR
   D["Weight and nutrition requirements"] --> G
   C --> S[Solve]
   G --> S
-  S --> R["Chicken ≈ 33.33 g; beef ≈ 66.67 g; cost ≈ 0.9667"]
+  S --> R["Beef ≈ 60 g; gel ≈ 40 g; cost ≈ 0.52"]
 ----
 
 == Small vocabulary
@@ -149,7 +149,7 @@ Mermaid-capable AsciiDoc renderer; ordinary Asciidoctor still displays their sou
 
 [source,scala]
 ----
-import com.github.vbmacher.spark_lp.{SolveControl, SolvePhase, StagnationConfig}
+import com.github.vbmacher.spark_lp.{SolveControl, StagnationConfig}
 import scala.concurrent.duration._
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -157,11 +157,15 @@ val stop = new AtomicBoolean(false) // another driver thread can call stop.set(t
 val result = model.solve(SolveConfig(
   control = SolveControl(
     timeLimit = Some(20.minutes),
-    shouldStop = Some(() => stop.get()),
-    onProgress = Some { event =>
-      if (event.phase == SolvePhase.OuterIteration)
-        println(s"iteration=${event.iteration} objective=${event.objectiveValue} " +
-          s"primal=${event.primalResidual} gap=${event.dualityGap}")
+    shouldStop = () => stop.get(),
+    onProgress = { event =>
+      event.iterate.foreach { metrics =>
+        println(s"iteration=${event.iteration} objective=${metrics.objectiveValue} " +
+          s"primal=${metrics.primalResidual} gap=${metrics.dualityGap}")
+      }
+      event.work.foreach { work =>
+        println(s"phase=${event.phase} completed=${work.completed} residual=${work.residual}")
+      }
     },
     stagnation = Some(StagnationConfig(patience = 10)))))
 try {
@@ -177,13 +181,36 @@ to use only explicit iteration/time/user limits. The numerical time budget begin
 DSL compilation, immediately before initialization, and excludes result reconstruction.
 Models solved entirely by fixed-variable presolve return immediately without numerical events.
 
-Callbacks execute on the driver. Events cover initialization, preconditioner pivots, Cholesky
-blocks, CG steps and completed outer iterations, including a terminal iteration. `iteration=0`
-means initialization; later inner events name the outer iteration being computed.
-Metrics that do not apply to a phase are `None`. Inner step counts restart for each right-hand
-side, but continue across residual replacement and rank escalation. `trueResidual` identifies
-a recomputed CG residual; other inner residuals come from the recurrence. Objective values
-in outer events include the user's objective sense and constants.
+Callbacks are ordinary functions with no-op/false defaults; no `Some(...)` wrapper is needed.
+They execute synchronously on the driver for either backend. Both use the same phases:
+
+[cols="1,2,2",options="header"]
+|===
+|Phase |Cholesky |Conjugate gradient
+|`Initialization` |Construct the initial iterate. |Construct the initial iterate.
+|`SystemSetup` |Factor the normal-equations blocks. |Build or strengthen the preconditioner.
+|`InnerSolve` |Solve a right-hand side by back-substitution. |Solve a right-hand side with CG.
+|`OuterIteration` |Report a complete primal/dual iterate. |Report a complete primal/dual iterate.
+|===
+
+`SolveProgress` always includes `phase`, `iteration` and `elapsedSeconds`.
+`iteration=0` means initialization; later setup/inner events identify the outer iteration
+being computed. Phase-entry events have neither metric group. Completed outer events
+contain `iterate: Option[IterationProgress]`, with objective, primal/dual residuals,
+duality gap and feasibility from the same iterate. Objectives include the user's sense
+and constants. The terminal outer iteration is reported too.
+
+Setup/inner updates contain `work: Option[WorkProgress]`. `completed` counts blocks for
+Cholesky, pivots during CG setup, and CG steps during an inner solve. `total` is present
+when known. Counts reset for each setup or right-hand side; CG step counts continue
+across residual replacement and rank escalation within that solve. `residual` is an
+unpreconditioned norm, with `trueResidual` identifying a fresh operator evaluation;
+other CG residuals come from the recurrence. `preconditionerRank` is optional and
+applies only to backends with a rank-based preconditioner. Setup may recur within
+`InnerSolve` when CG strengthens its preconditioner; phases are not a one-way sequence.
+
+This replaces the old `Cholesky`/`Preconditioner` phase names and flat progress metrics.
+For example, use `event.iterate.map(_.objectiveValue)` and `event.work.map(_.completed)`.
 Reporting itself starts no additional Spark actions and collects no distributed vectors.
 Keep callbacks quick; their exceptions propagate unchanged after cleanup.
 
@@ -209,13 +236,13 @@ constraint activities and a scalar bound violation using aligned compiled column
 free/fixed variables or merged rows reconstruct user values and reduce a scalar violation.
 Solution vectors stay distributed.
 This componentwise feasibility test differs from the normalized L2 residual used for convergence;
-`candidate.feasible=true` does not imply that every convergence residual is below `tolerance`.
+`candidate.iterate.map(_.feasible)=true` does not imply that every convergence residual is below `tolerance`.
 A stricter candidate tolerance can also reject values accepted by convergence or presolve.
 Retention holds at most one additional distributed iterate and closing the result releases its
 materialized values without releasing caller-owned caches.
 
 If no feasible candidate exists but an iteration completed, values are available for diagnostics
-with `candidate.feasible=false`. If stopping occurred before any iteration completed,
+with `candidate.iterate.map(_.feasible)=false`. If stopping occurred before any iteration completed,
 `candidate.available=false`, the objective/residuals and constraint activities are `NaN`, and
 `value`/`values` throw an explicit no-iterate error. Never publish those results as feasible output.
 New controls are rejected for integer models; branch-and-bound stopping is a separate contract.

@@ -1,5 +1,7 @@
 package com.github.vbmacher.spark_lp.dsl
 
+import com.github.vbmacher.spark_lp.dsl.compiler.LpCompiler
+
 import com.github.vbmacher.spark_lp.LP
 import com.github.vbmacher.spark_lp.TestingUtils._
 import com.github.vbmacher.spark_lp.dsl.implicits._

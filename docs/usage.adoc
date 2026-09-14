@@ -615,3 +615,29 @@ remain unchanged/open apart from the requested text write.
 The file contains `NAME`, `OBJSENSE`, `ROWS`, `COLUMNS`, `RHS`, `BOUNDS` and `ENDATA`. `OBJSENSE` explicitly preserves minimization or maximization. The RHS entry on the free objective row is the *negative* objective constant. Readers must support both extensions; readers that ignore them cannot preserve this dialect's objective. Integer columns use `INTORG`/`INTEND` markers, binary columns also use `BV`, and all bounds are explicit, including free, fixed and one-sided bounds. `relaxIntegrality = true` omits integer markers and `BV` while retaining binary bounds intersected with `[0,1]`; this intentionally exports a continuous relaxation.
 
 Quadratic objectives fail explicitly. Existing destinations require explicit overwrite; failed writes remove their temporary output. Optional interoperability tests use the installed SciPy-bundled HiGHS reader and solver and check both integer and relaxation objectives. The objective and bound encodings follow the https://docs.gurobi.com/projects/optimizer/en/current/reference/fileformats/modelformats.html[MPS format reference].
+
+== MPS-file import
+
+`LpMpsImport.read(path, MpsReadOptions(...))` reads a UTF-8 driver-local file into an ordinary named `LpProblem`. The result exposes `variables: Map[String, LpVariable]` and original row names mapped to their one or two reconstructed constraints. These handles support ordinary inspection, additional constraints and solving. Import itself performs no optimization and does not tighten or invent integer bounds. A preserved model outside a selected solver's capabilities receives that solver's explicit capability error.
+
+The supported dialect uses whitespace-separated free MPS records, also accepting fixed-format files whose names contain no embedded spaces and whose records explicitly repeat column and set names. Sections are `NAME`, optional `OBJSENSE`/`OBJNAME`, `ROWS`, `COLUMNS`, optional `RHS`, `RANGES`, `BOUNDS`, and required `ENDATA`, in that order. One `N` objective row is required. The default objective sense is minimize; `OBJSENSE` preserves MAX/MIN, and an explicit `objectiveSense` option overrides it. The objective constant is the negative RHS of the objective row. Duplicate coefficient entries sum; missing coefficients and RHS entries are zero. Comments begin with `*`. Numbers support E or D exponents and full double precision.
+
+Continuous variables default to `[0,+infinity)`. Integer markers default to `[0,1]` unless explicit upper bounds or `PL`/`FR` specify otherwise. `LO`, `UP`, `FX`, `FR`, `MI`, `PL`, `LI`, `UI` and `BV` bounds are supported. An explicitly negative upper bound implies a free lower bound if no lower bound is specified. Binary domains retain `[0,1]` semantics. `rhsSet`, `boundSet` and `rangeSet` select named data sets; each defaults to the first encountered set independently, and an explicitly requested missing set is an error. All records, including unselected sets, are structurally checked.
+
+A range of magnitude `r` makes an L row `[rhs-r,rhs]`, a G row `[rhs,rhs+r]`, and an E row `[rhs,rhs+r]` for a nonnegative range or `[rhs-r,rhs]` for a negative range. Such rows become `name__lower` and `name__upper`, with collisions rejected. SOS, quadratic, semi-continuous, multiple objective/free rows, omitted-name continuation records and unknown sections are rejected with file/line/section diagnostics.
+
+Parsing is sequential but stores the coefficient matrix and model declarations on the driver: memory is O(variables + rows + coefficient records). Defaults cap input at 64 MiB, 100,000 variables, 10,000 rows and 1,000,000 coefficient records; `MpsReadOptions` changes these limits explicitly. The reader closes its input on success or error and does not alter the source file.
+
+[source,scala]
+----
+import java.nio.file.Paths
+import org.apache.spark.sql.SparkSession
+import com.github.vbmacher.spark_lp.dsl._
+
+implicit val spark: SparkSession = SparkSession.builder().master("local[*]").appName("mps").getOrCreate()
+val imported = LpMpsImport.read(Paths.get("model.mps"))
+val result = imported.model.solve()
+try imported.variables.toSeq.sortBy(_._1).foreach { case (name, variable) =>
+  println(s"$name = ${result.value(variable)}")
+} finally { result.close(); spark.stop() }
+----

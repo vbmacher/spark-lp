@@ -42,7 +42,15 @@ object LpAlgebra {
         ((1, f.index + 2, "", 0, 0, ""), s"  + ${number(f.weight)} * ("),
         ((1, f.index + 2, "", 2, 0, ""), s"  + ${number(f.constant)} )^2")), 1), terms(f.coefficients, 1, f.index + 2))
     }
-    sc.union(Vector(header, terms(view.objectiveCoefficients, 1, 0), diagonal, rowHeaders, matrix, rowEnds, bounds) ++ factors)
+    val sosHeaders: RDD[(Order, String)] = sc.parallelize(view.sosGroups.zipWithIndex.map { case (group, i) =>
+      ((4, i, "", 0, 0, ""), s"${group.kind} ${quoted(group.name)} (weight order):")
+    })
+    val sosMembers = sc.parallelize(view.sosGroups.zipWithIndex.flatMap { case (group, gi) =>
+      group.members.zipWithIndex.map { case (m, i) => m.variable -> (gi, i, m.weight) }
+    }).join(names).map { case (_, ((group, index, weight), name)) =>
+      ((4, group, "", 1, index, ""), s"  ${quoted(name)} : ${number(weight)}")
+    }
+    sc.union(Vector(sosHeaders, sosMembers, header, terms(view.objectiveCoefficients, 1, 0), diagonal, rowHeaders, matrix, rowEnds, bounds) ++ factors)
   }
 
   /** Exact truncation count; distributed evaluation and sorting are explicit Spark actions. */

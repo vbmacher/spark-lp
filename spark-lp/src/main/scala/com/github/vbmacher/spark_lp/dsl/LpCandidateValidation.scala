@@ -4,9 +4,10 @@ import org.apache.spark.rdd.RDD
 
 final case class LpCandidateValue(variable: LpVariableId, value: Double)
 final case class CandidateValidationConfig(tolerance: Double = 1e-8,
-  integralityTolerance: Double = 1e-6, relaxIntegrality: Boolean = false) {
+  integralityTolerance: Double = 1e-6, relaxIntegrality: Boolean = false, sosZeroTolerance: Double = 1e-6) {
   require(Seq(tolerance, integralityTolerance).forall(t => LpExpressionData.finite(t) && t > 0.0),
     "Candidate tolerances must be finite and positive")
+  require(java.lang.Double.isFinite(sosZeroTolerance) && sosZeroTolerance >= 0.0, "SOS zero tolerance must be finite and nonnegative")
   require(integralityTolerance < 0.5, "Integrality tolerance must be below 0.5")
 }
 final case class LpCandidateViolation(variable: Option[LpVariableId], constraint: Option[LpConstraintId],
@@ -55,7 +56,18 @@ private[dsl] object LpCandidateValidation {
         }
         LpCandidateViolation(None, Some(id), "constraint", violation, violation <= config.tolerance)
       }
-      val records = (if (bad) malformed else limits.union(rows)).persist()
+      val groups = view.sosGroups
+      val membership = values.sparkContext.parallelize(groups.zipWithIndex.flatMap { case (group, gi) =>
+        group.members.zipWithIndex.map { case (member, i) => member.variable -> (gi, i) }
+      })
+      val active = membership.join(source).filter { case (_, (_, value)) => math.abs(value) > config.sosZeroTolerance }
+        .map { case (_, ((group, index), _)) => group -> index }.groupByKey().mapValues(_.toVector.sorted)
+      val sos = values.sparkContext.parallelize(groups.zipWithIndex.map { case (group, i) => i -> group })
+        .leftOuterJoin(active).map { case (_, (group, indices)) =>
+          val accepted = config.relaxIntegrality || LpSos.valid(group, indices.getOrElse(Vector.empty))
+          LpCandidateViolation(None, None, s"sos:${group.name}", if (accepted) 0.0 else 1.0, accepted)
+        }
+      val records = (if (bad) malformed else limits.union(rows).union(sos)).persist()
       try {
         val maximum = records.map(_.magnitude).fold(0.0)(math.max)
         val feasible = !bad && records.filter(!_.accepted).take(1).isEmpty

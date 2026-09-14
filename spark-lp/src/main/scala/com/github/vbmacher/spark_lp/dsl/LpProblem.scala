@@ -34,6 +34,12 @@ final class LpProblem private[dsl](
     if (activeSolves != 0) throw new LpModelException("Model edits are unsupported during an active solve")
   }
 
+  private[dsl] val sosGroups = mutable.ArrayBuffer.empty[LpSosGroup]
+  def addSos1(name: String, members: Seq[(LpVariable, Double)]): LpSosGroup =
+    LpSos.add(this, name, SosKind.Sos1, members)
+  def addSos2(name: String, members: Seq[(LpVariable, Double)]): LpSosGroup =
+    LpSos.add(this, name, SosKind.Sos2, members)
+
   private[dsl] val handles = mutable.ArrayBuffer.empty[VarSetHandle]
   private[dsl] var quadratic: Option[QpObjective] = None
   private[dsl] var objective: Option[LpExpr] = None

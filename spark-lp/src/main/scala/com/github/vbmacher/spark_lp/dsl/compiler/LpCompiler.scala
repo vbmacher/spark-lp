@@ -38,6 +38,10 @@ private[dsl] final class LpCompiler(problem: LpProblem, config: SolveConfig) ext
   private var separableInteger = false
   private var inferredBounds = Map.empty[Int, Map[String, LpBounds]]
 
+  private[dsl] def newtonSolver(rows: Int): NewtonSolver =
+    if (problem.sosGroups.nonEmpty && config.newtonSolver == NewtonSolver.Auto) NewtonSolver.ConjugateGradient
+    else config.resolvedNewtonSolver(rows)
+
   private def inferIntegerBounds(): Option[String] = {
     val needsInference = problem.handles.exists { h =>
       h.category == Integer && (h.metadata.bounds +: h.metadata.members.values.toVector)
@@ -54,7 +58,7 @@ private[dsl] final class LpCompiler(problem: LpProblem, config: SolveConfig) ext
       try {
         propagationPasses = propagation.passes
         if (propagation.contradiction.isEmpty) {
-          separableInteger = needsInference && problem.quadratic.isEmpty && problem.inspect.coefficients.map(c => c.row -> 1L)
+          separableInteger = needsInference && problem.sosGroups.isEmpty && problem.quadratic.isEmpty && problem.inspect.coefficients.map(c => c.row -> 1L)
             .reduceByKey(_ + _).filter(_._2 > 1L).take(1).isEmpty
           val selected = if (separableInteger || full) propagation.variables else propagation.variables.filter(_.category == Integer)
           val inferred = selected.take(config.boundInference.maxLocalChanges + 1)
@@ -75,7 +79,7 @@ private[dsl] final class LpCompiler(problem: LpProblem, config: SolveConfig) ext
   }
 
   private def analyticalMip(status: LpStatus, objective: Double): Option[MipSummary] =
-    if (config.relaxIntegrality || !problem.handles.exists(_.category != Continuous)) None
+    if (config.relaxIntegrality || !problem.handles.exists(_.category != Continuous) && problem.sosGroups.isEmpty) None
     else if (status == LpStatus.Optimal) Some(MipSummary(Some(objective), Some(objective), Some(0.0), Some(0.0), 0, 0, "SearchExhausted"))
     else Some(MipSummary(None, None, None, None, 0, 0, "AnalyticalUnbounded"))
 
@@ -147,7 +151,7 @@ private[dsl] final class LpCompiler(problem: LpProblem, config: SolveConfig) ext
         eps = config.epsilon,
         infeasibilityTolerance = config.infeasibilityTolerance,
         solver = if (problem.quadratic.exists(_.factors.nonEmpty) && compiled.plans.exists(_.kind == SplitKind))
-          NewtonSolver.ConjugateGradient else config.resolvedNewtonSolver(compiled.numRows),
+          NewtonSolver.ConjugateGradient else newtonSolver(compiled.numRows),
         cgTolerance = config.cgTolerance,
         cgConfig = config.cgConfig,
         cgMaxIterations = config.cgMaxIterations,
@@ -198,12 +202,16 @@ private[dsl] final class LpCompiler(problem: LpProblem, config: SolveConfig) ext
       if (weight.isNaN || weight.isInfinite || weight * objectiveSign < 0.0)
         fail("Quadratic factor weights must be finite and convex in minimization form")
     }
-    val auxiliaryHandles = factors.indices.flatMap { i =>
+    val factorHandles = factors.indices.flatMap { i =>
       Seq("positive", "negative").zipWithIndex.map { case (sign, j) =>
         new VarSetHandle(problem, problem.handles.size + 2 * i + j,
           s"__qp_factor_${i}_$sign", 0.0, None, Continuous, new ScalarDomain(spark))
       }
     }
+    if (problem.sosGroups.nonEmpty && problem.quadratic.nonEmpty)
+      fail("SOS groups support linear objectives only")
+    val (sosHandles, sosConstraints) = LpSos.lower(problem, problem.handles.size + factorHandles.size)
+    val auxiliaryHandles = factorHandles ++ sosHandles
     val diagonal = problem.quadratic.map(_.diagonal).getOrElse(LpExpr.zero).plus(
       new LpExpr(factors.zipWithIndex.flatMap { case ((_, weight), i) =>
         Seq(ConstCoeffTerm(auxiliaryHandles(2 * i), 2 * weight),
@@ -240,14 +248,15 @@ private[dsl] final class LpCompiler(problem: LpProblem, config: SolveConfig) ext
     val rowSpecs = mutable.ArrayBuffer.empty[RowSpec]
     val termPieces = mutable.ArrayBuffer.empty[RDD[((Int, String, Int), Double)]]
 
-    (problem.constraints.toVector ++ factorConstraints).zipWithIndex.foreach {
+    (problem.constraints.toVector ++ factorConstraints ++ sosConstraints).zipWithIndex.foreach {
       case (Left(constraint), idx) =>
         val cname = constraint.explicitName.getOrElse(s"_c$idx")
         val context = s"constraint '$cname'"
         validateRhs(constraint.rhs, context)
         checkRowBudget(rowSpecs.size + 1L, context)
         val rowId = rowSpecs.size
-        rowSpecs += new RowSpec(rowId, cname, None, constraint.sense, constraint.rhs)
+        rowSpecs += new RowSpec(rowId, cname, None, constraint.sense, constraint.rhs,
+          internalBound = idx >= problem.constraints.size + factorConstraints.size)
         constraint.terms.foreach { term =>
           termPieces += expandTerm(plans, term, rowId, context)
         }
@@ -1222,6 +1231,21 @@ private[dsl] final class LpCompiler(problem: LpProblem, config: SolveConfig) ext
     * fixed variables that were presolved out. `integerOverrides` supplies exact user-unit values for
     * integral columns keyed by global column index, taking precedence over the reconstructed value.
     */
+  private[dsl] def sosFeasible(compiled: Compiled, x: DVector, overrides: Map[Long, Double], tolerance: Double): Boolean = {
+    val groups = problem.sosGroups.map(_.data).toVector
+    if (groups.isEmpty) true
+    else {
+      val members = groups.flatMap(_.members.map(_.variable)).toSet
+      val values = reconstructValues(compiled, x, overrides)
+        .filter { case ((si, key), _) => members(LpVariableId(si, key)) }.collect().toMap
+      groups.forall { group =>
+        val active = group.members.zipWithIndex.collect { case (m, i) if
+          values.get((m.variable.family, m.variable.key)).exists(v => math.abs(v) > tolerance) => i }
+        group.members.forall(m => values.get((m.variable.family, m.variable.key)).exists(java.lang.Double.isFinite)) && LpSos.valid(group, active)
+      }
+    }
+  }
+
   private def reconstructValues(compiled: Compiled, x: DVector,
     integerOverrides: Map[Long, Double], direction: Boolean = false): RDD[((Int, String), Double)] = {
     // per-column primal values, aligned with the compiled column order
@@ -1483,6 +1507,11 @@ private[dsl] final class LpCompiler(problem: LpProblem, config: SolveConfig) ext
       caches.keep(result)
     }
 
+    val publicValues = if (problem.sosGroups.isEmpty) userValues else {
+      val limit = problem.handles.size
+      val visible = caches.checkpoint(userValues.filter(_._1._1 < limit))
+      visible.count(); visible
+    }
     new LpSolution(
       status = status,
       objectiveValue = objectiveValue,
@@ -1490,7 +1519,7 @@ private[dsl] final class LpCompiler(problem: LpProblem, config: SolveConfig) ext
       residuals = residuals,
       constraints = constraintsDf,
       problem = problem,
-      userValues = caches.keep(userValues),
+      userValues = caches.keep(publicValues),
       candidate = candidate.getOrElse(CandidateInfo(true, status == LpStatus.Optimal, Some(iterations))),
       stopReason = stopReason,
       evidence = evidence,

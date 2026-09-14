@@ -7,7 +7,7 @@ import org.apache.spark.rdd.RDD
 import org.apache.spark.sql.SparkSession
 import scala.collection.JavaConverters._
 
-/** Imported solution metadata is historical input, not freshly verified solver evidence. */
+/** Imported solution metadata requires independent verification before making solver guarantees. */
 final case class LpJsonDocument(model: LpPortableModel, solution: Option[LpSolutionData],
   source: String, solutionMetadataVerified: Boolean = false)
 
@@ -112,6 +112,8 @@ object LpJson {
       val header = obj("schemaVersion" -> int(1), "name" -> str(data.name), "sense" -> str(data.sense.toString),
         "objectiveConstant" -> num(data.objective.constant), "declarations" -> array(declarations),
         "factors" -> array(data.factors.map(f => obj("index" -> int(f.index), "weight" -> num(f.weight), "constant" -> num(f.constant)))),
+        "sosGroups" -> array(data.sosGroups.map(g => obj("name" -> str(g.name), "kind" -> str(g.kind.toString),
+          "members" -> array(g.members.map(m => obj("variable" -> id(m.variable), "weight" -> num(m.weight))))))),
         "solution" -> result.getOrElse(factory.nullNode()))
       spark.sparkContext.parallelize(Seq(header.toString), 1).saveAsTextFile(new Path(temporary, "header").toString)
       save(data.variables, "variables")(variable)
@@ -154,9 +156,18 @@ object LpJson {
       val i = integer(field(f, "index"))
       LpQuadraticFactor(i, number(field(f, "weight")), number(field(f, "constant")), records(s"factor-$i").map(readCoefficient))
     })
+    val groups = if (!h.has("sosGroups")) Vector.empty else elements(field(h, "sosGroups")).map { g =>
+      val kind = text(field(g, "kind")) match {
+        case "Sos1" => SosKind.Sos1
+        case "Sos2" => SosKind.Sos2
+        case other => throw new LpModelException(s"Unsupported SOS kind '$other'")
+      }
+      LpSosData(text(field(g, "name")), kind, elements(field(g, "members")).map(m =>
+        LpSosMember(variableId(field(m, "variable")), number(field(m, "weight")))))
+    }
     val data = LpPortableModel(1, text(field(h, "name")), sense, declarations, variables, rows, matrix,
       LpAffineData(records("objective").map(readCoefficient), number(field(h, "objectiveConstant"))),
-      records("diagonal").map(readCoefficient), factors)
+      records("diagonal").map(readCoefficient), factors, groups)
     val rawSolution = field(h, "solution")
     val solution = if (rawSolution.isNull) None else {
       val statuses = Seq(LpStatus.Optimal, LpStatus.Stopped, LpStatus.IterationLimit, LpStatus.Infeasible,

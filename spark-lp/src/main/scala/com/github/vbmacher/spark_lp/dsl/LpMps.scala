@@ -7,6 +7,7 @@ import org.apache.spark.rdd.RDD
 object LpMps extends Serializable {
   def write(view: LpModelView, path: Path, naming: ExportNaming = ExportNaming.Normalized,
     relaxIntegrality: Boolean = false, overwrite: Boolean = false): LpExportMapping = {
+    if (view.sosGroups.nonEmpty) throw new LpModelException("This export dialect cannot preserve SOS groups; use JSON")
     if (view.hasQuadraticObjective) throw new LpModelException("MPS export supports linear objectives only")
     view.statistics()
     val mapping = LpExport.mappings(view, naming)

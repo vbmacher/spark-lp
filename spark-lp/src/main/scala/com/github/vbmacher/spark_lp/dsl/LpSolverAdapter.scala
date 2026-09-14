@@ -9,7 +9,7 @@ import scala.concurrent.duration.FiniteDuration
 final case class LpSolverCapabilities(lp: Boolean = true, mip: Boolean = false,
   quadratic: Boolean = false, infiniteBounds: Boolean = true, starts: Boolean = false,
   callbacks: Boolean = false, duals: Boolean = false, reducedCosts: Boolean = false,
-  nativeSession: Boolean = false)
+  nativeSession: Boolean = false, sos: Boolean = false)
 
 final case class LpAdapterOptions(validation: CandidateValidationConfig = CandidateValidationConfig(),
   timeLimit: Option[FiniteDuration] = None, shouldStop: () => Boolean = () => false,

@@ -45,12 +45,26 @@ final class LpSolution private[dsl](
   val stopReason: Option[StopReason] = None,
   val evidence: Option[LpEvidence] = None) extends AutoCloseable {
 
-  private def requireCandidate(): Unit = {
+  private var closed = false
+
+  private[dsl] def requireOwner(handle: VarSetHandle): Unit = {
+    if (!(handle.problem eq problem)) throw new LpModelException("Variable belongs to a different problem")
+  }
+
+  /** Explicit reporting view; does not change raw values or attach feasibility metadata. */
+  def rounded(rounding: LpRounding = LpRounding()): LpRoundedValues = {
+    requireCandidate()
+    new LpRoundedValues(this, rounding)
+  }
+
+  private[dsl] def requireCandidate(): Unit = {
+    if (closed) throw new LpModelException("Solution is closed")
     if (!candidate.available) throw new LpModelException("No completed iterate is available for this solve")
   }
 
   /** Releases the materialised result. Finish all Spark actions on values before closing. */
   override def close(): Unit = {
+    closed = true
     userValues.unpersist(blocking = false)
     evidence.foreach(_.close())
   }

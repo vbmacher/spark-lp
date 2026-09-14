@@ -52,6 +52,14 @@ flowchart LR
   S --> R["Beef ≈ 60 g; gel ≈ 40 g; cost ≈ 0.52"]
 ----
 
+== Feasibility models
+
+An omitted objective means constant zero for continuous, integer and binary models.
+Add constraints and call `solve()` to find a feasible point. Normal feasibility,
+termination and unavailable-candidate semantics apply. The implicit objective does
+not mutate the model: a later `model += objective` or `setObjective` sets an explicit
+objective for subsequent solves.
+
 == Small vocabulary
 
 [cols="1,2",options="header"]

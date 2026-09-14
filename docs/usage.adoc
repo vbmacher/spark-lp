@@ -418,3 +418,15 @@ edited in family-wide relational expressions. Cross-model handles and non-finite
 left-hand side. Its RHS is the normalized constant (expression constants are already moved to the
 right); it does not replace a constraint already added to a model. Source plans must stay stable
 through inspection actions, just as for solving.
+=== Evaluate expressions against a solution
+
+`solution.evaluate(3.0 * x + family.sum($"cost") + 7.0)` evaluates an arbitrary linear expression
+with that solution's retained values. Repeated terms aggregate, selected/composite keys retain their
+identity, and constants are included. Coefficient sources are read at evaluation time; materialize
+them explicitly when a durable snapshot is required. Validation and the distributed join/reduction
+perform Spark actions, returning only the scalar total to the driver.
+
+Foreign-model terms, missing/non-finite values, unavailable candidates and closed solutions raise
+an explicit error. An available stopped or infeasible iterate can be evaluated for diagnostics;
+the result of an expression is not a feasibility or optimality claim. Complete evaluation before
+closing the solution. Variables declared after the solve have no values in the retained assignment.

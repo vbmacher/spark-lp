@@ -4,7 +4,8 @@ Remove completed items once their records are reconciled. Results and execution 
 
 ## Campaigns
 
-- [ ] Complete `sparsity-and-conditioning.csv`: one warmup and five measured repetitions per eligible backend batch in fresh JVMs, with fixed source, environment and configuration and alternating backend order.
+- [ ] Complete the outstanding non-dense cases in `sparsity-and-conditioning.csv`: one warmup and five measured repetitions per eligible backend batch in fresh JVMs, with fixed source, environment and configuration and alternating backend order.
+- [ ] Run the remaining dense fixtures: 500 × 1,000 and 1,000 × 2,000, with seeds 11, 29 and 47, both backends and the same repetition protocol. Repeat the 100 × 200 fixtures on an idle host before using their timings for backend comparisons.
 - [ ] Complete the outstanding distributed case/configuration combinations and reconcile every scheduled repetition.
 - [ ] Repeat promising or unstable shapes with seeds 29 and 47 before drawing conclusions about crossover or defaults.
 - [ ] Compare 4/8/16 executors on the same wide fixture for strong scaling, then proportionally larger inputs for weak scaling.

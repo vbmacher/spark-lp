@@ -1,0 +1,2210 @@
+{
+  "dense-100-2-200-dense-11-1e-08-4 / CG / cfg-40d5622b7ddf7695": {
+    "measured-attempted-count": {
+      "value": 0
+    },
+    "measured-converged-count": {
+      "value": 0
+    },
+    "measured-excluded-count": {
+      "value": 0
+    },
+    "measured-failed-count": {
+      "value": 0
+    },
+    "measured-records-count": {
+      "_evidence": {
+        "campaign": {
+          "campaign_id": "dense-small-sandbox-startup",
+          "notes": [
+            "Sandbox blocked local socket creation before any solver ran"
+          ],
+          "schedule": [],
+          "schema_version": 1,
+          "title": "Small dense fixtures: Spark startup blocked by sandbox"
+        },
+        "case": {
+          "case_id": "dense-100-2-200-dense-11-1e-08-4",
+          "fixture_hash": null,
+          "m": 100,
+          "n": 200,
+          "nnz": null,
+          "nnz_basis": "see source provenance",
+          "shape": {
+            "family": "dense",
+            "nonzeros_per_row": 200,
+            "seed": 11
+          }
+        },
+        "configuration": {
+          "algorithm": "CG",
+          "cg_limit_per_rank": null,
+          "cg_tolerance": null,
+          "configuration_id": "cfg-40d5622b7ddf7695",
+          "control": "",
+          "dual_regularization": null,
+          "environment": {
+            "blas": "",
+            "computer": "unrecorded host; Sandbox blocked local socket creation before any solver ran",
+            "java_version": "",
+            "master": "",
+            "os": "",
+            "spark_version": ""
+          },
+          "environment_id": "env-9b16fc6febf5",
+          "eta": null,
+          "heap_gib": 4,
+          "implementation": "cg",
+          "label": "cg",
+          "memory_topology": {
+            "concurrent_tasks_per_executor": 4,
+            "executors": 1
+          },
+          "outer_limit": null,
+          "partitions": null,
+          "preconditioner_memory_bytes": null,
+          "primal_regularization": null,
+          "scenario": "",
+          "source_configuration_id": "cfg-4edd6a9c4de534a0",
+          "source_hash": "a19e20bb90204c7ab7abbdedd7f74be22004426e8ffd16f3b60a9dc4eb8e6f12",
+          "suite": "com.github.vbmacher.spark_lp.CGBenchmark",
+          "timing_scope": "core solve excluding independent validation",
+          "tolerance": 1e-08,
+          "warmup_case": null,
+          "warmups": null
+        },
+        "records": [
+          {
+            "accuracy_basis": "independent-original-lp",
+            "algorithm": "CG",
+            "application_id": null,
+            "attempt_id": "dense-small-sandbox-startup/dense-100-2-200-dense-11-1e-08-4/cfg-40d5622b7ddf7695/rep-000/attempt-001",
+            "attempt_number": 1,
+            "campaign_id": "dense-small-sandbox-startup",
+            "case_id": "dense-100-2-200-dense-11-1e-08-4",
+            "cg_restarts": null,
+            "cg_steps": null,
+            "configuration_id": "cfg-40d5622b7ddf7695",
+            "maximum_rank": null,
+            "memory": {
+              "peak_heap_bytes": null,
+              "peak_rss_bytes": null,
+              "scope": "driver process; combined with executors in local mode; includes validation"
+            },
+            "outer_iterations": null,
+            "provenance": {
+              "line": 1,
+              "source_path": "dense-100-2-200-dense-11-1e-08-4--cg/records.jsonl",
+              "source_sha256": "4bfbac566ec968bffae79a6e07ba9738e3dd26ca31b55c55150f2015cd39251d"
+            },
+            "rank_escalations": null,
+            "raw": {},
+            "repetition": 0,
+            "residuals": {
+              "dual": null,
+              "gap": null,
+              "min_s": null,
+              "min_x": null,
+              "objective": null,
+              "objective_error": null,
+              "primal": null
+            },
+            "run_id": "dense-small-sandbox-startup/dense-100-2-200-dense-11-1e-08-4/cfg-40d5622b7ddf7695/rep-000",
+            "solve_seconds": null,
+            "spark_jobs": null,
+            "status": "ProcessFailure",
+            "stop_reason": null,
+            "warmup": true
+          },
+          {
+            "accuracy_basis": "independent-original-lp",
+            "algorithm": "CG",
+            "application_id": null,
+            "attempt_id": "dense-small-sandbox-startup/dense-100-2-200-dense-11-1e-08-4/cfg-40d5622b7ddf7695/rep-001/attempt-001",
+            "attempt_number": 1,
+            "campaign_id": "dense-small-sandbox-startup",
+            "case_id": "dense-100-2-200-dense-11-1e-08-4",
+            "cg_restarts": null,
+            "cg_steps": null,
+            "configuration_id": "cfg-40d5622b7ddf7695",
+            "maximum_rank": null,
+            "memory": {
+              "peak_heap_bytes": null,
+              "peak_rss_bytes": null,
+              "scope": "driver process; combined with executors in local mode; includes validation"
+            },
+            "outer_iterations": null,
+            "provenance": {
+              "line": 2,
+              "source_path": "dense-100-2-200-dense-11-1e-08-4--cg/records.jsonl",
+              "source_sha256": "4bfbac566ec968bffae79a6e07ba9738e3dd26ca31b55c55150f2015cd39251d"
+            },
+            "rank_escalations": null,
+            "raw": {},
+            "repetition": 1,
+            "residuals": {
+              "dual": null,
+              "gap": null,
+              "min_s": null,
+              "min_x": null,
+              "objective": null,
+              "objective_error": null,
+              "primal": null
+            },
+            "run_id": "dense-small-sandbox-startup/dense-100-2-200-dense-11-1e-08-4/cfg-40d5622b7ddf7695/rep-001",
+            "solve_seconds": null,
+            "spark_jobs": null,
+            "status": "Unrun",
+            "stop_reason": null,
+            "warmup": false
+          },
+          {
+            "accuracy_basis": "independent-original-lp",
+            "algorithm": "CG",
+            "application_id": null,
+            "attempt_id": "dense-small-sandbox-startup/dense-100-2-200-dense-11-1e-08-4/cfg-40d5622b7ddf7695/rep-002/attempt-001",
+            "attempt_number": 1,
+            "campaign_id": "dense-small-sandbox-startup",
+            "case_id": "dense-100-2-200-dense-11-1e-08-4",
+            "cg_restarts": null,
+            "cg_steps": null,
+            "configuration_id": "cfg-40d5622b7ddf7695",
+            "maximum_rank": null,
+            "memory": {
+              "peak_heap_bytes": null,
+              "peak_rss_bytes": null,
+              "scope": "driver process; combined with executors in local mode; includes validation"
+            },
+            "outer_iterations": null,
+            "provenance": {
+              "line": 3,
+              "source_path": "dense-100-2-200-dense-11-1e-08-4--cg/records.jsonl",
+              "source_sha256": "4bfbac566ec968bffae79a6e07ba9738e3dd26ca31b55c55150f2015cd39251d"
+            },
+            "rank_escalations": null,
+            "raw": {},
+            "repetition": 2,
+            "residuals": {
+              "dual": null,
+              "gap": null,
+              "min_s": null,
+              "min_x": null,
+              "objective": null,
+              "objective_error": null,
+              "primal": null
+            },
+            "run_id": "dense-small-sandbox-startup/dense-100-2-200-dense-11-1e-08-4/cfg-40d5622b7ddf7695/rep-002",
+            "solve_seconds": null,
+            "spark_jobs": null,
+            "status": "Unrun",
+            "stop_reason": null,
+            "warmup": false
+          },
+          {
+            "accuracy_basis": "independent-original-lp",
+            "algorithm": "CG",
+            "application_id": null,
+            "attempt_id": "dense-small-sandbox-startup/dense-100-2-200-dense-11-1e-08-4/cfg-40d5622b7ddf7695/rep-003/attempt-001",
+            "attempt_number": 1,
+            "campaign_id": "dense-small-sandbox-startup",
+            "case_id": "dense-100-2-200-dense-11-1e-08-4",
+            "cg_restarts": null,
+            "cg_steps": null,
+            "configuration_id": "cfg-40d5622b7ddf7695",
+            "maximum_rank": null,
+            "memory": {
+              "peak_heap_bytes": null,
+              "peak_rss_bytes": null,
+              "scope": "driver process; combined with executors in local mode; includes validation"
+            },
+            "outer_iterations": null,
+            "provenance": {
+              "line": 4,
+              "source_path": "dense-100-2-200-dense-11-1e-08-4--cg/records.jsonl",
+              "source_sha256": "4bfbac566ec968bffae79a6e07ba9738e3dd26ca31b55c55150f2015cd39251d"
+            },
+            "rank_escalations": null,
+            "raw": {},
+            "repetition": 3,
+            "residuals": {
+              "dual": null,
+              "gap": null,
+              "min_s": null,
+              "min_x": null,
+              "objective": null,
+              "objective_error": null,
+              "primal": null
+            },
+            "run_id": "dense-small-sandbox-startup/dense-100-2-200-dense-11-1e-08-4/cfg-40d5622b7ddf7695/rep-003",
+            "solve_seconds": null,
+            "spark_jobs": null,
+            "status": "Unrun",
+            "stop_reason": null,
+            "warmup": false
+          },
+          {
+            "accuracy_basis": "independent-original-lp",
+            "algorithm": "CG",
+            "application_id": null,
+            "attempt_id": "dense-small-sandbox-startup/dense-100-2-200-dense-11-1e-08-4/cfg-40d5622b7ddf7695/rep-004/attempt-001",
+            "attempt_number": 1,
+            "campaign_id": "dense-small-sandbox-startup",
+            "case_id": "dense-100-2-200-dense-11-1e-08-4",
+            "cg_restarts": null,
+            "cg_steps": null,
+            "configuration_id": "cfg-40d5622b7ddf7695",
+            "maximum_rank": null,
+            "memory": {
+              "peak_heap_bytes": null,
+              "peak_rss_bytes": null,
+              "scope": "driver process; combined with executors in local mode; includes validation"
+            },
+            "outer_iterations": null,
+            "provenance": {
+              "line": 5,
+              "source_path": "dense-100-2-200-dense-11-1e-08-4--cg/records.jsonl",
+              "source_sha256": "4bfbac566ec968bffae79a6e07ba9738e3dd26ca31b55c55150f2015cd39251d"
+            },
+            "rank_escalations": null,
+            "raw": {},
+            "repetition": 4,
+            "residuals": {
+              "dual": null,
+              "gap": null,
+              "min_s": null,
+              "min_x": null,
+              "objective": null,
+              "objective_error": null,
+              "primal": null
+            },
+            "run_id": "dense-small-sandbox-startup/dense-100-2-200-dense-11-1e-08-4/cfg-40d5622b7ddf7695/rep-004",
+            "solve_seconds": null,
+            "spark_jobs": null,
+            "status": "Unrun",
+            "stop_reason": null,
+            "warmup": false
+          },
+          {
+            "accuracy_basis": "independent-original-lp",
+            "algorithm": "CG",
+            "application_id": null,
+            "attempt_id": "dense-small-sandbox-startup/dense-100-2-200-dense-11-1e-08-4/cfg-40d5622b7ddf7695/rep-005/attempt-001",
+            "attempt_number": 1,
+            "campaign_id": "dense-small-sandbox-startup",
+            "case_id": "dense-100-2-200-dense-11-1e-08-4",
+            "cg_restarts": null,
+            "cg_steps": null,
+            "configuration_id": "cfg-40d5622b7ddf7695",
+            "maximum_rank": null,
+            "memory": {
+              "peak_heap_bytes": null,
+              "peak_rss_bytes": null,
+              "scope": "driver process; combined with executors in local mode; includes validation"
+            },
+            "outer_iterations": null,
+            "provenance": {
+              "line": 6,
+              "source_path": "dense-100-2-200-dense-11-1e-08-4--cg/records.jsonl",
+              "source_sha256": "4bfbac566ec968bffae79a6e07ba9738e3dd26ca31b55c55150f2015cd39251d"
+            },
+            "rank_escalations": null,
+            "raw": {},
+            "repetition": 5,
+            "residuals": {
+              "dual": null,
+              "gap": null,
+              "min_s": null,
+              "min_x": null,
+              "objective": null,
+              "objective_error": null,
+              "primal": null
+            },
+            "run_id": "dense-small-sandbox-startup/dense-100-2-200-dense-11-1e-08-4/cfg-40d5622b7ddf7695/rep-005",
+            "solve_seconds": null,
+            "spark_jobs": null,
+            "status": "Unrun",
+            "stop_reason": null,
+            "warmup": false
+          }
+        ],
+        "schema_version": 1,
+        "sources": [
+          {
+            "path": "dense-100-2-200-dense-11-1e-08-4--cg/records.jsonl",
+            "revision": null,
+            "sha256": "4bfbac566ec968bffae79a6e07ba9738e3dd26ca31b55c55150f2015cd39251d",
+            "uri": null
+          }
+        ]
+      },
+      "value": 5
+    },
+    "measured-unknown-count": {
+      "value": 0
+    },
+    "measured-unrun-count": {
+      "value": 5
+    },
+    "warmup-attempted-count": {
+      "value": 1
+    },
+    "warmup-converged-count": {
+      "value": 0
+    },
+    "warmup-excluded-count": {
+      "value": 0
+    },
+    "warmup-failed-count": {
+      "value": 1
+    },
+    "warmup-records-count": {
+      "value": 1
+    },
+    "warmup-unknown-count": {
+      "value": 0
+    },
+    "warmup-unrun-count": {
+      "value": 0
+    }
+  },
+  "dense-100-2-200-dense-11-1e-08-4 / Cholesky / cfg-3ee95db025464792": {
+    "measured-attempted-count": {
+      "value": 0
+    },
+    "measured-converged-count": {
+      "value": 0
+    },
+    "measured-excluded-count": {
+      "value": 0
+    },
+    "measured-failed-count": {
+      "value": 0
+    },
+    "measured-records-count": {
+      "_evidence": {
+        "campaign": {
+          "campaign_id": "dense-small-sandbox-startup",
+          "notes": [
+            "Sandbox blocked local socket creation before any solver ran"
+          ],
+          "schedule": [],
+          "schema_version": 1,
+          "title": "Small dense fixtures: Spark startup blocked by sandbox"
+        },
+        "case": {
+          "case_id": "dense-100-2-200-dense-11-1e-08-4",
+          "fixture_hash": null,
+          "m": 100,
+          "n": 200,
+          "nnz": null,
+          "nnz_basis": "see source provenance",
+          "shape": {
+            "family": "dense",
+            "nonzeros_per_row": 200,
+            "seed": 11
+          }
+        },
+        "configuration": {
+          "algorithm": "Cholesky",
+          "cg_limit_per_rank": null,
+          "cg_tolerance": null,
+          "configuration_id": "cfg-3ee95db025464792",
+          "control": "",
+          "dual_regularization": null,
+          "environment": {
+            "blas": "",
+            "computer": "unrecorded host; Sandbox blocked local socket creation before any solver ran",
+            "java_version": "",
+            "master": "",
+            "os": "",
+            "spark_version": ""
+          },
+          "environment_id": "env-9b16fc6febf5",
+          "eta": null,
+          "heap_gib": 4,
+          "implementation": "cholesky",
+          "label": "cholesky",
+          "memory_topology": {
+            "concurrent_tasks_per_executor": 4,
+            "executors": 1
+          },
+          "outer_limit": null,
+          "partitions": null,
+          "preconditioner_memory_bytes": null,
+          "primal_regularization": null,
+          "scenario": "",
+          "source_configuration_id": "cfg-33e6deb68af9015d",
+          "source_hash": "a19e20bb90204c7ab7abbdedd7f74be22004426e8ffd16f3b60a9dc4eb8e6f12",
+          "suite": "com.github.vbmacher.spark_lp.CholeskyBenchmark",
+          "timing_scope": "core solve excluding independent validation",
+          "tolerance": 1e-08,
+          "warmup_case": null,
+          "warmups": null
+        },
+        "records": [
+          {
+            "accuracy_basis": "independent-original-lp",
+            "algorithm": "Cholesky",
+            "application_id": null,
+            "attempt_id": "dense-small-sandbox-startup/dense-100-2-200-dense-11-1e-08-4/cfg-3ee95db025464792/rep-000/attempt-001",
+            "attempt_number": 1,
+            "campaign_id": "dense-small-sandbox-startup",
+            "case_id": "dense-100-2-200-dense-11-1e-08-4",
+            "cg_restarts": null,
+            "cg_steps": null,
+            "configuration_id": "cfg-3ee95db025464792",
+            "maximum_rank": null,
+            "memory": {
+              "peak_heap_bytes": null,
+              "peak_rss_bytes": null,
+              "scope": "driver process; combined with executors in local mode; includes validation"
+            },
+            "outer_iterations": null,
+            "provenance": {
+              "line": 1,
+              "source_path": "dense-100-2-200-dense-11-1e-08-4--cholesky/records.jsonl",
+              "source_sha256": "a4ff02dac5ae8de9942b544aa25e9057789adb66c8f251b1f462e9c3936389bf"
+            },
+            "rank_escalations": null,
+            "raw": {},
+            "repetition": 0,
+            "residuals": {
+              "dual": null,
+              "gap": null,
+              "min_s": null,
+              "min_x": null,
+              "objective": null,
+              "objective_error": null,
+              "primal": null
+            },
+            "run_id": "dense-small-sandbox-startup/dense-100-2-200-dense-11-1e-08-4/cfg-3ee95db025464792/rep-000",
+            "solve_seconds": null,
+            "spark_jobs": null,
+            "status": "ProcessFailure",
+            "stop_reason": null,
+            "warmup": true
+          },
+          {
+            "accuracy_basis": "independent-original-lp",
+            "algorithm": "Cholesky",
+            "application_id": null,
+            "attempt_id": "dense-small-sandbox-startup/dense-100-2-200-dense-11-1e-08-4/cfg-3ee95db025464792/rep-001/attempt-001",
+            "attempt_number": 1,
+            "campaign_id": "dense-small-sandbox-startup",
+            "case_id": "dense-100-2-200-dense-11-1e-08-4",
+            "cg_restarts": null,
+            "cg_steps": null,
+            "configuration_id": "cfg-3ee95db025464792",
+            "maximum_rank": null,
+            "memory": {
+              "peak_heap_bytes": null,
+              "peak_rss_bytes": null,
+              "scope": "driver process; combined with executors in local mode; includes validation"
+            },
+            "outer_iterations": null,
+            "provenance": {
+              "line": 2,
+              "source_path": "dense-100-2-200-dense-11-1e-08-4--cholesky/records.jsonl",
+              "source_sha256": "a4ff02dac5ae8de9942b544aa25e9057789adb66c8f251b1f462e9c3936389bf"
+            },
+            "rank_escalations": null,
+            "raw": {},
+            "repetition": 1,
+            "residuals": {
+              "dual": null,
+              "gap": null,
+              "min_s": null,
+              "min_x": null,
+              "objective": null,
+              "objective_error": null,
+              "primal": null
+            },
+            "run_id": "dense-small-sandbox-startup/dense-100-2-200-dense-11-1e-08-4/cfg-3ee95db025464792/rep-001",
+            "solve_seconds": null,
+            "spark_jobs": null,
+            "status": "Unrun",
+            "stop_reason": null,
+            "warmup": false
+          },
+          {
+            "accuracy_basis": "independent-original-lp",
+            "algorithm": "Cholesky",
+            "application_id": null,
+            "attempt_id": "dense-small-sandbox-startup/dense-100-2-200-dense-11-1e-08-4/cfg-3ee95db025464792/rep-002/attempt-001",
+            "attempt_number": 1,
+            "campaign_id": "dense-small-sandbox-startup",
+            "case_id": "dense-100-2-200-dense-11-1e-08-4",
+            "cg_restarts": null,
+            "cg_steps": null,
+            "configuration_id": "cfg-3ee95db025464792",
+            "maximum_rank": null,
+            "memory": {
+              "peak_heap_bytes": null,
+              "peak_rss_bytes": null,
+              "scope": "driver process; combined with executors in local mode; includes validation"
+            },
+            "outer_iterations": null,
+            "provenance": {
+              "line": 3,
+              "source_path": "dense-100-2-200-dense-11-1e-08-4--cholesky/records.jsonl",
+              "source_sha256": "a4ff02dac5ae8de9942b544aa25e9057789adb66c8f251b1f462e9c3936389bf"
+            },
+            "rank_escalations": null,
+            "raw": {},
+            "repetition": 2,
+            "residuals": {
+              "dual": null,
+              "gap": null,
+              "min_s": null,
+              "min_x": null,
+              "objective": null,
+              "objective_error": null,
+              "primal": null
+            },
+            "run_id": "dense-small-sandbox-startup/dense-100-2-200-dense-11-1e-08-4/cfg-3ee95db025464792/rep-002",
+            "solve_seconds": null,
+            "spark_jobs": null,
+            "status": "Unrun",
+            "stop_reason": null,
+            "warmup": false
+          },
+          {
+            "accuracy_basis": "independent-original-lp",
+            "algorithm": "Cholesky",
+            "application_id": null,
+            "attempt_id": "dense-small-sandbox-startup/dense-100-2-200-dense-11-1e-08-4/cfg-3ee95db025464792/rep-003/attempt-001",
+            "attempt_number": 1,
+            "campaign_id": "dense-small-sandbox-startup",
+            "case_id": "dense-100-2-200-dense-11-1e-08-4",
+            "cg_restarts": null,
+            "cg_steps": null,
+            "configuration_id": "cfg-3ee95db025464792",
+            "maximum_rank": null,
+            "memory": {
+              "peak_heap_bytes": null,
+              "peak_rss_bytes": null,
+              "scope": "driver process; combined with executors in local mode; includes validation"
+            },
+            "outer_iterations": null,
+            "provenance": {
+              "line": 4,
+              "source_path": "dense-100-2-200-dense-11-1e-08-4--cholesky/records.jsonl",
+              "source_sha256": "a4ff02dac5ae8de9942b544aa25e9057789adb66c8f251b1f462e9c3936389bf"
+            },
+            "rank_escalations": null,
+            "raw": {},
+            "repetition": 3,
+            "residuals": {
+              "dual": null,
+              "gap": null,
+              "min_s": null,
+              "min_x": null,
+              "objective": null,
+              "objective_error": null,
+              "primal": null
+            },
+            "run_id": "dense-small-sandbox-startup/dense-100-2-200-dense-11-1e-08-4/cfg-3ee95db025464792/rep-003",
+            "solve_seconds": null,
+            "spark_jobs": null,
+            "status": "Unrun",
+            "stop_reason": null,
+            "warmup": false
+          },
+          {
+            "accuracy_basis": "independent-original-lp",
+            "algorithm": "Cholesky",
+            "application_id": null,
+            "attempt_id": "dense-small-sandbox-startup/dense-100-2-200-dense-11-1e-08-4/cfg-3ee95db025464792/rep-004/attempt-001",
+            "attempt_number": 1,
+            "campaign_id": "dense-small-sandbox-startup",
+            "case_id": "dense-100-2-200-dense-11-1e-08-4",
+            "cg_restarts": null,
+            "cg_steps": null,
+            "configuration_id": "cfg-3ee95db025464792",
+            "maximum_rank": null,
+            "memory": {
+              "peak_heap_bytes": null,
+              "peak_rss_bytes": null,
+              "scope": "driver process; combined with executors in local mode; includes validation"
+            },
+            "outer_iterations": null,
+            "provenance": {
+              "line": 5,
+              "source_path": "dense-100-2-200-dense-11-1e-08-4--cholesky/records.jsonl",
+              "source_sha256": "a4ff02dac5ae8de9942b544aa25e9057789adb66c8f251b1f462e9c3936389bf"
+            },
+            "rank_escalations": null,
+            "raw": {},
+            "repetition": 4,
+            "residuals": {
+              "dual": null,
+              "gap": null,
+              "min_s": null,
+              "min_x": null,
+              "objective": null,
+              "objective_error": null,
+              "primal": null
+            },
+            "run_id": "dense-small-sandbox-startup/dense-100-2-200-dense-11-1e-08-4/cfg-3ee95db025464792/rep-004",
+            "solve_seconds": null,
+            "spark_jobs": null,
+            "status": "Unrun",
+            "stop_reason": null,
+            "warmup": false
+          },
+          {
+            "accuracy_basis": "independent-original-lp",
+            "algorithm": "Cholesky",
+            "application_id": null,
+            "attempt_id": "dense-small-sandbox-startup/dense-100-2-200-dense-11-1e-08-4/cfg-3ee95db025464792/rep-005/attempt-001",
+            "attempt_number": 1,
+            "campaign_id": "dense-small-sandbox-startup",
+            "case_id": "dense-100-2-200-dense-11-1e-08-4",
+            "cg_restarts": null,
+            "cg_steps": null,
+            "configuration_id": "cfg-3ee95db025464792",
+            "maximum_rank": null,
+            "memory": {
+              "peak_heap_bytes": null,
+              "peak_rss_bytes": null,
+              "scope": "driver process; combined with executors in local mode; includes validation"
+            },
+            "outer_iterations": null,
+            "provenance": {
+              "line": 6,
+              "source_path": "dense-100-2-200-dense-11-1e-08-4--cholesky/records.jsonl",
+              "source_sha256": "a4ff02dac5ae8de9942b544aa25e9057789adb66c8f251b1f462e9c3936389bf"
+            },
+            "rank_escalations": null,
+            "raw": {},
+            "repetition": 5,
+            "residuals": {
+              "dual": null,
+              "gap": null,
+              "min_s": null,
+              "min_x": null,
+              "objective": null,
+              "objective_error": null,
+              "primal": null
+            },
+            "run_id": "dense-small-sandbox-startup/dense-100-2-200-dense-11-1e-08-4/cfg-3ee95db025464792/rep-005",
+            "solve_seconds": null,
+            "spark_jobs": null,
+            "status": "Unrun",
+            "stop_reason": null,
+            "warmup": false
+          }
+        ],
+        "schema_version": 1,
+        "sources": [
+          {
+            "path": "dense-100-2-200-dense-11-1e-08-4--cholesky/records.jsonl",
+            "revision": null,
+            "sha256": "a4ff02dac5ae8de9942b544aa25e9057789adb66c8f251b1f462e9c3936389bf",
+            "uri": null
+          }
+        ]
+      },
+      "value": 5
+    },
+    "measured-unknown-count": {
+      "value": 0
+    },
+    "measured-unrun-count": {
+      "value": 5
+    },
+    "warmup-attempted-count": {
+      "value": 1
+    },
+    "warmup-converged-count": {
+      "value": 0
+    },
+    "warmup-excluded-count": {
+      "value": 0
+    },
+    "warmup-failed-count": {
+      "value": 1
+    },
+    "warmup-records-count": {
+      "value": 1
+    },
+    "warmup-unknown-count": {
+      "value": 0
+    },
+    "warmup-unrun-count": {
+      "value": 0
+    }
+  },
+  "dense-100-2-200-dense-29-1e-08-4 / CG / cfg-40d5622b7ddf7695": {
+    "measured-attempted-count": {
+      "value": 0
+    },
+    "measured-converged-count": {
+      "value": 0
+    },
+    "measured-excluded-count": {
+      "value": 0
+    },
+    "measured-failed-count": {
+      "value": 0
+    },
+    "measured-records-count": {
+      "_evidence": {
+        "campaign": {
+          "campaign_id": "dense-small-sandbox-startup",
+          "notes": [
+            "Sandbox blocked local socket creation before any solver ran"
+          ],
+          "schedule": [],
+          "schema_version": 1,
+          "title": "Small dense fixtures: Spark startup blocked by sandbox"
+        },
+        "case": {
+          "case_id": "dense-100-2-200-dense-29-1e-08-4",
+          "fixture_hash": null,
+          "m": 100,
+          "n": 200,
+          "nnz": null,
+          "nnz_basis": "see source provenance",
+          "shape": {
+            "family": "dense",
+            "nonzeros_per_row": 200,
+            "seed": 29
+          }
+        },
+        "configuration": {
+          "algorithm": "CG",
+          "cg_limit_per_rank": null,
+          "cg_tolerance": null,
+          "configuration_id": "cfg-40d5622b7ddf7695",
+          "control": "",
+          "dual_regularization": null,
+          "environment": {
+            "blas": "",
+            "computer": "unrecorded host; Sandbox blocked local socket creation before any solver ran",
+            "java_version": "",
+            "master": "",
+            "os": "",
+            "spark_version": ""
+          },
+          "environment_id": "env-9b16fc6febf5",
+          "eta": null,
+          "heap_gib": 4,
+          "implementation": "cg",
+          "label": "cg",
+          "memory_topology": {
+            "concurrent_tasks_per_executor": 4,
+            "executors": 1
+          },
+          "outer_limit": null,
+          "partitions": null,
+          "preconditioner_memory_bytes": null,
+          "primal_regularization": null,
+          "scenario": "",
+          "source_configuration_id": "cfg-4edd6a9c4de534a0",
+          "source_hash": "a19e20bb90204c7ab7abbdedd7f74be22004426e8ffd16f3b60a9dc4eb8e6f12",
+          "suite": "com.github.vbmacher.spark_lp.CGBenchmark",
+          "timing_scope": "core solve excluding independent validation",
+          "tolerance": 1e-08,
+          "warmup_case": null,
+          "warmups": null
+        },
+        "records": [
+          {
+            "accuracy_basis": "independent-original-lp",
+            "algorithm": "CG",
+            "application_id": null,
+            "attempt_id": "dense-small-sandbox-startup/dense-100-2-200-dense-29-1e-08-4/cfg-40d5622b7ddf7695/rep-000/attempt-001",
+            "attempt_number": 1,
+            "campaign_id": "dense-small-sandbox-startup",
+            "case_id": "dense-100-2-200-dense-29-1e-08-4",
+            "cg_restarts": null,
+            "cg_steps": null,
+            "configuration_id": "cfg-40d5622b7ddf7695",
+            "maximum_rank": null,
+            "memory": {
+              "peak_heap_bytes": null,
+              "peak_rss_bytes": null,
+              "scope": "driver process; combined with executors in local mode; includes validation"
+            },
+            "outer_iterations": null,
+            "provenance": {
+              "line": 1,
+              "source_path": "dense-100-2-200-dense-29-1e-08-4--cg/records.jsonl",
+              "source_sha256": "e7634826963ba8fac1b11ccf3be63bc7844aca30b1d0f751dda6ca816cbfd211"
+            },
+            "rank_escalations": null,
+            "raw": {},
+            "repetition": 0,
+            "residuals": {
+              "dual": null,
+              "gap": null,
+              "min_s": null,
+              "min_x": null,
+              "objective": null,
+              "objective_error": null,
+              "primal": null
+            },
+            "run_id": "dense-small-sandbox-startup/dense-100-2-200-dense-29-1e-08-4/cfg-40d5622b7ddf7695/rep-000",
+            "solve_seconds": null,
+            "spark_jobs": null,
+            "status": "ProcessFailure",
+            "stop_reason": null,
+            "warmup": true
+          },
+          {
+            "accuracy_basis": "independent-original-lp",
+            "algorithm": "CG",
+            "application_id": null,
+            "attempt_id": "dense-small-sandbox-startup/dense-100-2-200-dense-29-1e-08-4/cfg-40d5622b7ddf7695/rep-001/attempt-001",
+            "attempt_number": 1,
+            "campaign_id": "dense-small-sandbox-startup",
+            "case_id": "dense-100-2-200-dense-29-1e-08-4",
+            "cg_restarts": null,
+            "cg_steps": null,
+            "configuration_id": "cfg-40d5622b7ddf7695",
+            "maximum_rank": null,
+            "memory": {
+              "peak_heap_bytes": null,
+              "peak_rss_bytes": null,
+              "scope": "driver process; combined with executors in local mode; includes validation"
+            },
+            "outer_iterations": null,
+            "provenance": {
+              "line": 2,
+              "source_path": "dense-100-2-200-dense-29-1e-08-4--cg/records.jsonl",
+              "source_sha256": "e7634826963ba8fac1b11ccf3be63bc7844aca30b1d0f751dda6ca816cbfd211"
+            },
+            "rank_escalations": null,
+            "raw": {},
+            "repetition": 1,
+            "residuals": {
+              "dual": null,
+              "gap": null,
+              "min_s": null,
+              "min_x": null,
+              "objective": null,
+              "objective_error": null,
+              "primal": null
+            },
+            "run_id": "dense-small-sandbox-startup/dense-100-2-200-dense-29-1e-08-4/cfg-40d5622b7ddf7695/rep-001",
+            "solve_seconds": null,
+            "spark_jobs": null,
+            "status": "Unrun",
+            "stop_reason": null,
+            "warmup": false
+          },
+          {
+            "accuracy_basis": "independent-original-lp",
+            "algorithm": "CG",
+            "application_id": null,
+            "attempt_id": "dense-small-sandbox-startup/dense-100-2-200-dense-29-1e-08-4/cfg-40d5622b7ddf7695/rep-002/attempt-001",
+            "attempt_number": 1,
+            "campaign_id": "dense-small-sandbox-startup",
+            "case_id": "dense-100-2-200-dense-29-1e-08-4",
+            "cg_restarts": null,
+            "cg_steps": null,
+            "configuration_id": "cfg-40d5622b7ddf7695",
+            "maximum_rank": null,
+            "memory": {
+              "peak_heap_bytes": null,
+              "peak_rss_bytes": null,
+              "scope": "driver process; combined with executors in local mode; includes validation"
+            },
+            "outer_iterations": null,
+            "provenance": {
+              "line": 3,
+              "source_path": "dense-100-2-200-dense-29-1e-08-4--cg/records.jsonl",
+              "source_sha256": "e7634826963ba8fac1b11ccf3be63bc7844aca30b1d0f751dda6ca816cbfd211"
+            },
+            "rank_escalations": null,
+            "raw": {},
+            "repetition": 2,
+            "residuals": {
+              "dual": null,
+              "gap": null,
+              "min_s": null,
+              "min_x": null,
+              "objective": null,
+              "objective_error": null,
+              "primal": null
+            },
+            "run_id": "dense-small-sandbox-startup/dense-100-2-200-dense-29-1e-08-4/cfg-40d5622b7ddf7695/rep-002",
+            "solve_seconds": null,
+            "spark_jobs": null,
+            "status": "Unrun",
+            "stop_reason": null,
+            "warmup": false
+          },
+          {
+            "accuracy_basis": "independent-original-lp",
+            "algorithm": "CG",
+            "application_id": null,
+            "attempt_id": "dense-small-sandbox-startup/dense-100-2-200-dense-29-1e-08-4/cfg-40d5622b7ddf7695/rep-003/attempt-001",
+            "attempt_number": 1,
+            "campaign_id": "dense-small-sandbox-startup",
+            "case_id": "dense-100-2-200-dense-29-1e-08-4",
+            "cg_restarts": null,
+            "cg_steps": null,
+            "configuration_id": "cfg-40d5622b7ddf7695",
+            "maximum_rank": null,
+            "memory": {
+              "peak_heap_bytes": null,
+              "peak_rss_bytes": null,
+              "scope": "driver process; combined with executors in local mode; includes validation"
+            },
+            "outer_iterations": null,
+            "provenance": {
+              "line": 4,
+              "source_path": "dense-100-2-200-dense-29-1e-08-4--cg/records.jsonl",
+              "source_sha256": "e7634826963ba8fac1b11ccf3be63bc7844aca30b1d0f751dda6ca816cbfd211"
+            },
+            "rank_escalations": null,
+            "raw": {},
+            "repetition": 3,
+            "residuals": {
+              "dual": null,
+              "gap": null,
+              "min_s": null,
+              "min_x": null,
+              "objective": null,
+              "objective_error": null,
+              "primal": null
+            },
+            "run_id": "dense-small-sandbox-startup/dense-100-2-200-dense-29-1e-08-4/cfg-40d5622b7ddf7695/rep-003",
+            "solve_seconds": null,
+            "spark_jobs": null,
+            "status": "Unrun",
+            "stop_reason": null,
+            "warmup": false
+          },
+          {
+            "accuracy_basis": "independent-original-lp",
+            "algorithm": "CG",
+            "application_id": null,
+            "attempt_id": "dense-small-sandbox-startup/dense-100-2-200-dense-29-1e-08-4/cfg-40d5622b7ddf7695/rep-004/attempt-001",
+            "attempt_number": 1,
+            "campaign_id": "dense-small-sandbox-startup",
+            "case_id": "dense-100-2-200-dense-29-1e-08-4",
+            "cg_restarts": null,
+            "cg_steps": null,
+            "configuration_id": "cfg-40d5622b7ddf7695",
+            "maximum_rank": null,
+            "memory": {
+              "peak_heap_bytes": null,
+              "peak_rss_bytes": null,
+              "scope": "driver process; combined with executors in local mode; includes validation"
+            },
+            "outer_iterations": null,
+            "provenance": {
+              "line": 5,
+              "source_path": "dense-100-2-200-dense-29-1e-08-4--cg/records.jsonl",
+              "source_sha256": "e7634826963ba8fac1b11ccf3be63bc7844aca30b1d0f751dda6ca816cbfd211"
+            },
+            "rank_escalations": null,
+            "raw": {},
+            "repetition": 4,
+            "residuals": {
+              "dual": null,
+              "gap": null,
+              "min_s": null,
+              "min_x": null,
+              "objective": null,
+              "objective_error": null,
+              "primal": null
+            },
+            "run_id": "dense-small-sandbox-startup/dense-100-2-200-dense-29-1e-08-4/cfg-40d5622b7ddf7695/rep-004",
+            "solve_seconds": null,
+            "spark_jobs": null,
+            "status": "Unrun",
+            "stop_reason": null,
+            "warmup": false
+          },
+          {
+            "accuracy_basis": "independent-original-lp",
+            "algorithm": "CG",
+            "application_id": null,
+            "attempt_id": "dense-small-sandbox-startup/dense-100-2-200-dense-29-1e-08-4/cfg-40d5622b7ddf7695/rep-005/attempt-001",
+            "attempt_number": 1,
+            "campaign_id": "dense-small-sandbox-startup",
+            "case_id": "dense-100-2-200-dense-29-1e-08-4",
+            "cg_restarts": null,
+            "cg_steps": null,
+            "configuration_id": "cfg-40d5622b7ddf7695",
+            "maximum_rank": null,
+            "memory": {
+              "peak_heap_bytes": null,
+              "peak_rss_bytes": null,
+              "scope": "driver process; combined with executors in local mode; includes validation"
+            },
+            "outer_iterations": null,
+            "provenance": {
+              "line": 6,
+              "source_path": "dense-100-2-200-dense-29-1e-08-4--cg/records.jsonl",
+              "source_sha256": "e7634826963ba8fac1b11ccf3be63bc7844aca30b1d0f751dda6ca816cbfd211"
+            },
+            "rank_escalations": null,
+            "raw": {},
+            "repetition": 5,
+            "residuals": {
+              "dual": null,
+              "gap": null,
+              "min_s": null,
+              "min_x": null,
+              "objective": null,
+              "objective_error": null,
+              "primal": null
+            },
+            "run_id": "dense-small-sandbox-startup/dense-100-2-200-dense-29-1e-08-4/cfg-40d5622b7ddf7695/rep-005",
+            "solve_seconds": null,
+            "spark_jobs": null,
+            "status": "Unrun",
+            "stop_reason": null,
+            "warmup": false
+          }
+        ],
+        "schema_version": 1,
+        "sources": [
+          {
+            "path": "dense-100-2-200-dense-29-1e-08-4--cg/records.jsonl",
+            "revision": null,
+            "sha256": "e7634826963ba8fac1b11ccf3be63bc7844aca30b1d0f751dda6ca816cbfd211",
+            "uri": null
+          }
+        ]
+      },
+      "value": 5
+    },
+    "measured-unknown-count": {
+      "value": 0
+    },
+    "measured-unrun-count": {
+      "value": 5
+    },
+    "warmup-attempted-count": {
+      "value": 1
+    },
+    "warmup-converged-count": {
+      "value": 0
+    },
+    "warmup-excluded-count": {
+      "value": 0
+    },
+    "warmup-failed-count": {
+      "value": 1
+    },
+    "warmup-records-count": {
+      "value": 1
+    },
+    "warmup-unknown-count": {
+      "value": 0
+    },
+    "warmup-unrun-count": {
+      "value": 0
+    }
+  },
+  "dense-100-2-200-dense-29-1e-08-4 / Cholesky / cfg-3ee95db025464792": {
+    "measured-attempted-count": {
+      "value": 0
+    },
+    "measured-converged-count": {
+      "value": 0
+    },
+    "measured-excluded-count": {
+      "value": 0
+    },
+    "measured-failed-count": {
+      "value": 0
+    },
+    "measured-records-count": {
+      "_evidence": {
+        "campaign": {
+          "campaign_id": "dense-small-sandbox-startup",
+          "notes": [
+            "Sandbox blocked local socket creation before any solver ran"
+          ],
+          "schedule": [],
+          "schema_version": 1,
+          "title": "Small dense fixtures: Spark startup blocked by sandbox"
+        },
+        "case": {
+          "case_id": "dense-100-2-200-dense-29-1e-08-4",
+          "fixture_hash": null,
+          "m": 100,
+          "n": 200,
+          "nnz": null,
+          "nnz_basis": "see source provenance",
+          "shape": {
+            "family": "dense",
+            "nonzeros_per_row": 200,
+            "seed": 29
+          }
+        },
+        "configuration": {
+          "algorithm": "Cholesky",
+          "cg_limit_per_rank": null,
+          "cg_tolerance": null,
+          "configuration_id": "cfg-3ee95db025464792",
+          "control": "",
+          "dual_regularization": null,
+          "environment": {
+            "blas": "",
+            "computer": "unrecorded host; Sandbox blocked local socket creation before any solver ran",
+            "java_version": "",
+            "master": "",
+            "os": "",
+            "spark_version": ""
+          },
+          "environment_id": "env-9b16fc6febf5",
+          "eta": null,
+          "heap_gib": 4,
+          "implementation": "cholesky",
+          "label": "cholesky",
+          "memory_topology": {
+            "concurrent_tasks_per_executor": 4,
+            "executors": 1
+          },
+          "outer_limit": null,
+          "partitions": null,
+          "preconditioner_memory_bytes": null,
+          "primal_regularization": null,
+          "scenario": "",
+          "source_configuration_id": "cfg-33e6deb68af9015d",
+          "source_hash": "a19e20bb90204c7ab7abbdedd7f74be22004426e8ffd16f3b60a9dc4eb8e6f12",
+          "suite": "com.github.vbmacher.spark_lp.CholeskyBenchmark",
+          "timing_scope": "core solve excluding independent validation",
+          "tolerance": 1e-08,
+          "warmup_case": null,
+          "warmups": null
+        },
+        "records": [
+          {
+            "accuracy_basis": "independent-original-lp",
+            "algorithm": "Cholesky",
+            "application_id": null,
+            "attempt_id": "dense-small-sandbox-startup/dense-100-2-200-dense-29-1e-08-4/cfg-3ee95db025464792/rep-000/attempt-001",
+            "attempt_number": 1,
+            "campaign_id": "dense-small-sandbox-startup",
+            "case_id": "dense-100-2-200-dense-29-1e-08-4",
+            "cg_restarts": null,
+            "cg_steps": null,
+            "configuration_id": "cfg-3ee95db025464792",
+            "maximum_rank": null,
+            "memory": {
+              "peak_heap_bytes": null,
+              "peak_rss_bytes": null,
+              "scope": "driver process; combined with executors in local mode; includes validation"
+            },
+            "outer_iterations": null,
+            "provenance": {
+              "line": 1,
+              "source_path": "dense-100-2-200-dense-29-1e-08-4--cholesky/records.jsonl",
+              "source_sha256": "ecf64be723a59b7804b93e6fb37f3f210b3d3589a7c6ef83c2135679af3fe3e1"
+            },
+            "rank_escalations": null,
+            "raw": {},
+            "repetition": 0,
+            "residuals": {
+              "dual": null,
+              "gap": null,
+              "min_s": null,
+              "min_x": null,
+              "objective": null,
+              "objective_error": null,
+              "primal": null
+            },
+            "run_id": "dense-small-sandbox-startup/dense-100-2-200-dense-29-1e-08-4/cfg-3ee95db025464792/rep-000",
+            "solve_seconds": null,
+            "spark_jobs": null,
+            "status": "ProcessFailure",
+            "stop_reason": null,
+            "warmup": true
+          },
+          {
+            "accuracy_basis": "independent-original-lp",
+            "algorithm": "Cholesky",
+            "application_id": null,
+            "attempt_id": "dense-small-sandbox-startup/dense-100-2-200-dense-29-1e-08-4/cfg-3ee95db025464792/rep-001/attempt-001",
+            "attempt_number": 1,
+            "campaign_id": "dense-small-sandbox-startup",
+            "case_id": "dense-100-2-200-dense-29-1e-08-4",
+            "cg_restarts": null,
+            "cg_steps": null,
+            "configuration_id": "cfg-3ee95db025464792",
+            "maximum_rank": null,
+            "memory": {
+              "peak_heap_bytes": null,
+              "peak_rss_bytes": null,
+              "scope": "driver process; combined with executors in local mode; includes validation"
+            },
+            "outer_iterations": null,
+            "provenance": {
+              "line": 2,
+              "source_path": "dense-100-2-200-dense-29-1e-08-4--cholesky/records.jsonl",
+              "source_sha256": "ecf64be723a59b7804b93e6fb37f3f210b3d3589a7c6ef83c2135679af3fe3e1"
+            },
+            "rank_escalations": null,
+            "raw": {},
+            "repetition": 1,
+            "residuals": {
+              "dual": null,
+              "gap": null,
+              "min_s": null,
+              "min_x": null,
+              "objective": null,
+              "objective_error": null,
+              "primal": null
+            },
+            "run_id": "dense-small-sandbox-startup/dense-100-2-200-dense-29-1e-08-4/cfg-3ee95db025464792/rep-001",
+            "solve_seconds": null,
+            "spark_jobs": null,
+            "status": "Unrun",
+            "stop_reason": null,
+            "warmup": false
+          },
+          {
+            "accuracy_basis": "independent-original-lp",
+            "algorithm": "Cholesky",
+            "application_id": null,
+            "attempt_id": "dense-small-sandbox-startup/dense-100-2-200-dense-29-1e-08-4/cfg-3ee95db025464792/rep-002/attempt-001",
+            "attempt_number": 1,
+            "campaign_id": "dense-small-sandbox-startup",
+            "case_id": "dense-100-2-200-dense-29-1e-08-4",
+            "cg_restarts": null,
+            "cg_steps": null,
+            "configuration_id": "cfg-3ee95db025464792",
+            "maximum_rank": null,
+            "memory": {
+              "peak_heap_bytes": null,
+              "peak_rss_bytes": null,
+              "scope": "driver process; combined with executors in local mode; includes validation"
+            },
+            "outer_iterations": null,
+            "provenance": {
+              "line": 3,
+              "source_path": "dense-100-2-200-dense-29-1e-08-4--cholesky/records.jsonl",
+              "source_sha256": "ecf64be723a59b7804b93e6fb37f3f210b3d3589a7c6ef83c2135679af3fe3e1"
+            },
+            "rank_escalations": null,
+            "raw": {},
+            "repetition": 2,
+            "residuals": {
+              "dual": null,
+              "gap": null,
+              "min_s": null,
+              "min_x": null,
+              "objective": null,
+              "objective_error": null,
+              "primal": null
+            },
+            "run_id": "dense-small-sandbox-startup/dense-100-2-200-dense-29-1e-08-4/cfg-3ee95db025464792/rep-002",
+            "solve_seconds": null,
+            "spark_jobs": null,
+            "status": "Unrun",
+            "stop_reason": null,
+            "warmup": false
+          },
+          {
+            "accuracy_basis": "independent-original-lp",
+            "algorithm": "Cholesky",
+            "application_id": null,
+            "attempt_id": "dense-small-sandbox-startup/dense-100-2-200-dense-29-1e-08-4/cfg-3ee95db025464792/rep-003/attempt-001",
+            "attempt_number": 1,
+            "campaign_id": "dense-small-sandbox-startup",
+            "case_id": "dense-100-2-200-dense-29-1e-08-4",
+            "cg_restarts": null,
+            "cg_steps": null,
+            "configuration_id": "cfg-3ee95db025464792",
+            "maximum_rank": null,
+            "memory": {
+              "peak_heap_bytes": null,
+              "peak_rss_bytes": null,
+              "scope": "driver process; combined with executors in local mode; includes validation"
+            },
+            "outer_iterations": null,
+            "provenance": {
+              "line": 4,
+              "source_path": "dense-100-2-200-dense-29-1e-08-4--cholesky/records.jsonl",
+              "source_sha256": "ecf64be723a59b7804b93e6fb37f3f210b3d3589a7c6ef83c2135679af3fe3e1"
+            },
+            "rank_escalations": null,
+            "raw": {},
+            "repetition": 3,
+            "residuals": {
+              "dual": null,
+              "gap": null,
+              "min_s": null,
+              "min_x": null,
+              "objective": null,
+              "objective_error": null,
+              "primal": null
+            },
+            "run_id": "dense-small-sandbox-startup/dense-100-2-200-dense-29-1e-08-4/cfg-3ee95db025464792/rep-003",
+            "solve_seconds": null,
+            "spark_jobs": null,
+            "status": "Unrun",
+            "stop_reason": null,
+            "warmup": false
+          },
+          {
+            "accuracy_basis": "independent-original-lp",
+            "algorithm": "Cholesky",
+            "application_id": null,
+            "attempt_id": "dense-small-sandbox-startup/dense-100-2-200-dense-29-1e-08-4/cfg-3ee95db025464792/rep-004/attempt-001",
+            "attempt_number": 1,
+            "campaign_id": "dense-small-sandbox-startup",
+            "case_id": "dense-100-2-200-dense-29-1e-08-4",
+            "cg_restarts": null,
+            "cg_steps": null,
+            "configuration_id": "cfg-3ee95db025464792",
+            "maximum_rank": null,
+            "memory": {
+              "peak_heap_bytes": null,
+              "peak_rss_bytes": null,
+              "scope": "driver process; combined with executors in local mode; includes validation"
+            },
+            "outer_iterations": null,
+            "provenance": {
+              "line": 5,
+              "source_path": "dense-100-2-200-dense-29-1e-08-4--cholesky/records.jsonl",
+              "source_sha256": "ecf64be723a59b7804b93e6fb37f3f210b3d3589a7c6ef83c2135679af3fe3e1"
+            },
+            "rank_escalations": null,
+            "raw": {},
+            "repetition": 4,
+            "residuals": {
+              "dual": null,
+              "gap": null,
+              "min_s": null,
+              "min_x": null,
+              "objective": null,
+              "objective_error": null,
+              "primal": null
+            },
+            "run_id": "dense-small-sandbox-startup/dense-100-2-200-dense-29-1e-08-4/cfg-3ee95db025464792/rep-004",
+            "solve_seconds": null,
+            "spark_jobs": null,
+            "status": "Unrun",
+            "stop_reason": null,
+            "warmup": false
+          },
+          {
+            "accuracy_basis": "independent-original-lp",
+            "algorithm": "Cholesky",
+            "application_id": null,
+            "attempt_id": "dense-small-sandbox-startup/dense-100-2-200-dense-29-1e-08-4/cfg-3ee95db025464792/rep-005/attempt-001",
+            "attempt_number": 1,
+            "campaign_id": "dense-small-sandbox-startup",
+            "case_id": "dense-100-2-200-dense-29-1e-08-4",
+            "cg_restarts": null,
+            "cg_steps": null,
+            "configuration_id": "cfg-3ee95db025464792",
+            "maximum_rank": null,
+            "memory": {
+              "peak_heap_bytes": null,
+              "peak_rss_bytes": null,
+              "scope": "driver process; combined with executors in local mode; includes validation"
+            },
+            "outer_iterations": null,
+            "provenance": {
+              "line": 6,
+              "source_path": "dense-100-2-200-dense-29-1e-08-4--cholesky/records.jsonl",
+              "source_sha256": "ecf64be723a59b7804b93e6fb37f3f210b3d3589a7c6ef83c2135679af3fe3e1"
+            },
+            "rank_escalations": null,
+            "raw": {},
+            "repetition": 5,
+            "residuals": {
+              "dual": null,
+              "gap": null,
+              "min_s": null,
+              "min_x": null,
+              "objective": null,
+              "objective_error": null,
+              "primal": null
+            },
+            "run_id": "dense-small-sandbox-startup/dense-100-2-200-dense-29-1e-08-4/cfg-3ee95db025464792/rep-005",
+            "solve_seconds": null,
+            "spark_jobs": null,
+            "status": "Unrun",
+            "stop_reason": null,
+            "warmup": false
+          }
+        ],
+        "schema_version": 1,
+        "sources": [
+          {
+            "path": "dense-100-2-200-dense-29-1e-08-4--cholesky/records.jsonl",
+            "revision": null,
+            "sha256": "ecf64be723a59b7804b93e6fb37f3f210b3d3589a7c6ef83c2135679af3fe3e1",
+            "uri": null
+          }
+        ]
+      },
+      "value": 5
+    },
+    "measured-unknown-count": {
+      "value": 0
+    },
+    "measured-unrun-count": {
+      "value": 5
+    },
+    "warmup-attempted-count": {
+      "value": 1
+    },
+    "warmup-converged-count": {
+      "value": 0
+    },
+    "warmup-excluded-count": {
+      "value": 0
+    },
+    "warmup-failed-count": {
+      "value": 1
+    },
+    "warmup-records-count": {
+      "value": 1
+    },
+    "warmup-unknown-count": {
+      "value": 0
+    },
+    "warmup-unrun-count": {
+      "value": 0
+    }
+  },
+  "dense-100-2-200-dense-47-1e-08-4 / CG / cfg-40d5622b7ddf7695": {
+    "measured-attempted-count": {
+      "value": 0
+    },
+    "measured-converged-count": {
+      "value": 0
+    },
+    "measured-excluded-count": {
+      "value": 0
+    },
+    "measured-failed-count": {
+      "value": 0
+    },
+    "measured-records-count": {
+      "_evidence": {
+        "campaign": {
+          "campaign_id": "dense-small-sandbox-startup",
+          "notes": [
+            "Sandbox blocked local socket creation before any solver ran"
+          ],
+          "schedule": [],
+          "schema_version": 1,
+          "title": "Small dense fixtures: Spark startup blocked by sandbox"
+        },
+        "case": {
+          "case_id": "dense-100-2-200-dense-47-1e-08-4",
+          "fixture_hash": null,
+          "m": 100,
+          "n": 200,
+          "nnz": null,
+          "nnz_basis": "see source provenance",
+          "shape": {
+            "family": "dense",
+            "nonzeros_per_row": 200,
+            "seed": 47
+          }
+        },
+        "configuration": {
+          "algorithm": "CG",
+          "cg_limit_per_rank": null,
+          "cg_tolerance": null,
+          "configuration_id": "cfg-40d5622b7ddf7695",
+          "control": "",
+          "dual_regularization": null,
+          "environment": {
+            "blas": "",
+            "computer": "unrecorded host; Sandbox blocked local socket creation before any solver ran",
+            "java_version": "",
+            "master": "",
+            "os": "",
+            "spark_version": ""
+          },
+          "environment_id": "env-9b16fc6febf5",
+          "eta": null,
+          "heap_gib": 4,
+          "implementation": "cg",
+          "label": "cg",
+          "memory_topology": {
+            "concurrent_tasks_per_executor": 4,
+            "executors": 1
+          },
+          "outer_limit": null,
+          "partitions": null,
+          "preconditioner_memory_bytes": null,
+          "primal_regularization": null,
+          "scenario": "",
+          "source_configuration_id": "cfg-4edd6a9c4de534a0",
+          "source_hash": "a19e20bb90204c7ab7abbdedd7f74be22004426e8ffd16f3b60a9dc4eb8e6f12",
+          "suite": "com.github.vbmacher.spark_lp.CGBenchmark",
+          "timing_scope": "core solve excluding independent validation",
+          "tolerance": 1e-08,
+          "warmup_case": null,
+          "warmups": null
+        },
+        "records": [
+          {
+            "accuracy_basis": "independent-original-lp",
+            "algorithm": "CG",
+            "application_id": null,
+            "attempt_id": "dense-small-sandbox-startup/dense-100-2-200-dense-47-1e-08-4/cfg-40d5622b7ddf7695/rep-000/attempt-001",
+            "attempt_number": 1,
+            "campaign_id": "dense-small-sandbox-startup",
+            "case_id": "dense-100-2-200-dense-47-1e-08-4",
+            "cg_restarts": null,
+            "cg_steps": null,
+            "configuration_id": "cfg-40d5622b7ddf7695",
+            "maximum_rank": null,
+            "memory": {
+              "peak_heap_bytes": null,
+              "peak_rss_bytes": null,
+              "scope": "driver process; combined with executors in local mode; includes validation"
+            },
+            "outer_iterations": null,
+            "provenance": {
+              "line": 1,
+              "source_path": "dense-100-2-200-dense-47-1e-08-4--cg/records.jsonl",
+              "source_sha256": "58ef4c76fcf082f60c3b00589e51e66032b47eb06bda30be885ff3c6f1377624"
+            },
+            "rank_escalations": null,
+            "raw": {},
+            "repetition": 0,
+            "residuals": {
+              "dual": null,
+              "gap": null,
+              "min_s": null,
+              "min_x": null,
+              "objective": null,
+              "objective_error": null,
+              "primal": null
+            },
+            "run_id": "dense-small-sandbox-startup/dense-100-2-200-dense-47-1e-08-4/cfg-40d5622b7ddf7695/rep-000",
+            "solve_seconds": null,
+            "spark_jobs": null,
+            "status": "ProcessFailure",
+            "stop_reason": null,
+            "warmup": true
+          },
+          {
+            "accuracy_basis": "independent-original-lp",
+            "algorithm": "CG",
+            "application_id": null,
+            "attempt_id": "dense-small-sandbox-startup/dense-100-2-200-dense-47-1e-08-4/cfg-40d5622b7ddf7695/rep-001/attempt-001",
+            "attempt_number": 1,
+            "campaign_id": "dense-small-sandbox-startup",
+            "case_id": "dense-100-2-200-dense-47-1e-08-4",
+            "cg_restarts": null,
+            "cg_steps": null,
+            "configuration_id": "cfg-40d5622b7ddf7695",
+            "maximum_rank": null,
+            "memory": {
+              "peak_heap_bytes": null,
+              "peak_rss_bytes": null,
+              "scope": "driver process; combined with executors in local mode; includes validation"
+            },
+            "outer_iterations": null,
+            "provenance": {
+              "line": 2,
+              "source_path": "dense-100-2-200-dense-47-1e-08-4--cg/records.jsonl",
+              "source_sha256": "58ef4c76fcf082f60c3b00589e51e66032b47eb06bda30be885ff3c6f1377624"
+            },
+            "rank_escalations": null,
+            "raw": {},
+            "repetition": 1,
+            "residuals": {
+              "dual": null,
+              "gap": null,
+              "min_s": null,
+              "min_x": null,
+              "objective": null,
+              "objective_error": null,
+              "primal": null
+            },
+            "run_id": "dense-small-sandbox-startup/dense-100-2-200-dense-47-1e-08-4/cfg-40d5622b7ddf7695/rep-001",
+            "solve_seconds": null,
+            "spark_jobs": null,
+            "status": "Unrun",
+            "stop_reason": null,
+            "warmup": false
+          },
+          {
+            "accuracy_basis": "independent-original-lp",
+            "algorithm": "CG",
+            "application_id": null,
+            "attempt_id": "dense-small-sandbox-startup/dense-100-2-200-dense-47-1e-08-4/cfg-40d5622b7ddf7695/rep-002/attempt-001",
+            "attempt_number": 1,
+            "campaign_id": "dense-small-sandbox-startup",
+            "case_id": "dense-100-2-200-dense-47-1e-08-4",
+            "cg_restarts": null,
+            "cg_steps": null,
+            "configuration_id": "cfg-40d5622b7ddf7695",
+            "maximum_rank": null,
+            "memory": {
+              "peak_heap_bytes": null,
+              "peak_rss_bytes": null,
+              "scope": "driver process; combined with executors in local mode; includes validation"
+            },
+            "outer_iterations": null,
+            "provenance": {
+              "line": 3,
+              "source_path": "dense-100-2-200-dense-47-1e-08-4--cg/records.jsonl",
+              "source_sha256": "58ef4c76fcf082f60c3b00589e51e66032b47eb06bda30be885ff3c6f1377624"
+            },
+            "rank_escalations": null,
+            "raw": {},
+            "repetition": 2,
+            "residuals": {
+              "dual": null,
+              "gap": null,
+              "min_s": null,
+              "min_x": null,
+              "objective": null,
+              "objective_error": null,
+              "primal": null
+            },
+            "run_id": "dense-small-sandbox-startup/dense-100-2-200-dense-47-1e-08-4/cfg-40d5622b7ddf7695/rep-002",
+            "solve_seconds": null,
+            "spark_jobs": null,
+            "status": "Unrun",
+            "stop_reason": null,
+            "warmup": false
+          },
+          {
+            "accuracy_basis": "independent-original-lp",
+            "algorithm": "CG",
+            "application_id": null,
+            "attempt_id": "dense-small-sandbox-startup/dense-100-2-200-dense-47-1e-08-4/cfg-40d5622b7ddf7695/rep-003/attempt-001",
+            "attempt_number": 1,
+            "campaign_id": "dense-small-sandbox-startup",
+            "case_id": "dense-100-2-200-dense-47-1e-08-4",
+            "cg_restarts": null,
+            "cg_steps": null,
+            "configuration_id": "cfg-40d5622b7ddf7695",
+            "maximum_rank": null,
+            "memory": {
+              "peak_heap_bytes": null,
+              "peak_rss_bytes": null,
+              "scope": "driver process; combined with executors in local mode; includes validation"
+            },
+            "outer_iterations": null,
+            "provenance": {
+              "line": 4,
+              "source_path": "dense-100-2-200-dense-47-1e-08-4--cg/records.jsonl",
+              "source_sha256": "58ef4c76fcf082f60c3b00589e51e66032b47eb06bda30be885ff3c6f1377624"
+            },
+            "rank_escalations": null,
+            "raw": {},
+            "repetition": 3,
+            "residuals": {
+              "dual": null,
+              "gap": null,
+              "min_s": null,
+              "min_x": null,
+              "objective": null,
+              "objective_error": null,
+              "primal": null
+            },
+            "run_id": "dense-small-sandbox-startup/dense-100-2-200-dense-47-1e-08-4/cfg-40d5622b7ddf7695/rep-003",
+            "solve_seconds": null,
+            "spark_jobs": null,
+            "status": "Unrun",
+            "stop_reason": null,
+            "warmup": false
+          },
+          {
+            "accuracy_basis": "independent-original-lp",
+            "algorithm": "CG",
+            "application_id": null,
+            "attempt_id": "dense-small-sandbox-startup/dense-100-2-200-dense-47-1e-08-4/cfg-40d5622b7ddf7695/rep-004/attempt-001",
+            "attempt_number": 1,
+            "campaign_id": "dense-small-sandbox-startup",
+            "case_id": "dense-100-2-200-dense-47-1e-08-4",
+            "cg_restarts": null,
+            "cg_steps": null,
+            "configuration_id": "cfg-40d5622b7ddf7695",
+            "maximum_rank": null,
+            "memory": {
+              "peak_heap_bytes": null,
+              "peak_rss_bytes": null,
+              "scope": "driver process; combined with executors in local mode; includes validation"
+            },
+            "outer_iterations": null,
+            "provenance": {
+              "line": 5,
+              "source_path": "dense-100-2-200-dense-47-1e-08-4--cg/records.jsonl",
+              "source_sha256": "58ef4c76fcf082f60c3b00589e51e66032b47eb06bda30be885ff3c6f1377624"
+            },
+            "rank_escalations": null,
+            "raw": {},
+            "repetition": 4,
+            "residuals": {
+              "dual": null,
+              "gap": null,
+              "min_s": null,
+              "min_x": null,
+              "objective": null,
+              "objective_error": null,
+              "primal": null
+            },
+            "run_id": "dense-small-sandbox-startup/dense-100-2-200-dense-47-1e-08-4/cfg-40d5622b7ddf7695/rep-004",
+            "solve_seconds": null,
+            "spark_jobs": null,
+            "status": "Unrun",
+            "stop_reason": null,
+            "warmup": false
+          },
+          {
+            "accuracy_basis": "independent-original-lp",
+            "algorithm": "CG",
+            "application_id": null,
+            "attempt_id": "dense-small-sandbox-startup/dense-100-2-200-dense-47-1e-08-4/cfg-40d5622b7ddf7695/rep-005/attempt-001",
+            "attempt_number": 1,
+            "campaign_id": "dense-small-sandbox-startup",
+            "case_id": "dense-100-2-200-dense-47-1e-08-4",
+            "cg_restarts": null,
+            "cg_steps": null,
+            "configuration_id": "cfg-40d5622b7ddf7695",
+            "maximum_rank": null,
+            "memory": {
+              "peak_heap_bytes": null,
+              "peak_rss_bytes": null,
+              "scope": "driver process; combined with executors in local mode; includes validation"
+            },
+            "outer_iterations": null,
+            "provenance": {
+              "line": 6,
+              "source_path": "dense-100-2-200-dense-47-1e-08-4--cg/records.jsonl",
+              "source_sha256": "58ef4c76fcf082f60c3b00589e51e66032b47eb06bda30be885ff3c6f1377624"
+            },
+            "rank_escalations": null,
+            "raw": {},
+            "repetition": 5,
+            "residuals": {
+              "dual": null,
+              "gap": null,
+              "min_s": null,
+              "min_x": null,
+              "objective": null,
+              "objective_error": null,
+              "primal": null
+            },
+            "run_id": "dense-small-sandbox-startup/dense-100-2-200-dense-47-1e-08-4/cfg-40d5622b7ddf7695/rep-005",
+            "solve_seconds": null,
+            "spark_jobs": null,
+            "status": "Unrun",
+            "stop_reason": null,
+            "warmup": false
+          }
+        ],
+        "schema_version": 1,
+        "sources": [
+          {
+            "path": "dense-100-2-200-dense-47-1e-08-4--cg/records.jsonl",
+            "revision": null,
+            "sha256": "58ef4c76fcf082f60c3b00589e51e66032b47eb06bda30be885ff3c6f1377624",
+            "uri": null
+          }
+        ]
+      },
+      "value": 5
+    },
+    "measured-unknown-count": {
+      "value": 0
+    },
+    "measured-unrun-count": {
+      "value": 5
+    },
+    "warmup-attempted-count": {
+      "value": 1
+    },
+    "warmup-converged-count": {
+      "value": 0
+    },
+    "warmup-excluded-count": {
+      "value": 0
+    },
+    "warmup-failed-count": {
+      "value": 1
+    },
+    "warmup-records-count": {
+      "value": 1
+    },
+    "warmup-unknown-count": {
+      "value": 0
+    },
+    "warmup-unrun-count": {
+      "value": 0
+    }
+  },
+  "dense-100-2-200-dense-47-1e-08-4 / Cholesky / cfg-3ee95db025464792": {
+    "measured-attempted-count": {
+      "value": 0
+    },
+    "measured-converged-count": {
+      "value": 0
+    },
+    "measured-excluded-count": {
+      "value": 0
+    },
+    "measured-failed-count": {
+      "value": 0
+    },
+    "measured-records-count": {
+      "_evidence": {
+        "campaign": {
+          "campaign_id": "dense-small-sandbox-startup",
+          "notes": [
+            "Sandbox blocked local socket creation before any solver ran"
+          ],
+          "schedule": [],
+          "schema_version": 1,
+          "title": "Small dense fixtures: Spark startup blocked by sandbox"
+        },
+        "case": {
+          "case_id": "dense-100-2-200-dense-47-1e-08-4",
+          "fixture_hash": null,
+          "m": 100,
+          "n": 200,
+          "nnz": null,
+          "nnz_basis": "see source provenance",
+          "shape": {
+            "family": "dense",
+            "nonzeros_per_row": 200,
+            "seed": 47
+          }
+        },
+        "configuration": {
+          "algorithm": "Cholesky",
+          "cg_limit_per_rank": null,
+          "cg_tolerance": null,
+          "configuration_id": "cfg-3ee95db025464792",
+          "control": "",
+          "dual_regularization": null,
+          "environment": {
+            "blas": "",
+            "computer": "unrecorded host; Sandbox blocked local socket creation before any solver ran",
+            "java_version": "",
+            "master": "",
+            "os": "",
+            "spark_version": ""
+          },
+          "environment_id": "env-9b16fc6febf5",
+          "eta": null,
+          "heap_gib": 4,
+          "implementation": "cholesky",
+          "label": "cholesky",
+          "memory_topology": {
+            "concurrent_tasks_per_executor": 4,
+            "executors": 1
+          },
+          "outer_limit": null,
+          "partitions": null,
+          "preconditioner_memory_bytes": null,
+          "primal_regularization": null,
+          "scenario": "",
+          "source_configuration_id": "cfg-33e6deb68af9015d",
+          "source_hash": "a19e20bb90204c7ab7abbdedd7f74be22004426e8ffd16f3b60a9dc4eb8e6f12",
+          "suite": "com.github.vbmacher.spark_lp.CholeskyBenchmark",
+          "timing_scope": "core solve excluding independent validation",
+          "tolerance": 1e-08,
+          "warmup_case": null,
+          "warmups": null
+        },
+        "records": [
+          {
+            "accuracy_basis": "independent-original-lp",
+            "algorithm": "Cholesky",
+            "application_id": null,
+            "attempt_id": "dense-small-sandbox-startup/dense-100-2-200-dense-47-1e-08-4/cfg-3ee95db025464792/rep-000/attempt-001",
+            "attempt_number": 1,
+            "campaign_id": "dense-small-sandbox-startup",
+            "case_id": "dense-100-2-200-dense-47-1e-08-4",
+            "cg_restarts": null,
+            "cg_steps": null,
+            "configuration_id": "cfg-3ee95db025464792",
+            "maximum_rank": null,
+            "memory": {
+              "peak_heap_bytes": null,
+              "peak_rss_bytes": null,
+              "scope": "driver process; combined with executors in local mode; includes validation"
+            },
+            "outer_iterations": null,
+            "provenance": {
+              "line": 1,
+              "source_path": "dense-100-2-200-dense-47-1e-08-4--cholesky/records.jsonl",
+              "source_sha256": "790f28f05ebaf352b9ca77898272a52a25432204b8a84a051680f65ae9954bd2"
+            },
+            "rank_escalations": null,
+            "raw": {},
+            "repetition": 0,
+            "residuals": {
+              "dual": null,
+              "gap": null,
+              "min_s": null,
+              "min_x": null,
+              "objective": null,
+              "objective_error": null,
+              "primal": null
+            },
+            "run_id": "dense-small-sandbox-startup/dense-100-2-200-dense-47-1e-08-4/cfg-3ee95db025464792/rep-000",
+            "solve_seconds": null,
+            "spark_jobs": null,
+            "status": "ProcessFailure",
+            "stop_reason": null,
+            "warmup": true
+          },
+          {
+            "accuracy_basis": "independent-original-lp",
+            "algorithm": "Cholesky",
+            "application_id": null,
+            "attempt_id": "dense-small-sandbox-startup/dense-100-2-200-dense-47-1e-08-4/cfg-3ee95db025464792/rep-001/attempt-001",
+            "attempt_number": 1,
+            "campaign_id": "dense-small-sandbox-startup",
+            "case_id": "dense-100-2-200-dense-47-1e-08-4",
+            "cg_restarts": null,
+            "cg_steps": null,
+            "configuration_id": "cfg-3ee95db025464792",
+            "maximum_rank": null,
+            "memory": {
+              "peak_heap_bytes": null,
+              "peak_rss_bytes": null,
+              "scope": "driver process; combined with executors in local mode; includes validation"
+            },
+            "outer_iterations": null,
+            "provenance": {
+              "line": 2,
+              "source_path": "dense-100-2-200-dense-47-1e-08-4--cholesky/records.jsonl",
+              "source_sha256": "790f28f05ebaf352b9ca77898272a52a25432204b8a84a051680f65ae9954bd2"
+            },
+            "rank_escalations": null,
+            "raw": {},
+            "repetition": 1,
+            "residuals": {
+              "dual": null,
+              "gap": null,
+              "min_s": null,
+              "min_x": null,
+              "objective": null,
+              "objective_error": null,
+              "primal": null
+            },
+            "run_id": "dense-small-sandbox-startup/dense-100-2-200-dense-47-1e-08-4/cfg-3ee95db025464792/rep-001",
+            "solve_seconds": null,
+            "spark_jobs": null,
+            "status": "Unrun",
+            "stop_reason": null,
+            "warmup": false
+          },
+          {
+            "accuracy_basis": "independent-original-lp",
+            "algorithm": "Cholesky",
+            "application_id": null,
+            "attempt_id": "dense-small-sandbox-startup/dense-100-2-200-dense-47-1e-08-4/cfg-3ee95db025464792/rep-002/attempt-001",
+            "attempt_number": 1,
+            "campaign_id": "dense-small-sandbox-startup",
+            "case_id": "dense-100-2-200-dense-47-1e-08-4",
+            "cg_restarts": null,
+            "cg_steps": null,
+            "configuration_id": "cfg-3ee95db025464792",
+            "maximum_rank": null,
+            "memory": {
+              "peak_heap_bytes": null,
+              "peak_rss_bytes": null,
+              "scope": "driver process; combined with executors in local mode; includes validation"
+            },
+            "outer_iterations": null,
+            "provenance": {
+              "line": 3,
+              "source_path": "dense-100-2-200-dense-47-1e-08-4--cholesky/records.jsonl",
+              "source_sha256": "790f28f05ebaf352b9ca77898272a52a25432204b8a84a051680f65ae9954bd2"
+            },
+            "rank_escalations": null,
+            "raw": {},
+            "repetition": 2,
+            "residuals": {
+              "dual": null,
+              "gap": null,
+              "min_s": null,
+              "min_x": null,
+              "objective": null,
+              "objective_error": null,
+              "primal": null
+            },
+            "run_id": "dense-small-sandbox-startup/dense-100-2-200-dense-47-1e-08-4/cfg-3ee95db025464792/rep-002",
+            "solve_seconds": null,
+            "spark_jobs": null,
+            "status": "Unrun",
+            "stop_reason": null,
+            "warmup": false
+          },
+          {
+            "accuracy_basis": "independent-original-lp",
+            "algorithm": "Cholesky",
+            "application_id": null,
+            "attempt_id": "dense-small-sandbox-startup/dense-100-2-200-dense-47-1e-08-4/cfg-3ee95db025464792/rep-003/attempt-001",
+            "attempt_number": 1,
+            "campaign_id": "dense-small-sandbox-startup",
+            "case_id": "dense-100-2-200-dense-47-1e-08-4",
+            "cg_restarts": null,
+            "cg_steps": null,
+            "configuration_id": "cfg-3ee95db025464792",
+            "maximum_rank": null,
+            "memory": {
+              "peak_heap_bytes": null,
+              "peak_rss_bytes": null,
+              "scope": "driver process; combined with executors in local mode; includes validation"
+            },
+            "outer_iterations": null,
+            "provenance": {
+              "line": 4,
+              "source_path": "dense-100-2-200-dense-47-1e-08-4--cholesky/records.jsonl",
+              "source_sha256": "790f28f05ebaf352b9ca77898272a52a25432204b8a84a051680f65ae9954bd2"
+            },
+            "rank_escalations": null,
+            "raw": {},
+            "repetition": 3,
+            "residuals": {
+              "dual": null,
+              "gap": null,
+              "min_s": null,
+              "min_x": null,
+              "objective": null,
+              "objective_error": null,
+              "primal": null
+            },
+            "run_id": "dense-small-sandbox-startup/dense-100-2-200-dense-47-1e-08-4/cfg-3ee95db025464792/rep-003",
+            "solve_seconds": null,
+            "spark_jobs": null,
+            "status": "Unrun",
+            "stop_reason": null,
+            "warmup": false
+          },
+          {
+            "accuracy_basis": "independent-original-lp",
+            "algorithm": "Cholesky",
+            "application_id": null,
+            "attempt_id": "dense-small-sandbox-startup/dense-100-2-200-dense-47-1e-08-4/cfg-3ee95db025464792/rep-004/attempt-001",
+            "attempt_number": 1,
+            "campaign_id": "dense-small-sandbox-startup",
+            "case_id": "dense-100-2-200-dense-47-1e-08-4",
+            "cg_restarts": null,
+            "cg_steps": null,
+            "configuration_id": "cfg-3ee95db025464792",
+            "maximum_rank": null,
+            "memory": {
+              "peak_heap_bytes": null,
+              "peak_rss_bytes": null,
+              "scope": "driver process; combined with executors in local mode; includes validation"
+            },
+            "outer_iterations": null,
+            "provenance": {
+              "line": 5,
+              "source_path": "dense-100-2-200-dense-47-1e-08-4--cholesky/records.jsonl",
+              "source_sha256": "790f28f05ebaf352b9ca77898272a52a25432204b8a84a051680f65ae9954bd2"
+            },
+            "rank_escalations": null,
+            "raw": {},
+            "repetition": 4,
+            "residuals": {
+              "dual": null,
+              "gap": null,
+              "min_s": null,
+              "min_x": null,
+              "objective": null,
+              "objective_error": null,
+              "primal": null
+            },
+            "run_id": "dense-small-sandbox-startup/dense-100-2-200-dense-47-1e-08-4/cfg-3ee95db025464792/rep-004",
+            "solve_seconds": null,
+            "spark_jobs": null,
+            "status": "Unrun",
+            "stop_reason": null,
+            "warmup": false
+          },
+          {
+            "accuracy_basis": "independent-original-lp",
+            "algorithm": "Cholesky",
+            "application_id": null,
+            "attempt_id": "dense-small-sandbox-startup/dense-100-2-200-dense-47-1e-08-4/cfg-3ee95db025464792/rep-005/attempt-001",
+            "attempt_number": 1,
+            "campaign_id": "dense-small-sandbox-startup",
+            "case_id": "dense-100-2-200-dense-47-1e-08-4",
+            "cg_restarts": null,
+            "cg_steps": null,
+            "configuration_id": "cfg-3ee95db025464792",
+            "maximum_rank": null,
+            "memory": {
+              "peak_heap_bytes": null,
+              "peak_rss_bytes": null,
+              "scope": "driver process; combined with executors in local mode; includes validation"
+            },
+            "outer_iterations": null,
+            "provenance": {
+              "line": 6,
+              "source_path": "dense-100-2-200-dense-47-1e-08-4--cholesky/records.jsonl",
+              "source_sha256": "790f28f05ebaf352b9ca77898272a52a25432204b8a84a051680f65ae9954bd2"
+            },
+            "rank_escalations": null,
+            "raw": {},
+            "repetition": 5,
+            "residuals": {
+              "dual": null,
+              "gap": null,
+              "min_s": null,
+              "min_x": null,
+              "objective": null,
+              "objective_error": null,
+              "primal": null
+            },
+            "run_id": "dense-small-sandbox-startup/dense-100-2-200-dense-47-1e-08-4/cfg-3ee95db025464792/rep-005",
+            "solve_seconds": null,
+            "spark_jobs": null,
+            "status": "Unrun",
+            "stop_reason": null,
+            "warmup": false
+          }
+        ],
+        "schema_version": 1,
+        "sources": [
+          {
+            "path": "dense-100-2-200-dense-47-1e-08-4--cholesky/records.jsonl",
+            "revision": null,
+            "sha256": "790f28f05ebaf352b9ca77898272a52a25432204b8a84a051680f65ae9954bd2",
+            "uri": null
+          }
+        ]
+      },
+      "value": 5
+    },
+    "measured-unknown-count": {
+      "value": 0
+    },
+    "measured-unrun-count": {
+      "value": 5
+    },
+    "warmup-attempted-count": {
+      "value": 1
+    },
+    "warmup-converged-count": {
+      "value": 0
+    },
+    "warmup-excluded-count": {
+      "value": 0
+    },
+    "warmup-failed-count": {
+      "value": 1
+    },
+    "warmup-records-count": {
+      "value": 1
+    },
+    "warmup-unknown-count": {
+      "value": 0
+    },
+    "warmup-unrun-count": {
+      "value": 0
+    }
+  }
+}

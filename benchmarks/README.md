@@ -135,11 +135,11 @@ python3 benchmarks/scripts/report.py render
 python3 benchmarks/scripts/report.py check
 ```
 
-Inspect the imported CSV before placing it under `src/results/data/`. Its filename must equal `campaign_id`. Every result row includes dimensions, algorithm/suite, configuration, environment, repetition, status, timing, accuracy, memory observations and source URI/path/hash/line. The source configuration ID keeps full recorded settings separate even when a setting is not a report column. Empty numeric cells mean unavailable. Verify provenance against the preserved artifact tree. `check` validates normalized records and confirms the report matches them.
+Inspect the imported CSV before placing it under `src/results/data/`. Its filename must equal `campaign_id`. Every result row includes dimensions, algorithm/suite, configuration, environment, repetition, status, timing, accuracy, memory observations and relative source path/hash/line. Published results omit infrastructure identifiers, provider metadata and storage locations; deployment details remain in private run manifests. The source configuration ID keeps full recorded settings separate even when a setting is not a report column. Empty numeric cells mean unavailable. Verify provenance against the preserved artifact tree. `check` validates normalized records and confirms the report matches them.
 
 The report groups only homogeneous cases/configurations, excludes warmups, reports successful solve-time median/range, and shows failure duration where no attempt converged. No failure becomes a successful timing. Constant columns move above each table; ID and Env remain explicit references. The environment table describes the recorded machine/OS/Spark/Java/EMR environment, not the machine generating the Markdown.
 
-No campaign results are currently recorded. Case inventories in `src/main/resources/` define the inputs for the [remaining runs](src/results/TODO.md). Import measurements from completed runs to populate the report's benchmark, environment and result tables.
+The report contains imported measurements, including partial batches, with links to their result CSVs. Case inventories in `src/main/resources/` define the inputs; planned cases and missing repetitions are not successful measurements.
 
 ## Memory
 
@@ -157,3 +157,5 @@ CG driver         = 64*m + 32*m*r       O(m + m*r)
 `C` assumes sparse values/indices, column references and twelve `n`-double vector equivalents. `P` is one packed triangle; reductions can hold two per task. CG fetches one Gramian column at a time, so executor scratch scales with `m`; partial factors stay on the driver. At fixed local topology the executor bounds simplify to `O(z+n+m²)` and `O(z+n+m)`. These are calculated payload estimates, not measured process peaks or rigorous upper bounds. Extra caches, DataFrame/JVM objects, shuffle buffers, native memory and retained garbage are additional. Missing topology/rank prevents a numeric estimate. Report values are MiB (`2^20` bytes).
 
 Local Spark shares one JVM for driver and executor work; RSS samples therefore cover both. Distributed runs must measure each executor and the driver separately. The generator adds distributed DataFrame/cache/shuffle costs and `O(m)` driver vectors; it does not collect the complete matrix or `n`-length solutions. The driver and executor allowances must both fit with headroom before a large direct run is attempted.
+
+The EMR launcher enables Spark executor metrics polling every 1,000 ms, process-tree RSS metrics and per-stage executor peak logging. Those observations are retained in Spark event logs, separately from the runner's driver samples. The [report](src/results/REPORT.md#executor-memory-observations) includes derived executor observations and documents their timing scope.

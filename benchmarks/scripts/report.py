@@ -24,6 +24,42 @@ def canonical(value):
     return json.dumps(value, sort_keys=True, separators=(',', ':'), allow_nan=False)
 
 
+def omit_storage_locations(value):
+    """Keep private object-storage locations out of published result fields."""
+    if not isinstance(value, str):
+        return value
+    value = re.sub(
+        r"\b(?:s3[an]?://|https?://[^/\s]*s3[.-][^/\s]*amazonaws\.com(?:\.cn)?/)[^\s<>\"'`]+",
+        '[artifact location omitted]', value, flags=re.IGNORECASE)
+    return re.sub(
+        r'\barn:aws[^\s]+|\b(?:j|s)-[0-9][A-Z0-9]+\b|\b(?:subnet|sg|vpc|i)-[0-9a-f]+\b|'
+        r'\bip-(?:\d+-){3}\d+(?:\.[a-z0-9.-]+)?|\bBME-\d+\b|'
+        r'\b(?:us|eu|ap|ca|sa|af|me|il|mx)-(?:gov-)?[a-z]+-\d\b|'
+        r'\b(?:aws|amazon|amzn|emr)\b|\b[cmrtipgdhxz]\d[a-z0-9]*\.(?:metal|\d*xlarge)\b',
+        '[infrastructure omitted]', value, flags=re.IGNORECASE)
+
+
+def public_identifier(value):
+    return re.sub(r'(?i)\bemr(?=-|$)', 'distributed', value)
+
+
+def public_result_row(row):
+    """Export measurements through an allowlist; infrastructure stays in raw artifacts."""
+    result = {key: row.get(key) for key in CSV_FIELDS}
+    for key in ('campaign_id', 'case_id'):
+        result[key] = public_identifier(result[key])
+    if result.get('spark_master') == 'yarn':
+        result['computer'] = 'distributed cluster'
+    version = result.get('spark_version')
+    if version:
+        result['spark_version'] = re.sub(r'-amzn.*$', '', version)
+    result = {key: omit_storage_locations(value) for key, value in result.items()}
+    config = {k: '' if result.get(k) is None else str(result[k]) for k in CONFIG_FIELDS}
+    result['configuration_id'] = 'cfg-' + digest(canonical(config).encode())[:16]
+    result['environment_id'] = 'env-' + digest(canonical({k: config[k] for k in ENV_FIELDS}).encode())[:12]
+    return result
+
+
 def number(value):
     if value is None or value in ('', 'NA', 'NaN', 'None'):
         return None
@@ -278,13 +314,13 @@ def render_table(columns, rows, extract_shared=True):
 
 def render_tables(campaigns):
     plan_columns = ['ID', 'Type', 'Rows m', 'Variables n', 'Campaign / case', 'Purpose',
-                    'Implementation', 'Control', 'Fixture family', 'Seed', 'Nonzeros', 'Density (%)',
+                    'Control', 'Fixture family', 'Seed', 'Nonzeros', 'Density (%)',
                     'Nonzeros / column', 'Nonzeros / row', 'Row-scale ratio', 'Tolerance', 'Outer limit',
                     'Eta', 'CG tolerance', 'CG step limit per rank', 'Rp', 'Rd',
-                    'Preconditioner budget (MiB)', 'Spark master', 'Partitions',
+                    'Preconditioner budget (MiB)', 'Partitions',
                     'Heap (GiB)', 'BLAS', 'Recorded repetitions', 'Warmups per backend invocation', 'Warmup case',
                     'Timing scope', 'Data file']
-    result_columns = ['ID', 'Env', 'Converged / attempted', 'Iterations', 'Restarts/escalations',
+    result_columns = ['ID', 'Env', 'Warmup outcomes', 'Converged / attempted', 'Iterations', 'Restarts/escalations',
                       'Max preconditioner rank', 'Solve seconds, median [min–max]',
                       'Outcome / accuracy', 'Memory per executor (big O + calculated/measured)',
                       'Memory per driver (big O + calculated/measured)']
@@ -298,14 +334,13 @@ def render_tables(campaigns):
             return 'unrecorded'
         return f'{value:g}' if isinstance(value, float) else str(value)
     for c in sorted(campaigns, key=lambda c: (order.get(c['campaign_id'], 3), c['campaign_id'])):
-        measured = [r for r in c['records'] if not r['warmup']]
-        if not measured:
+        if not c['records']:
             continue
         title = names.get(c['campaign_id'], re.sub(r'\bIssue\s*#?\d+\s*', '', c['title'], flags=re.IGNORECASE))
         cases = {x['case_id']: x for x in c['cases']}
         configs = {x['configuration_id']: x for x in c['configurations']}
         groups = collections.defaultdict(list)
-        for row in measured:
+        for row in c['records']:
             groups[(row['case_id'], row['configuration_id'])].append(row)
         def group_order(item):
             case_id, cfg_id = item[0]
@@ -313,7 +348,12 @@ def render_tables(campaigns):
             return (case['m'], case['n'], case_id, cfg['algorithm'] != 'Cholesky',
                     cfg['label'], cfg_id)
         for index, ((case_id, cfg_id), group) in enumerate(sorted(groups.items(), key=group_order), 1):
+            warmups = [r for r in group if r['warmup']]
+            group = [r for r in group if not r['warmup']]
+            warmup_outcomes = ', '.join(f'{k} ×{v}' for k, v in sorted(
+                collections.Counter(r['status'] for r in warmups).items())) or 'unrecorded'
             benchmark_id = f'{prefixes.get(c["campaign_id"], c["campaign_id"].upper())}-{index:02d}'
+            benchmark_id = benchmark_id.removeprefix('RERUN-20260914-')
             suite = configs[cfg_id].get('suite', ALGORITHM_SUITES.get(configs[cfg_id]['algorithm']))
             if suite:
                 benchmark_id += f' · [{suite.split(".")[-1]}](../main/scala/{suite.replace(".", "/")}.scala)'
@@ -325,7 +365,7 @@ def render_tables(campaigns):
                 environment_ids[env_key] = env_id
                 environments.append([env_id, env['computer'] or 'unrecorded', env['os'] or 'unrecorded',
                                      env['spark_version'] or 'unrecorded', env['java_version'] or 'unrecorded',
-                                     env['emr_name'] or 'n/a'])
+                                     env['spark_master'] or 'unrecorded'])
             env_id = environment_ids[env_key]
             attempted = [r for r in group if r['status'] not in NOT_ATTEMPTED]
             valid = [r for r in attempted if is_valid(r, cfg)]
@@ -338,7 +378,7 @@ def render_tables(campaigns):
             z, m, n = case['nnz'], case['m'], case['n']
             observed = attempted if attempted else group
             ranks = [r['maximum_rank'] for r in observed]
-            rank = max(ranks) if all(v is not None for v in ranks) else None
+            rank = max(ranks) if ranks and all(v is not None for v in ranks) else None
             topology = cfg.get('memory_topology')
             mem = memory_components(case, rank, topology['concurrent_tasks_per_executor'],
                 topology['executors']) if topology else None
@@ -354,9 +394,9 @@ def render_tables(campaigns):
             else:
                 e += '; topology/nnz unavailable'
                 d += '; payload estimate unavailable'
-            outcomes = ', '.join(f'{k} ×{v}' for k,v in sorted(collections.Counter(r['status'] for r in group).items()))
+            outcomes = ', '.join(f'{k} ×{v}' for k,v in sorted(collections.Counter(r['status'] for r in group).items())) or 'No measured records captured'
             accuracy = [[r['residuals'].get(k) for r in group] for k in ('primal', 'dual', 'gap')]
-            if all(v is not None for values in accuracy for v in values):
+            if group and all(v is not None for values in accuracy for v in values):
                 outcomes += '; max primal/dual/gap ' + '/'.join(f'{max(values):.3g}' for values in accuracy)
             reason = sorted({r.get('stop_reason') for r in group if r.get('stop_reason') not in (None, 'None')})
             if reason:
@@ -373,8 +413,6 @@ def render_tables(campaigns):
             else:
                 d += '; RSS unmeasured'
             name = case_id
-            display = re.sub(r'\b[0-9a-f]{7,64}\b', 'Recorded implementation',
-                             cfg['implementation'], flags=re.IGNORECASE)
             control = {'none': 'Off', 'report': 'Progress callback',
                        'candidate': 'Stop at first feasible event', 'time': 'Time limit',
                        'stagnation': 'Stagnation stop'}.get(cfg.get('control'), parameter(cfg.get('control')))
@@ -390,7 +428,7 @@ def render_tables(campaigns):
             budget = cfg.get('preconditioner_memory_bytes')
             filename = c['campaign_id'] + '.csv'
             plan = [benchmark_id, cfg['algorithm'], f'{m:,}', f'{n:,}', f'{title} / {name}',
-                    purpose or 'unrecorded', display, control, parameter(case['shape'].get('family')), parameter(case['shape'].get('seed')),
+                    purpose or 'unrecorded', control, parameter(case['shape'].get('family')), parameter(case['shape'].get('seed')),
                     'unrecorded' if z is None else f'{z:,}',
                     'unrecorded' if z is None else f'{100*z/(m*n):.4g}',
                     parameter(case['shape'].get('width_per_column', 'n/a')),
@@ -402,36 +440,55 @@ def render_tables(campaigns):
                     parameter(cfg.get('primal_regularization', cfg.get('regularization'))),
                     parameter(cfg.get('dual_regularization', cfg.get('regularization'))),
                     'n/a' if direct else parameter(None if budget is None else budget/1024**2),
-                    parameter(environment.get('master')), parameter(partitions), parameter(heap),
+                    parameter(partitions), parameter(heap),
                     parameter(environment.get('blas')), repetitions, parameter(cfg.get('warmups')),
                     cfg.get('warmup_case') or ('n/a' if cfg.get('warmups') == 0 else 'unrecorded'),
                     cfg['timing_scope'], f'[{filename}](data/{filename})']
             plans.append(plan)
-            cells = [benchmark_id, env_id, f'{len(valid)}/{len(attempted)}',
+            cells = [benchmark_id, env_id, warmup_outcomes, f'{len(valid)}/{len(attempted)}',
                 f'outer {span([r["outer_iterations"] for r in observed])}' + ('' if direct else f'; CG {span([r["cg_steps"] for r in observed])}'),
                 'n/a' if direct else f'{span([r["cg_restarts"] for r in observed])} / {span([r["rank_escalations"] for r in observed])}'.replace('—', 'unrecorded'),
                 'n/a' if direct else ('—' if rank is None else str(rank)), timing, outcomes, e, d]
             results.append(cells)
     return ('## Benchmark types\n\n' + render_table(plan_columns, plans)
             + '\n\n## Environment\n\n' + render_table(
-                ['ID', 'Computer', 'OS', 'Spark version', 'Java version', 'EMR name'], environments, extract_shared=False)
+                ['ID', 'Computer', 'OS', 'Spark version', 'Java version', 'Spark master'], environments, extract_shared=False)
             + '\n\n## Result\n\n' + render_table(result_columns, results))
 
 
-def render_report(campaigns):
-    return '# Benchmarks\n\n' + render_tables(campaigns) + '\n'
+def render_report(campaigns, executor_memory=()):
+    measured = [r for c in campaigns for r in c['records'] if not r['warmup']]
+    warmups = sum(r['warmup'] for c in campaigns for r in c['records'])
+    report = (f'# Benchmarks\n\nCaptured evidence: {len(campaigns)} campaign files, '
+              f'{len(measured)} measured slots and {warmups} warmup records. '
+              'Tables include partial batches, failures and resource exclusions. '
+              'Warmups are shown separately and excluded from solve statistics; '
+              'missing records are not inferred.\n\n' + render_tables(campaigns) + '\n')
+    if executor_memory:
+        report += ('\n## Executor memory observations\n\n'
+                   'Whole-application peaks include generation, warmup, preparation, solve and validation, '
+                   'with 1,000 ms polling and per-stage peak logging. These are per-executor observations; '
+                   'JVM non-heap does not cover all native memory. '
+                   'Source: [executor-memory-20260914.csv](executor-memory-20260914.csv).\n\n'
+                   + render_table(['Case', 'Backend', 'Variant', 'Executor', 'Peak heap', 'Peak RSS',
+                                   'Peak JVM non-heap', 'Scope'],
+                       [[r['case'], r['backend'], r['variant'], r['executor_id'],
+                         mib(integer(r['peak_heap_bytes'])), mib(integer(r['peak_rss_bytes'])),
+                         mib(integer(r['peak_jvm_nonheap_bytes'])), r['scope']]
+                        for r in executor_memory]) + '\n')
+    return report
 
 
 # Each physical CSV record is a measured attempt. Empty numeric cells mean unavailable.
 CASE_FIELDS = 'case_id,m,n,nnz,fixture_family,seed,nonzeros_per_column,nonzeros_per_row,row_scale_ratio,blocks,fixture_hash'.split(',')
-ENV_FIELDS = 'computer,os,spark_version,java_version,emr_name,blas,spark_master'.split(',')
+ENV_FIELDS = 'computer,os,spark_version,java_version,blas,spark_master'.split(',')
 CONFIG_FIELDS = ('source_configuration_id,suite,algorithm,implementation,scenario,control,tolerance,outer_limit,eta,cg_tolerance,'
                  'cg_limit_per_rank,rp,rd,preconditioner_budget_bytes,partitions,executors,tasks_per_executor,'
                  'heap_gib,timing_scope,warmups,warmup_case,source_hash').split(',') + ENV_FIELDS
 RESULT_FIELDS = ('repetition,attempt,warmup,status,solve_seconds,outer_iterations,cg_steps,cg_restarts,'
                  'rank_escalations,max_rank,accuracy_basis,primal,dual,gap,objective,objective_error,min_x,min_s,'
-                 'peak_heap_bytes,peak_rss_bytes,memory_scope,spark_jobs,application_id,stop_reason').split(',')
-SOURCE_FIELDS = 'source_uri,source_path,source_revision,source_sha256,source_line'.split(',')
+                 'peak_heap_bytes,peak_rss_bytes,memory_scope,spark_jobs').split(',')
+SOURCE_FIELDS = 'source_path,source_revision,source_sha256,source_line'.split(',')
 CSV_FIELDS = ['campaign_id', 'configuration_id', 'environment_id'] + CASE_FIELDS + CONFIG_FIELDS + RESULT_FIELDS + SOURCE_FIELDS
 ALGORITHM_SUITES = {'Cholesky': 'com.github.vbmacher.spark_lp.CholeskyBenchmark',
                     'CG': 'com.github.vbmacher.spark_lp.CGBenchmark'}
@@ -444,7 +501,7 @@ def environment_values(cfg):
     return dict(computer=env.get('computer', computer), os=env.get('os', os_name),
                 spark_version=env.get('spark_version', env.get('spark')),
                 java_version=env.get('java_version', env.get('jdk', env.get('java'))),
-                emr_name=env.get('emr_name'), blas=env.get('blas'), spark_master=env.get('master'))
+                blas=env.get('blas'), spark_master=env.get('master'))
 
 
 def flat_rows(c):
@@ -478,19 +535,16 @@ def flat_rows(c):
             max_rank=r['maximum_rank'], accuracy_basis=r['accuracy_basis'],
             peak_heap_bytes=r['memory'].get('peak_heap_bytes'), peak_rss_bytes=r['memory'].get('peak_rss_bytes'),
             memory_scope=r['memory'].get('scope'), spark_jobs=r.get('spark_jobs'), application_id=r.get('application_id'),
-            stop_reason=r.get('stop_reason'), source_uri=source_info.get('uri'), source_path=p['source_path'], source_revision=source_info.get('revision'),
+            stop_reason=r.get('stop_reason'), source_uri=None, source_path=p['source_path'], source_revision=source_info.get('revision'),
             source_sha256=p['source_sha256'], source_line=p['line'], **environment_values(cfg))
         row.update({key: r['residuals'].get(key) for key in ('primal','dual','gap','objective','objective_error','min_x','min_s')})
-        # Stable identities hash all visible configuration/environment columns, including unknowns.
-        config_text = {k: '' if row.get(k) is None else str(row[k]) for k in CONFIG_FIELDS}
-        row['configuration_id'] = 'cfg-' + digest(canonical(config_text).encode())[:16]
-        row['environment_id'] = 'env-' + digest(canonical({k: config_text[k] for k in ENV_FIELDS}).encode())[:12]
-        yield row
+        yield public_result_row(row)
 
 
 def write_campaign(c, path):
     validate(c)
     path = Path(path)
+    path = path.with_name(public_identifier(path.name))
     if path.suffix != '.csv':
         raise ValueError('Measured campaign output must have a .csv extension')
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -510,6 +564,8 @@ def read_campaign(path):
     for v in rows:
         if None in v or any(value is None for value in v.values()):
             raise ValueError('Result CSV row width differs from its header')
+        if any(omit_storage_locations(value) != value for value in v.values()):
+            raise ValueError('Result CSV contains private infrastructure information')
         if v['campaign_id'] != c['campaign_id']:
             raise ValueError('Campaign ID differs from filename')
         if v['configuration_id'] != 'cfg-' + digest(canonical({k:v[k] for k in CONFIG_FIELDS}).encode())[:16]:
@@ -528,7 +584,7 @@ def read_campaign(path):
                    implementation=v['implementation'],scenario=v['scenario'],control=v['control'],tolerance=number(v['tolerance']),
                    timing_scope=v['timing_scope'],warmup_case=v['warmup_case'] or None,environment_id=v['environment_id'],
                    environment=dict(computer=v['computer'],os=v['os'],spark_version=v['spark_version'],
-                                    java_version=v['java_version'],emr_name=v['emr_name'],blas=v['blas'],master=v['spark_master']))
+                                    java_version=v['java_version'],blas=v['blas'],master=v['spark_master']))
         for field in ('outer_limit','cg_limit_per_rank','partitions','heap_gib','warmups'):
             cfg[field] = integer(v[field])
         for field in ('eta','cg_tolerance'):
@@ -547,11 +603,11 @@ def read_campaign(path):
                  outer_iterations=integer(v['outer_iterations']),cg_steps=integer(v['cg_steps']),cg_restarts=integer(v['cg_restarts']),
                  rank_escalations=integer(v['rank_escalations']),maximum_rank=integer(v['max_rank']),
                  memory=dict(peak_heap_bytes=integer(v['peak_heap_bytes']),peak_rss_bytes=integer(v['peak_rss_bytes']),scope=v['memory_scope']),
-                 spark_jobs=integer(v['spark_jobs']),application_id=v['application_id'] or None,stop_reason=v['stop_reason'] or None)
+                 spark_jobs=integer(v['spark_jobs']),application_id=None,stop_reason=None)
         if r['accuracy_basis']=='bounded-dsl-values':
             raise ValueError('DSL smoke belongs in correctness artifacts, not the performance report')
         c['records'].append(r)
-        register(c['sources'],dict(path=v['source_path'],uri=v['source_uri'] or None,revision=v['source_revision'] or None,sha256=v['source_sha256']), 'path')
+        register(c['sources'],dict(path=v['source_path'],uri=None,revision=v['source_revision'] or None,sha256=v['source_sha256']), 'path')
     validate(c)
     return c
 
@@ -583,7 +639,10 @@ def main():
             campaigns.append(c)
         if len({c['campaign_id'] for c in campaigns}) != len(campaigns):
             raise ValueError('Duplicate campaign ID')
-        generated = render_report(campaigns)
+        memory_path = args.data.parent / 'executor-memory-20260914.csv'
+        with memory_path.open(newline='') if memory_path.exists() else io.StringIO('') as source:
+            executor_memory = list(csv.DictReader(source))
+        generated = render_report(campaigns, executor_memory)
         if args.command == 'check' and args.report.read_text() != generated:
             raise ValueError('REPORT.md is stale; run report.py render')
         if args.command == 'render':

@@ -209,7 +209,6 @@ other CG residuals come from the recurrence. `preconditionerRank` is optional an
 applies only to backends with a rank-based preconditioner. Setup may recur within
 `InnerSolve` when CG strengthens its preconditioner; phases are not a one-way sequence.
 
-This replaces the old `Cholesky`/`Preconditioner` phase names and flat progress metrics.
 For example, use `event.iterate.map(_.objectiveValue)` and `event.work.map(_.completed)`.
 Reporting itself starts no additional Spark actions and collects no distributed vectors.
 Keep callbacks quick; their exceptions propagate unchanged after cleanup.

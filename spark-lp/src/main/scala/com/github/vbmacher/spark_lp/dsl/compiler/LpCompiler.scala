@@ -1236,6 +1236,27 @@ private[dsl] final class LpCompiler(problem: LpProblem, config: SolveConfig) ext
     }
     val constraintsDf = spark.createDataFrame(sc.parallelize(rows, 1), schema)
 
+    val reducedCosts = rowPrices.map { prices =>
+      val originalRows = compiled.rowSpecs.map(_.rowId).toSet
+      val unavailable = originalRows -- prices.keySet
+      val effects = compiled.userTermsAgg.map { case ((si, key, row), coefficient) =>
+        ((si, key), (coefficient * prices.getOrElse(row, 0.0), unavailable(row) && coefficient != 0.0))
+      }.reduceByKey { case ((a, missingA), (b, missingB)) => (a + b, missingA || missingB) }
+      val costs = compiled.originalCosts.getOrElse(sc.emptyRDD[((Int, String), Double)])
+      val keys = sc.union(compiled.plans.map { p =>
+        val si = p.handle.setIndex
+        val fixed = p.handle.upperBound.contains(p.handle.lowerBound)
+        p.keys.map { case (key, _) => ((si, key), fixed) }
+      })
+      val result = caches.checkpoint(keys.leftOuterJoin(costs).leftOuterJoin(effects).flatMap {
+        case (key, ((fixed, cost), effect)) =>
+          if (fixed || effect.exists(_._2)) None
+          else Some(key -> (cost.getOrElse(0.0) - effect.map(_._1).getOrElse(0.0)))
+      })
+      result.count()
+      caches.keep(result)
+    }
+
     new LpSolution(
       status = status,
       objectiveValue = objectiveValue,
@@ -1246,6 +1267,7 @@ private[dsl] final class LpCompiler(problem: LpProblem, config: SolveConfig) ext
       userValues = caches.keep(userValues),
       candidate = candidate.getOrElse(CandidateInfo(true, status == LpStatus.Optimal, Some(iterations))),
       stopReason = stopReason,
-      evidence = evidence)
+      evidence = evidence,
+      reducedCostData = reducedCosts)
   }
 }

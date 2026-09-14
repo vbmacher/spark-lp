@@ -43,7 +43,8 @@ final class LpSolution private[dsl](
   private[dsl] val userValues: RDD[((Int, String), Double)],
   val candidate: CandidateInfo,
   val stopReason: Option[StopReason] = None,
-  val evidence: Option[LpEvidence] = None) extends AutoCloseable {
+  val evidence: Option[LpEvidence] = None,
+  private[dsl] val reducedCostData: Option[RDD[((Int, String), Double)]] = None) extends AutoCloseable {
 
   private var closed = false
 
@@ -57,8 +58,11 @@ final class LpSolution private[dsl](
     new LpRoundedValues(this, rounding)
   }
 
-  private[dsl] def requireCandidate(): Unit = {
+  private[dsl] def requireOpen(): Unit =
     if (closed) throw new LpModelException("Solution is closed")
+
+  private[dsl] def requireCandidate(): Unit = {
+    requireOpen()
     if (!candidate.available) throw new LpModelException("No completed iterate is available for this solve")
   }
 
@@ -76,11 +80,37 @@ final class LpSolution private[dsl](
     value
   }
 
+  /** Original-coordinate reduced cost, or None when LP sensitivity is unavailable for this variable. */
+  def reducedCost(variable: LpVariable): Option[Double] = {
+    requireOpen()
+    requireOwner(variable.handle)
+    val id = (variable.handle.setIndex, variable.selectedKey.getOrElse(""))
+    reducedCostData.flatMap(_.filter(_._1 == id).values.take(1).headOption)
+  }
+
+  /** Domain rows plus nullable lp_reduced_cost; absent sensitivity is never encoded as zero. */
+  def reducedCosts[K](variables: LpVariableSet[K]): DataFrame = {
+    requireOpen()
+    requireOwner(variables.handle)
+    val h = variables.handle
+    val si = h.setIndex
+    val sc = h.problem.spark.sparkContext
+    val costs = reducedCostData.getOrElse(sc.emptyRDD[((Int, String), Double)])
+      .filter(_._1._1 == si).map { case ((_, key), value) => key -> value }
+    val values = h.domain.keyPairs().mapValues(_ => ()).leftOuterJoin(costs)
+      .mapValues { case (_, value) => value.getOrElse(Double.NaN) }
+    import org.apache.spark.sql.functions.{col, isnan, lit, when}
+    h.domain.attachValues(values, h.name).withColumnRenamed("lp_value", "lp_reduced_cost")
+      .withColumn("lp_reduced_cost", when(isnan(col("lp_reduced_cost")), lit(null).cast("double"))
+        .otherwise(col("lp_reduced_cost")))
+  }
+
   /** Releases the materialised result. Finish all Spark actions on values before closing. */
   override def close(): Unit = {
     closed = true
     userValues.unpersist(blocking = false)
     evidence.foreach(_.close())
+    reducedCostData.foreach(_.unpersist(false))
   }
 
   /** The original variable domain plus `lp_variable` (display name) and `lp_value` columns. */

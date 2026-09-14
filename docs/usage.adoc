@@ -353,3 +353,17 @@ have no unique reconstructed price. Stopped, infeasible, quadratic and ordinary 
 expose LP shadow prices. Degeneracy can make even retained multipliers non-unique; they are local
 sensitivity information, not guarantees for arbitrary RHS changes. Prices share the solution's
 existing diagnostic lifetime and require no separate cached distributed vector.
+
+=== LP reduced costs
+
+`solution.reducedCost(variable): Option[Double]` and `solution.reducedCosts(family)` expose
+`c_j - sum_i(a_ij * dual_i)` in original objective units, excluding variable-bound multipliers from
+the row sum. Thus a minimizing variable at its lower bound has nonnegative reduced cost, one at its
+upper bound nonpositive cost, and an interior/free variable zero cost within tolerance. Maximization
+reverses bound signs. Family results join the original domain with nullable `lp_reduced_cost`.
+
+Fixed variables and variables touching rows whose dual mapping is unavailable return no reduced cost.
+Stopped, infeasible, quadratic and ordinary MIP solves expose no global LP reduced costs. Available
+values use optimal continuous LP evidence and share its sensitivity/degeneracy limitations. Computation
+and family joins remain distributed; scalar lookup performs a Spark action. Close the solution after
+all actions to release the additional result cache; access after close fails explicitly.

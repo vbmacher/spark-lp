@@ -72,6 +72,15 @@ A scalar RHS applies to every group. A grouped RHS DataFrame holds the grouping 
 a numeric `rhs` column, once per key. Terms without a matching RHS are errors; an RHS-only
 group is a zero-term constraint. `lpSum(...)` / `lpSumBy(...)` provide alternative expression syntax.
 
+== Local arithmetic helpers
+
+Divide a scalar variable or linear expression by a finite nonzero constant:
+`x / 2.0`, `(2.0*x + y + 4.0) / -2.0`. The reciprocal must be representable as
+finite `Double`. `lpDot(Seq(2.0, 3.0), Seq(x, y))` builds a local weighted sum;
+expression collections also include their weighted constants. Coefficients must be
+finite and collection lengths must match. Two empty collections produce zero.
+These helpers perform no Spark actions; use keyed weighted sums for distributed data.
+
 == Bounds, integers, and typed data
 
 [source,scala]

@@ -1,5 +1,7 @@
 package com.github.vbmacher.spark_lp
 
+import com.github.vbmacher.spark_lp.newton.NewtonSolver
+
 /** Performance suite for the LP solver's matrix-free conjugate-gradient algorithm.
   * Runs the same CSV-defined cases and independent validation as Cholesky, measuring
   * convergence, outer/inner iterations, restarts, preconditioner rank and solve time.

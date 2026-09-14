@@ -1,5 +1,7 @@
 package com.github.vbmacher.spark_lp
 
+import com.github.vbmacher.spark_lp.newton.{CgConfig, NewtonSolver}
+
 import org.apache.spark.mllib.linalg.{DenseVector, Vector}
 import org.apache.spark.rdd.RDD
 import org.apache.spark.sql.SparkSession
@@ -19,8 +21,8 @@ trait Benchmark {
                  (implicit spark: SparkSession): LP.SolveSummary =
     LP.solveSummary(costs, columns, rhs, tolerance = tolerance, maxIter = 100,
       solver = algorithm, cgTolerance = 1e-10, cgMaxIterations = 1000,
-      matrixFree = MatrixFreeConfig(1e-8, 1e-8, 0, 256L * 1024 * 1024),
-      control = SolveControl(onProgress = Some(progress)), inspectConverged = Some(inspect))
+      cgConfig = CgConfig(1e-8, 1e-8, 0, 256L * 1024 * 1024),
+      control = SolveControl(onProgress = progress), inspectConverged = Some(inspect))
 }
 
 /** Explicit algorithm registry used by the command-line runner. */

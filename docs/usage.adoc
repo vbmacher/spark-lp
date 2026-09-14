@@ -350,3 +350,17 @@ try {
 The result owns all stage solutions and their caches. Numerical solver exceptions are recorded on
 the unsuccessful stage; model validation exceptions propagate and release completed stage results.
 Each stage receives the supplied solve configuration, including its own time limit.
+
+=== Local indexed and matrix variables
+
+`model.indexedVariables("x", Seq("a", "b"), category = Binary)` returns local keyed scalar handles:
+`x("a")`, `x.keys`, `x.values`, and `x.entries`. `model.matrixVariables("flow", origins, destinations)`
+uses tuple access `flow((origin, destination))`, with the first axis outermost. Both factories accept
+scalar-declaration bounds and categories and preserve input order. Composite keys use `LpKeyEncoder`;
+names contain hex-encoded canonical keys for deterministic, unambiguous identities. Null and duplicate
+keys, including duplicate encoded identities, are rejected before variables are registered. Empty
+axes produce no variables, but each supplied axis is still validated.
+
+These factories allocate all handles on the driver, using memory proportional to the number of local
+keys or Cartesian-product cells. Use DataFrame/Dataset families for distributed domains; the local
+factories never collect distributed inputs. Values use the ordinary `solution.value(handle)` API.

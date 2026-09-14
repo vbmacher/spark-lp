@@ -380,3 +380,28 @@ rejected. `LpSolutionData` represents optional result metadata and value availab
 it does not establish a fresh feasibility or optimality proof. Its distributed values retain the
 source solution's lifetime unless callers materialize their own copy. Data RDDs own no implicit caches;
 callers control source consistency and persistence.
+
+=== JSON model interchange
+
+`LpJson.write(model, "file:///tmp/model-json", solution = Some(LpSolutionData.fromSolution(result)))`
+writes a versioned directory of JSON-lines partitions. `LpJson.read(path)` returns portable model
+data and optional solution metadata; `document.model.toProblem()` reconstructs a usable model and
+handle mapping in the supplied Spark session. Model-only export omits the solution argument. Imported
+solution metadata has `solutionMetadataVerified=false`; independently validate supplied values before
+using them. Optional residuals/status/objective are separate from mathematical definitions.
+
+Schema `1` preserves original IDs, composite encoded keys and display parts, names, categories,
+bounds, objective constants, affine coefficients and quadratic factors. Original application domain
+columns, closures, credentials and Spark plans are excluded. Unbounded lower limits use the string
+`negativeInfinity`, absent upper bounds use `null`, and unavailable diagnostics use `null`; signed
+infinite result objectives use explicit strings. Finite coefficients use full Double precision.
+Unknown schemas, malformed categories/numbers and invalid references are rejected by reading and
+portable-model reconstruction.
+
+Large collections remain partitioned; only declarations and the small header are driver-local.
+Reading is lazy beyond the header; reconstruction applies the documented local row-metadata cap.
+Export performs Spark validation and writing actions, requiring stable inputs throughout. The destination
+is a Hadoop-filesystem directory and must not exist unless `overwrite=true`. Data is written to a
+unique temporary sibling before publishing by rename; failures clean the temporary directory. Explicit
+overwrite replaces the existing destination after successful data writing. Rename/overwrite atomicity
+depends on the underlying filesystem. Callers own imported RDD persistence and solution lifetimes.

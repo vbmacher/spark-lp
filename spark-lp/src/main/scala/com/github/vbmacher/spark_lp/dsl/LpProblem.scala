@@ -30,6 +30,7 @@ final class LpProblem private[dsl](
   private[dsl] val spark: SparkSession) {
 
   private[dsl] val handles = mutable.ArrayBuffer.empty[VarSetHandle]
+  private[dsl] var quadratic: Option[QpObjective] = None
   private[dsl] var objective: Option[LpExpr] = None
   private[dsl] val constraints = mutable.ArrayBuffer.empty[Either[LpConstraint, LpConstraintSet]]
 
@@ -107,8 +108,20 @@ final class LpProblem private[dsl](
     this
   }
 
+  def +=(objective: QpObjective): this.type = {
+    if (this.objective.isDefined) throw new LpModelException("Problem already has an objective; use setObjective")
+    setObjective(objective)
+  }
+
+  def setObjective(objective: QpObjective): this.type = {
+    this.objective = Some(objective.linear)
+    this.quadratic = Some(objective)
+    this
+  }
+
   /** Replaces the objective. */
   def setObjective(objective: LpExpr): this.type = {
+    this.quadratic = None
     this.objective = Some(objective)
     this
   }

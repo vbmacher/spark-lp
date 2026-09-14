@@ -171,6 +171,8 @@ final case class MipConfig(
   * Final residuals of the returned iterate, in the solver's minimization form:
   * `primal = ||Ax - b|| / (1 + ||b||)`, `dual = ||A^T lambda + s - c|| / (1 + ||c||)`,
   * `gap = |c^T x - b^T lambda| / (1 + |b^T lambda|)`.
+  * For quadratic objectives, dual stationarity subtracts `Q*x`, and the gap compares
+  * `0.5*x^T Q*x + c^T*x` with `b^T lambda - 0.5*x^T Q*x`.
   * For continuous solves, all three are below `tolerance` at [[LpStatus.Optimal]]. For integer
   * models these describe the retained LP relaxation, not the global search gap.
   */

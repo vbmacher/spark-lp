@@ -82,7 +82,8 @@ private[dsl] final class LpCompiler(problem: LpProblem, config: SolveConfig) ext
             config.control.onProgress(event.copy(iterate = event.iterate.map(metrics =>
               metrics.copy(objectiveValue = compiled.senseMult * metrics.objectiveValue + compiled.objConstant))))
         }),
-        candidateViolation = Some(x => originalViolation(compiled, x)))
+        candidateViolation = Some(x => originalViolation(compiled, x)),
+        quadratic = compiled.quadratic)
       try continuousSolution(compiled, summary)
       finally summary.x.unpersist(blocking = false)
     } else {
@@ -113,6 +114,8 @@ private[dsl] final class LpCompiler(problem: LpProblem, config: SolveConfig) ext
     }
 
     // --- variable set plans, ordered by set creation
+    if (problem.quadratic.nonEmpty && problem.handles.exists(_.category != Continuous))
+      fail("Quadratic objectives support continuous variables only; integer and binary categories are unsupported")
     val plans: IndexedSeq[SetPlan] = problem.handles.map(buildPlan).toIndexedSeq
     var colCursor = 0L
     plans.foreach { plan =>
@@ -158,11 +161,37 @@ private[dsl] final class LpCompiler(problem: LpProblem, config: SolveConfig) ext
     val objPieces = objective.terms.map { term =>
       expandTerm(plans, term, -1, "objective").map { case ((si, enc, _), c) => ((si, enc), c) }
     }
-    val objTerms = caches.cache(
+    val linearTerms = caches.cache(
       (if (objPieces.isEmpty) emptyObj else sc.union(objPieces))
         .reduceByKey(_ + _)
         .filter(_._2 != 0.0)
     )
+
+    val senseMultQ = if (problem.sense == Maximize) -1.0 else 1.0
+    val curvaturePieces = problem.quadratic.toSeq.flatMap(_.diagonal.terms).map { term =>
+      expandTerm(plans, term, -1, "quadratic curvature").map { case ((si, key, _), q) => ((si, key), q) }
+    }
+    val curvature = caches.cache((if (curvaturePieces.isEmpty) emptyObj else sc.union(curvaturePieces))
+      .reduceByKey(_ + _).filter(_._2 != 0.0))
+    curvature.filter { case (_, q) => q.isNaN || q.isInfinite || senseMultQ * q < 0.0 }.take(1).foreach {
+      case ((si, key), q) => fail(s"Invalid curvature $q for variable '${plans(si).handle.name}' (key $key): objective must be convex in minimization form")
+    }
+    val freeSets = plans.filter(_.kind == SplitKind).map(_.handle.setIndex).toSet
+    if (curvature.filter(x => freeSets(x._1._1)).take(1).nonEmpty)
+      fail("Curved free variables are unsupported by separable QP; supply a finite lower bound")
+    val shifts = plans.map { p => p.kind match {
+      case FixedKind(v) => p.handle.setIndex -> v
+      case ShiftedKind(v, _) => p.handle.setIndex -> v
+      case _ => p.handle.setIndex -> 0.0
+    }}.toMap
+    // c' = c + Q*l, k' = k + c*l + 0.5*l^T Q*l.
+    val objTerms = caches.cache(linearTerms.union(curvature.map { case (key, q) =>
+      (key, q * shifts(key._1))
+    }).reduceByKey(_ + _))
+    val quadraticConstantCorrection = curvature.map { case ((si, _), q) =>
+      -0.5 * q * shifts(si) * shifts(si)
+    }.sum()
+    val hasCurvature = curvature.take(1).nonEmpty
 
     val rowNames = sc.broadcast(rowSpecs.map(_.name).toArray)
     val handleNames = sc.broadcast(problem.handles.map(_.name).toArray)
@@ -204,7 +233,7 @@ private[dsl] final class LpCompiler(problem: LpProblem, config: SolveConfig) ext
       val (fixed, shifted) = adjust.value
       fixed.get(si).orElse(shifted.get(si)).map(l => c * l).getOrElse(0.0)
     }.sum()
-    val objConstant = objective.constant + objAdjust
+    val objConstant = objective.constant + objAdjust + quadraticConstantCorrection
     if (objConstant.isNaN || objConstant.isInfinite) fail("Non-finite objective after bound shifts")
 
     val fixedSetIdx = sc.broadcast(fixedVals.keySet)
@@ -253,7 +282,7 @@ private[dsl] final class LpCompiler(problem: LpProblem, config: SolveConfig) ext
         case _ => ()
       }
     }
-    val numRows = rowCursor
+    val numRows = if (hasCurvature) math.max(1, rowCursor) else rowCursor
     if (numUserCols == 0 && plans.exists(_.count > 0)) {
       return new Compiled(sc.emptyRDD, sc.emptyRDD, new DenseVector(Array.emptyDoubleArray),
         0, 0L, sc.emptyRDD, rowSpecs.toIndexedSeq, plans, objConstant,
@@ -264,6 +293,7 @@ private[dsl] final class LpCompiler(problem: LpProblem, config: SolveConfig) ext
     }
 
     val bArray = new Array[Double](numRows)
+    if (rowCursor == 0 && hasCurvature) bArray(0) = 1.0
     rowSpecs.foreach { rs => if (rs.emitted) bArray(rs.finalIdx) = rs.b0 }
     boundBlocks.foreach { bb =>
       var i = 0
@@ -290,6 +320,10 @@ private[dsl] final class LpCompiler(problem: LpProblem, config: SolveConfig) ext
         slackCursor += 1
         i += 1
       }
+    }
+    if (rowCursor == 0 && hasCurvature) {
+      slacks += ((slackCursor, (0, 1.0)))
+      slackCursor += 1
     }
     val numCols = slackCursor
     if (numCols == 0) {
@@ -395,6 +429,14 @@ private[dsl] final class LpCompiler(problem: LpProblem, config: SolveConfig) ext
     )
     val AT: DMatrix = caches.cache(sortedCols.map(_._2.vector))
 
+    val qVector = if (!hasCurvature) None else {
+      val keyedCurvature = sortedCols.map { case (g, d) => ((d.setIndex, d.enc), g) }
+        .leftOuterJoin(curvature).map { case (_, (g, q)) => (g, senseMultQ * q.getOrElse(0.0)) }
+        .repartitionAndSortWithinPartitions(partitioner)
+      Some(caches.cache(keyedCurvature.mapPartitions(it =>
+        Iterator.single(new DenseVector(it.map(_._2).toArray)), preservesPartitioning = true)))
+    }
+
     // one consistent read of every source per solve, before the solver starts
     val materialisedCols = sortedCols.count()
     require(materialisedCols == numCols, s"expected $numCols columns, materialised $materialisedCols")
@@ -449,7 +491,8 @@ private[dsl] final class LpCompiler(problem: LpProblem, config: SolveConfig) ext
       objConstant = objConstant,
       senseMult = senseMult,
       userTermsAgg = userTermsAgg,
-      intCols = intCols)
+      intCols = intCols,
+      quadratic = qVector)
   }
 
   // -------------------------------------------------------------------------------------------

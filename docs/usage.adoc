@@ -375,3 +375,16 @@ The view has no feasibility, objective or status metadata: snapping can violate 
 not change any raw values, solver residuals, evidence or candidate claims. The raw solution owns the
 view's lifetime; complete Spark actions before closing it. Access through either facade after close
 raises an explicit error. Independently validate rounded assignments before using them as candidates.
+=== Continuous relaxation
+
+`model.solve(SolveConfig(relaxIntegrality = true))` relaxes integer and binary variables for that
+solve. Integer lower/upper bounds are first tightened with ceiling/floor; binary bounds are first
+intersected with `{0, 1}` and similarly tightened. Ordinary linear constraints and continuous domains
+are preserved. The model and its handles retain their declared categories for subsequent solves.
+
+`solution.isRelaxation` identifies this result. Its status, candidate feasibility, objective and
+progress describe the continuous relaxation. Fractional values are not a MIP incumbent, and an optimal
+or unbounded relaxation does not establish MIP optimality or unboundedness. A valid relaxation bound
+bounds the original optimum; proved relaxation infeasibility implies original infeasibility. Normal
+continuous stopping controls apply. Discrete structures beyond integer/binary categories require
+explicitly supported relaxation semantics.

@@ -43,7 +43,9 @@ final class LpSolution private[dsl](
   private[dsl] val userValues: RDD[((Int, String), Double)],
   val candidate: CandidateInfo,
   val stopReason: Option[StopReason] = None,
-  val evidence: Option[LpEvidence] = None) extends AutoCloseable {
+  val evidence: Option[LpEvidence] = None,
+  /** Status and candidate feasibility apply to the continuous relaxation when true. */
+  val isRelaxation: Boolean = false) extends AutoCloseable {
 
   private var closed = false
 

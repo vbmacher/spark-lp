@@ -397,3 +397,11 @@ partial temporary file. Export validates and materializes lazy algebra with Spar
 and streams partitions, without collecting the coefficient matrix. Keep source data stable until export
 and mapping use finish. Repeated exports of stable sources are deterministic. The dialect is checked
 against the independent HiGHS reader when SciPy's bundled HiGHS binding is available in the test environment.
+
+== MPS-file export
+
+`LpMps.write(model.inspect, path, naming = ExportNaming.Normalized, relaxIntegrality = false, overwrite = false)` writes UTF-8 free MPS on the driver filesystem and returns the same closeable, reversible identity mappings as LP export. `Original` requires unique ASCII identifier names of at most 200 characters; normalized names support arbitrary original names. Rows and columns have deterministic order and full round-trip double precision. Coefficients remain distributed and the sorted output streams one Spark partition at a time. Stable lazy inputs are required; export validates and caches its expanded records for the operation.
+
+The file contains `NAME`, `OBJSENSE`, `ROWS`, `COLUMNS`, `RHS`, `BOUNDS` and `ENDATA`. `OBJSENSE` explicitly preserves minimization or maximization. The RHS entry on the free objective row is the *negative* objective constant. Readers must support both extensions; readers that ignore them cannot preserve this dialect's objective. Integer columns use `INTORG`/`INTEND` markers, binary columns also use `BV`, and all bounds are explicit, including free, fixed and one-sided bounds. `relaxIntegrality = true` omits integer markers and `BV` while retaining binary bounds intersected with `[0,1]`; this intentionally exports a continuous relaxation.
+
+Quadratic objectives fail explicitly. Existing destinations require explicit overwrite; failed writes remove their temporary output. Optional interoperability tests use the installed SciPy-bundled HiGHS reader and solver and check both integer and relaxation objectives. The objective and bound encodings follow the https://docs.gurobi.com/projects/optimizer/en/current/reference/fileformats/modelformats.html[MPS format reference].

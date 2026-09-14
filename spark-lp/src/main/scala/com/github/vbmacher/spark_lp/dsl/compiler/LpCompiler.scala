@@ -72,7 +72,8 @@ private[dsl] final class LpCompiler(problem: LpProblem, config: SolveConfig) ext
         valueCap = config.valueCap,
         eps = config.epsilon,
         infeasibilityTolerance = config.infeasibilityTolerance,
-        solver = config.resolvedNewtonSolver(compiled.numRows),
+        solver = if (problem.quadratic.exists(_.factors.nonEmpty) && compiled.plans.exists(_.kind == SplitKind))
+          NewtonSolver.ConjugateGradient else config.resolvedNewtonSolver(compiled.numRows),
         cgTolerance = config.cgTolerance,
         cgConfig = config.cgConfig,
         cgMaxIterations = config.cgMaxIterations,
@@ -113,10 +114,38 @@ private[dsl] final class LpCompiler(problem: LpProblem, config: SolveConfig) ext
       fail(s"Problem '${problem.name}': non-finite objective constant ${objective.constant}")
     }
 
+    // Exact sparse lifting: for each w*(a^T*x+t)^2 introduce u,v >= 0,
+    // a^T*x+t = u-v, and w*(u^2+v^2). Minimizing over u,v recovers
+    // w*(a^T*x+t)^2 because the optimum has min(u,v)=0. No Hessian is formed.
+    val factors = problem.quadratic.toSeq.flatMap(_.factors).filter(_._2 != 0.0)
+    val objectiveSign = if (problem.sense == Maximize) -1.0 else 1.0
+    factors.foreach { case (_, weight) =>
+      if (weight.isNaN || weight.isInfinite || weight * objectiveSign < 0.0)
+        fail("Quadratic factor weights must be finite and convex in minimization form")
+    }
+    val auxiliaryHandles = factors.indices.flatMap { i =>
+      Seq("positive", "negative").zipWithIndex.map { case (sign, j) =>
+        new VarSetHandle(problem, problem.handles.size + 2 * i + j,
+          s"__qp_factor_${i}_$sign", 0.0, None, Continuous, new ScalarDomain(spark))
+      }
+    }
+    val diagonal = problem.quadratic.map(_.diagonal).getOrElse(LpExpr.zero).plus(
+      new LpExpr(factors.zipWithIndex.flatMap { case ((_, weight), i) =>
+        Seq(ConstCoeffTerm(auxiliaryHandles(2 * i), 2 * weight),
+          ConstCoeffTerm(auxiliaryHandles(2 * i + 1), 2 * weight))
+      }.toVector, 0.0))
+    val factorConstraints = factors.zipWithIndex.map { case ((expression, _), i) =>
+      val equation = expression.plus(auxiliaryHandles(2 * i).toExpr(-1.0))
+        .plus(auxiliaryHandles(2 * i + 1).toExpr(1.0))
+      Left(equation.compare(LpSense.Eq, 0.0).withName(s"__qp_factor_$i"))
+    }
+
     // --- variable set plans, ordered by set creation
     if (problem.quadratic.nonEmpty && problem.handles.exists(_.category != Continuous))
       fail("Quadratic objectives support continuous variables only; integer and binary categories are unsupported")
-    val plans: IndexedSeq[SetPlan] = problem.handles.map(buildPlan).toIndexedSeq
+    val plans: IndexedSeq[SetPlan] = (problem.handles.toVector ++ auxiliaryHandles).map(buildPlan).toIndexedSeq
+    if (factors.nonEmpty && plans.exists(_.kind == SplitKind) && config.newtonSolver == NewtonSolver.Cholesky)
+      fail("Coupled QP with free variables requires regularized ConjugateGradient; use Auto or ConjugateGradient")
     var colCursor = 0L
     plans.foreach { plan =>
       plan.offset = colCursor
@@ -128,7 +157,7 @@ private[dsl] final class LpCompiler(problem: LpProblem, config: SolveConfig) ext
     val rowSpecs = mutable.ArrayBuffer.empty[RowSpec]
     val termPieces = mutable.ArrayBuffer.empty[RDD[((Int, String, Int), Double)]]
 
-    problem.constraints.zipWithIndex.foreach {
+    (problem.constraints.toVector ++ factorConstraints).zipWithIndex.foreach {
       case (Left(constraint), idx) =>
         val cname = constraint.explicitName.getOrElse(s"_c$idx")
         val context = s"constraint '$cname'"
@@ -168,7 +197,7 @@ private[dsl] final class LpCompiler(problem: LpProblem, config: SolveConfig) ext
     )
 
     val senseMultQ = if (problem.sense == Maximize) -1.0 else 1.0
-    val curvaturePieces = problem.quadratic.toSeq.flatMap(_.diagonal.terms).map { term =>
+    val curvaturePieces = diagonal.terms.map { term =>
       expandTerm(plans, term, -1, "quadratic curvature").map { case ((si, key, _), q) => ((si, key), q) }
     }
     val curvature = caches.cache((if (curvaturePieces.isEmpty) emptyObj else sc.union(curvaturePieces))
@@ -194,7 +223,7 @@ private[dsl] final class LpCompiler(problem: LpProblem, config: SolveConfig) ext
     val hasCurvature = curvature.take(1).nonEmpty
 
     val rowNames = sc.broadcast(rowSpecs.map(_.name).toArray)
-    val handleNames = sc.broadcast(problem.handles.map(_.name).toArray)
+    val handleNames = sc.broadcast(plans.map(_.handle.name).toArray)
     userTermsAgg.filter { case (_, v) => v.isNaN || v.isInfinite }.take(1).foreach {
       case ((si, enc, r), v) =>
         fail(s"Non-finite coefficient $v in constraint '${rowNames.value(r)}' " +

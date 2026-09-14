@@ -9,7 +9,7 @@ final case class LpVariableDeclaration(id: Int, name: String, lower: Double, upp
 final case class LpConstraintId(declaration: Int, key: String)
 final case class LpConstraintDeclaration(id: Int, name: String, sense: String, grouped: Boolean)
 final case class LpExpandedVariable(id: LpVariableId, name: String, lower: Double, upper: Option[Double],
-                                   category: VariableCategory)
+                                   category: VariableCategory, keyParts: Seq[String] = Seq.empty)
 final case class LpExpandedConstraint(id: LpConstraintId, name: String, sense: String, rhs: Double,
                                      group: Seq[String])
 final case class LpMatrixCoefficient(row: LpConstraintId, variable: LpVariableId, value: Double)
@@ -42,7 +42,7 @@ final class LpModelView private[dsl](problem: LpProblem) {
   def variables: RDD[LpExpandedVariable] = {
     val pieces = handles.zip(variableDeclarations).map { case (h, d) =>
       h.domain.keyPairs().map { case (key, display) =>
-        LpExpandedVariable(LpVariableId(d.id, key), KeyCodec.displayName(d.name, display), d.lower, d.upper, d.category)
+        LpExpandedVariable(LpVariableId(d.id, key), KeyCodec.displayName(d.name, display), d.lower, d.upper, d.category, display)
       }
     }
     if (pieces.isEmpty) sc.emptyRDD else sc.union(pieces)

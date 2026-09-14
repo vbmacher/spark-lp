@@ -17,4 +17,5 @@ private[dsl] final class Compiled(
   val objConstant: Double,
   val senseMult: Double,
   val userTermsAgg: RDD[((Int, String, Int), Double)],
-  val intCols: IndexedSeq[IntColumn])
+  val intCols: IndexedSeq[IntColumn],
+  val originalCosts: Option[RDD[((Int, String), Double)]] = None)

@@ -449,7 +449,8 @@ private[dsl] final class LpCompiler(problem: LpProblem, config: SolveConfig) ext
       objConstant = objConstant,
       senseMult = senseMult,
       userTermsAgg = userTermsAgg,
-      intCols = intCols)
+      intCols = intCols,
+      originalCosts = Some(objTerms))
   }
 
   // -------------------------------------------------------------------------------------------
@@ -878,7 +879,60 @@ private[dsl] final class LpCompiler(problem: LpProblem, config: SolveConfig) ext
     }
     buildSolution(compiled, summary.x, status, objectiveValue, summary.iterations,
       LpResiduals(summary.primalResidual, summary.dualResidual, summary.dualityGap), Map.empty,
-      Some(summary.candidate), summary.stopReason)
+      Some(summary.candidate), summary.stopReason, buildEvidence(compiled, summary, status))
+  }
+
+  private def buildEvidence(compiled: Compiled, summary: LP.SolveSummary,
+    status: LpStatus): Option[LpEvidence] = {
+    if (summary.primalCertificate.isEmpty && summary.dualCertificate.isEmpty) return None
+    def snapshot[A: scala.reflect.ClassTag](rdd: RDD[A]): RDD[A] = {
+      val saved = caches.checkpoint(rdd)
+      saved.count()
+      caches.keep(saved)
+    }
+    val costs = compiled.originalCosts.getOrElse(sc.emptyRDD[((Int, String), Double)])
+    val coefficients = compiled.userTermsAgg.map { case ((si, key, row), a) => ((si, key), (row, a)) }
+      .groupByKey().mapValues(_.toMap)
+    val metadata = sc.union(compiled.plans.map { p =>
+      val si = p.handle.setIndex
+      val name = p.handle.name
+      val lower = p.handle.lowerBound
+      val upper = p.handle.upperBound
+      p.keys.map { case (key, display) =>
+        ((si, key), (KeyCodec.displayName(name, display), lower, upper))
+      }
+    })
+    val variables = snapshot(metadata.leftOuterJoin(coefficients).leftOuterJoin(costs).mapValues {
+      case (((name, lower, upper), coeffs), cost) =>
+        EvidenceVariable(name, lower, upper, cost.getOrElse(0.0), coeffs.getOrElse(Map.empty))
+    })
+    val model = EvidenceModel(compiled.rowSpecs.map(r => EvidenceRow(r.name, r.group, r.sense.symbol, r.rhsUser)),
+      variables, problem.sense)
+    summary.primalCertificate.map { certificate =>
+      val y = compiled.rowSpecs.map(r => if (r.emitted) certificate(r.finalIdx) else 0.0)
+      var boundRow = compiled.rowSpecs.count(_.emitted)
+      val upperPieces = compiled.plans.flatMap { p => p.kind match {
+        case ShiftedKind(_, Some(_)) =>
+          val base = boundRow
+          boundRow += p.count.toInt
+          val si = p.handle.setIndex
+          val multipliers = certificate.values
+          Some(p.sortedKeys.map { case (key, (i, _)) => ((si, key), multipliers(base + i.toInt)) })
+        case _ => None
+      }}
+      val upper: RDD[((Int, String), Double)] = if (upperPieces.isEmpty) sc.emptyRDD else sc.union(upperPieces)
+      val bounds = snapshot(variables.leftOuterJoin(upper).mapValues { case (v, u) =>
+        val ay = v.coefficients.iterator.map { case (r, a) => a * y(r) }.sum
+        if (v.upper.contains(v.lower)) (math.max(0.0, -ay), math.min(0.0, -ay))
+        else (if (v.lower.isNegInfinity) 0.0 else -ay - u.getOrElse(0.0), u.getOrElse(0.0))
+      })
+      InfeasibilityCertificate(model, y, bounds): LpEvidence
+    }.orElse(summary.dualCertificate.map { ray =>
+      val direction = snapshot(reconstructValues(compiled, ray, Map.empty, direction = true))
+      val point = if (status == LpStatus.Unbounded)
+        Some(snapshot(reconstructValues(compiled, summary.x, Map.empty))) else None
+      UnboundedDirection(model, direction, point): LpEvidence
+    })
   }
 
   /**
@@ -888,7 +942,7 @@ private[dsl] final class LpCompiler(problem: LpProblem, config: SolveConfig) ext
     * integral columns keyed by global column index, taking precedence over the reconstructed value.
     */
   private def reconstructValues(compiled: Compiled, x: DVector,
-    integerOverrides: Map[Long, Double]): RDD[((Int, String), Double)] = {
+    integerOverrides: Map[Long, Double], direction: Boolean = false): RDD[((Int, String), Double)] = {
     // per-column primal values, aligned with the compiled column order
     val overrides = integerOverrides
     val xValues: RDD[(Long, ColData, Double)] = compiled.sortedCols.zipPartitions(x) { (colsIt, xIt) =>
@@ -905,7 +959,7 @@ private[dsl] final class LpCompiler(problem: LpProblem, config: SolveConfig) ext
         case Some(exact) => Some(((colData.setIndex, colData.enc), exact))
         case None =>
           colData.kind match {
-            case 0 => Some(((colData.setIndex, colData.enc), colData.shift + v))
+            case 0 => Some(((colData.setIndex, colData.enc), (if (direction) 0.0 else colData.shift) + v))
             case 1 => Some(((colData.setIndex, colData.enc), v))
             case 2 => Some(((colData.setIndex, colData.enc), -v))
             case _ => None
@@ -917,7 +971,7 @@ private[dsl] final class LpCompiler(problem: LpProblem, config: SolveConfig) ext
       p.kind match {
         case FixedKind(value) =>
           val si = p.handle.setIndex
-          val v = value
+          val v = if (direction) 0.0 else value
           Some(p.keys.map { case (enc, _) => ((si, enc), v) })
         case _ => None
       }
@@ -1043,7 +1097,8 @@ private[dsl] final class LpCompiler(problem: LpProblem, config: SolveConfig) ext
     residuals: LpResiduals,
     integerOverrides: Map[Long, Double],
     candidate: Option[CandidateInfo] = None,
-    stopReason: Option[StopReason] = None): LpSolution = {
+    stopReason: Option[StopReason] = None,
+    evidence: Option[LpEvidence] = None): LpSolution = {
 
     val available = candidate.forall(_.available)
     val userValues = caches.checkpoint(
@@ -1088,6 +1143,7 @@ private[dsl] final class LpCompiler(problem: LpProblem, config: SolveConfig) ext
       problem = problem,
       userValues = caches.keep(userValues),
       candidate = candidate.getOrElse(CandidateInfo(true, status == LpStatus.Optimal, Some(iterations))),
-      stopReason = stopReason)
+      stopReason = stopReason,
+      evidence = evidence)
   }
 }

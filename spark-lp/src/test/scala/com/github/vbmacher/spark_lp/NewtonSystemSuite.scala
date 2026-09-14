@@ -1,5 +1,7 @@
 package com.github.vbmacher.spark_lp
 
+import com.github.vbmacher.spark_lp.newton.{CgConfig, NewtonSolver}
+
 import breeze.linalg.{DenseMatrix => BDM, DenseVector => BDV, diag, norm}
 import com.holdenkarau.spark.testing.DataFrameSuiteBase
 import org.apache.spark.mllib.linalg.{DenseVector, Vectors}
@@ -38,7 +40,7 @@ class NewtonSystemSuite extends AnyFunSuite with DataFrameSuiteBase {
     val rows = sc.parallelize(Seq(Vectors.dense(1.0, epsilon),
       Vectors.dense(0.0, math.sqrt(1.0 - epsilon * epsilon))), 2)
     val factory = new newton.CgFactory(1e-14, 1,
-      MatrixFreeConfig(preconditionerMemoryBytes = 0))(spark)
+      CgConfig(preconditionerMemoryBytes = 0))(spark)
     val system = factory.build(rows, 2, None)
     try {
       val rhs = BDV(1.0, 2.0)

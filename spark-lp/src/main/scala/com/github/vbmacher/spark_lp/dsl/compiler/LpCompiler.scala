@@ -1,9 +1,9 @@
-package com.github.vbmacher.spark_lp.dsl
+package com.github.vbmacher.spark_lp.dsl.compiler
 
 import com.github.vbmacher.spark_lp.{CachedRDDs, CandidateInfo, LP, SolveControl, StopReason}
+import com.github.vbmacher.spark_lp.dsl._
 import com.github.vbmacher.spark_lp.vectors.{DMatrix, DVector}
-import org.apache.spark.Partitioner
-import org.apache.spark.mllib.linalg.{DenseVector, Vectors, Vector => MLVector}
+import org.apache.spark.mllib.linalg.{DenseVector, Vectors}
 import org.apache.spark.rdd.RDD
 import org.apache.spark.sql.functions.col
 import org.apache.spark.sql.types.{DoubleType, StringType, StructField, StructType}
@@ -11,114 +11,6 @@ import org.apache.spark.sql.{AnalysisException, Row, SparkSession}
 
 import scala.collection.mutable
 import scala.util.hashing.MurmurHash3
-
-private[dsl] object LpCompiler {
-
-  /** Tolerance for presolved zero-term rows (`0 <sense> rhs`). */
-  private val PresolveTolerance = 1e-11
-
-  /** Relative tolerance when comparing normalised right-hand sides of duplicate rows. */
-  private val RhsMatchTolerance = 1e-9
-
-  /**
-    * Deterministic, contiguous range partitioner over column indices `0 until total`. With
-    * `parts <= total` every partition is non-empty, which the solver's partition-aligned
-    * `DVector`/`DMatrix` operations require.
-    */
-  private[dsl] final class RangeIndexPartitioner(total: Long, parts: Int) extends Partitioner {
-    require(parts >= 1 && parts <= total, s"parts=$parts must be in [1, $total]")
-    override def numPartitions: Int = parts
-    override def getPartition(key: Any): Int = {
-      val idx = key.asInstanceOf[Long]
-      math.min(parts - 1, (idx * parts / total).toInt)
-    }
-  }
-
-  private[dsl] sealed trait PlanKind
-  private[dsl] final case class FixedKind(value: Double) extends PlanKind
-  private[dsl] final case class ShiftedKind(shift: Double, upper: Option[Double]) extends PlanKind
-  private[dsl] case object SplitKind extends PlanKind
-
-  /** Compiled per-set layout: validated keys, transformation kind and the column offset. */
-  private[dsl] final class SetPlan(
-    val handle: VarSetHandle,
-    val keys: RDD[(String, Seq[String])],
-    val count: Long,
-    val kind: PlanKind,
-    val integral: Boolean) {
-
-    var offset: Long = 0L
-
-    def columns: Long = kind match {
-      case FixedKind(_) => 0L
-      case SplitKind => 2 * count
-      case ShiftedKind(_, _) => count
-    }
-
-    /** Keys sorted by encoded form; ordering never depends on partition order. */
-    lazy val sortedKeys: RDD[(String, (Long, Seq[String]))] =
-      keys.sortBy(_._1).zipWithIndex().map { case ((enc, disp), i) => (enc, (i, disp)) }
-  }
-
-  /** One expanded (user-facing) constraint row. */
-  private[dsl] final class RowSpec(
-    val rowId: Int,
-    val name: String,
-    val group: Option[String],
-    val sense: LpSense,
-    val rhsUser: Double) {
-
-    /** RHS after fixed-variable and bound-shift folding. */
-    var b0: Double = rhsUser
-    var note: Option[String] = None
-    var emitted: Boolean = true
-    var finalIdx: Int = -1
-  }
-
-  /**
-    * One solver column. `kind`: 0 = plain shifted variable (`x = shift + y`), 1 = positive part of
-    * a free split, 2 = negative part, 3 = internal slack.
-    */
-  private[dsl] final case class ColData(
-    setIndex: Int,
-    enc: String,
-    kind: Byte,
-    shift: Double,
-    cost: Double,
-    vector: MLVector)
-
-  /**
-    * Driver-local description of one integral (Integer/Binary) solver column, everything the
-    * discrete solver needs to retarget the equality-form RHS when the column's integral
-    * bounds are tightened. `rowCoeffs` maps emitted constraint-row indices to the column's
-    * coefficients; `boundRow` is the column's upper-bound row (`y + s = upper - lower`), which
-    * every integral column has by construction.
-    */
-  private[dsl] final case class IntColumn(
-    g: Long,
-    setIndex: Int,
-    enc: String,
-    rootLower: Double,
-    rootUpper: Double,
-    cost: Double,
-    boundRow: Int,
-    rowCoeffs: Map[Int, Double])
-
-  /** Everything the solver call and the solution reconstruction need. */
-  private[dsl] final class Compiled(
-    val c: DVector,
-    val AT: DMatrix,
-    val b: DenseVector,
-    val numRows: Int,
-    val numCols: Long,
-    val sortedCols: RDD[(Long, ColData)],
-    val rowSpecs: IndexedSeq[RowSpec],
-    val plans: IndexedSeq[SetPlan],
-    val objConstant: Double,
-    val senseMult: Double,
-    val userTermsAgg: RDD[((Int, String, Int), Double)],
-    val intCols: IndexedSeq[IntColumn])
-}
 
 /**
   * Compiles a declarative [[LpProblem]] into the solver's equality form (`minimize c^T x` subject
@@ -131,7 +23,11 @@ private[dsl] object LpCompiler {
   */
 private[dsl] final class LpCompiler(problem: LpProblem, config: SolveConfig) extends AutoCloseable {
 
-  import LpCompiler._
+  /** Tolerance for presolved zero-term rows (`0 <sense> rhs`). */
+  private val PresolveTolerance = 1e-11
+
+  /** Relative tolerance when comparing normalised right-hand sides of duplicate rows. */
+  private val RhsMatchTolerance = 1e-9
 
   private implicit val spark: SparkSession = problem.spark
   private val sc = spark.sparkContext
@@ -139,12 +35,20 @@ private[dsl] final class LpCompiler(problem: LpProblem, config: SolveConfig) ext
 
   override def close(): Unit = caches.close()
 
+  /** Raises an [[LpModelException]] carrying `message`; never returns. */
   private def fail(message: String): Nothing = throw new LpModelException(message)
 
+  /**
+    * Compiles the problem and dispatches to the matching solver path: an all-fixed model with no
+    * columns is checked for feasibility directly, a purely continuous model is handed to
+    * [[LP.solveSummary]], and a model with integral columns is solved by [[BranchAndBound]].
+    * `stopAfterIteration` and a non-default [[SolveControl]] are rejected for discrete models. The
+    * compiler and its cached RDDs are always released when the call returns.
+    */
   def solve(): LpSolution = try {
     val compiled = compile()
     if (compiled.plans.exists(_.integral) &&
-        (config.stopAfterIteration.nonEmpty || config.control != SolveControl()))
+      (config.stopAfterIteration.nonEmpty || config.control != SolveControl()))
       fail("stopAfterIteration and SolveControl are supported only for continuous models")
     if (compiled.numCols == 0) {
       val feasible = compiled.rowSpecs.forall { row =>
@@ -170,12 +74,13 @@ private[dsl] final class LpCompiler(problem: LpProblem, config: SolveConfig) ext
         infeasibilityTolerance = config.infeasibilityTolerance,
         solver = config.resolvedNewtonSolver(compiled.numRows),
         cgTolerance = config.cgTolerance,
-        matrixFree = config.matrixFree,
+        cgConfig = config.cgConfig,
         cgMaxIterations = config.cgMaxIterations,
         stopAfterIteration = config.stopAfterIteration,
-        control = config.control.copy(onProgress = config.control.onProgress.map { callback =>
-          event => callback(event.copy(objectiveValue = event.objectiveValue.map(v =>
-            compiled.senseMult * v + compiled.objConstant)))
+        control = config.control.copy(onProgress = {
+          event =>
+            config.control.onProgress(event.copy(iterate = event.iterate.map(metrics =>
+              metrics.copy(objectiveValue = compiled.senseMult * metrics.objectiveValue + compiled.objConstant))))
         }),
         candidateViolation = Some(x => originalViolation(compiled, x)))
       try continuousSolution(compiled, summary)
@@ -191,6 +96,15 @@ private[dsl] final class LpCompiler(problem: LpProblem, config: SolveConfig) ext
   // Compilation
   // -------------------------------------------------------------------------------------------
 
+  /**
+    * Lowers the declarative problem into equality form (`minimize c^T x` s.t. `Ax = b`, `x >= 0`).
+    * Builds per-set column plans, expands constraint and objective terms into distributed
+    * `(setIndex, key, row) -> coefficient` RDDs, folds fixed variables and lower-bound shifts into the
+    * RHS and objective constant, presolves away trivially satisfied rows, merges consistent duplicate
+    * equality rows, appends upper-bound and slack columns, and assembles the sparse solver columns
+    * (`AT`), cost vector (`c`) and RHS (`b`). Every source RDD is read once per solve and the
+    * coefficient matrix is never densified.
+    */
   private[dsl] def compile(): Compiled = {
     val objective = problem.objective.getOrElse(
       fail(s"Problem '${problem.name}' has no objective; add one with += or setObjective"))
@@ -542,6 +456,11 @@ private[dsl] final class LpCompiler(problem: LpProblem, config: SolveConfig) ext
   // Set plans
   // -------------------------------------------------------------------------------------------
 
+  /**
+    * Validates one variable set's declared bounds and domain (finite, non-conflicting bounds and no
+    * null or duplicate keys) and derives its [[PlanKind]]: fixed when `lower == upper`, split when the
+    * lower bound is `-inf`, otherwise a shifted column carrying the optional finite upper bound.
+    */
   private def buildPlan(handle: VarSetHandle): SetPlan = {
     val where = s"variable '${handle.name}'"
     val declaredLb = handle.lowerBound
@@ -630,6 +549,12 @@ private[dsl] final class LpCompiler(problem: LpProblem, config: SolveConfig) ext
   // Term expansion
   // -------------------------------------------------------------------------------------------
 
+  /**
+    * Expands one symbolic [[LpTerm]] into a distributed `(setIndex, encodedKey, rowId) -> coefficient`
+    * RDD, one entry per key in the term's variable set. A constant coefficient broadcasts to every key;
+    * column and weighted coefficients read their per-key values from the term's source and are scaled.
+    * `rowId` is `-1` for objective terms. Rejects non-finite coefficients and cross-problem variables.
+    */
   private def expandTerm(
     plans: IndexedSeq[SetPlan],
     term: LpTerm,
@@ -667,6 +592,10 @@ private[dsl] final class LpCompiler(problem: LpProblem, config: SolveConfig) ext
     }
   }
 
+  /**
+    * Rejects a weight RDD that contains null keys, duplicate keys (which would be silently summed) or
+    * keys absent from the variable set's domain, reporting up to five offending keys.
+    */
   private def validateWeights(
     plan: SetPlan,
     weights: RDD[(String, Double)],
@@ -692,6 +621,12 @@ private[dsl] final class LpCompiler(problem: LpProblem, config: SolveConfig) ext
   // Bulk (grouped) constraints
   // -------------------------------------------------------------------------------------------
 
+  /**
+    * Expands one grouped (`lpSumBy`) [[LpConstraintSet]] into one constraint row per group key. Reads
+    * the term and RHS frames, sums repeated `(group, variable)` coefficients, validates keys against the
+    * variable domain and matches each term group to an RHS row, then appends the generated [[RowSpec]]s
+    * (ordered by encoded group key for determinism) and their term pieces to the accumulators.
+    */
   private def expandBulk(
     constraintSet: LpConstraintSet,
     base: String,
@@ -850,14 +785,17 @@ private[dsl] final class LpCompiler(problem: LpProblem, config: SolveConfig) ext
     }.reduceByKey((a, b) => (a._1 + b._1, a._2 + b._2)).collectAsMap()
 
     val grouped = eqRows.toSeq.sorted.map(r => (r, signatures(r))).groupBy(_._2)
+
     def sameCoefficients(a: Int, b: Int): Boolean = {
       def row(id: Int) = eqTerms.filter(_._1._3 == id).map { case ((si, enc, _), c) =>
         ((si, enc), c / leadingB.value(id))
       }
+
       row(a).fullOuterJoin(row(b)).filter { case (_, (x, y)) =>
         x.isEmpty || y.isEmpty || x != y || x.exists(v => v.isNaN || v.isInfinite)
       }.take(1).isEmpty
     }
+
     grouped.values.filter(_.size > 1).foreach { group =>
       val keepers = mutable.ArrayBuffer.empty[RowSpec]
       group.sortBy(_._1).foreach { case (rowId, _) =>
@@ -884,12 +822,18 @@ private[dsl] final class LpCompiler(problem: LpProblem, config: SolveConfig) ext
   // Validation helpers
   // -------------------------------------------------------------------------------------------
 
+  /** Rejects a NaN or infinite right-hand side. */
   private def validateRhs(value: Double, context: String): Unit = {
     if (value.isNaN || value.isInfinite) {
       fail(s"$context: non-finite right-hand side $value")
     }
   }
 
+  /**
+    * Guards the equality-form row count: fails if it overflows `Int` (Spark vector indices are `Int`),
+    * or if it exceeds `maxLocalConstraints` while the driver-local Cholesky solver is selected, which
+    * would hold a roughly `16*m*m`-byte Gramian on the driver.
+    */
   private def checkRowBudget(rows: Long, what: String): Unit = {
     if (rows > Int.MaxValue) fail(s"Too many constraint rows ($rows): $what; Spark vector indices are Int")
     // Only the driver-local Cholesky solver is bounded by maxLocalConstraints; NewtonSolver.Auto
@@ -928,7 +872,7 @@ private[dsl] final class LpCompiler(problem: LpProblem, config: SolveConfig) ext
     }
     val objectiveValue = status match {
       case LpStatus.Infeasible | LpStatus.InfeasibleOrUnbounded => Double.NaN
-      // the solver minimizes, so an unbounded objective diverges to -inf in solver form
+        // the solver minimizes, so an unbounded objective diverges to -inf in solver form
       case LpStatus.Unbounded => compiled.senseMult * Double.NegativeInfinity
       case _ => compiled.senseMult * summary.objectiveValue + compiled.objConstant
     }
@@ -937,6 +881,12 @@ private[dsl] final class LpCompiler(problem: LpProblem, config: SolveConfig) ext
       Some(summary.candidate), summary.stopReason)
   }
 
+  /**
+    * Rebuilds user-facing per-variable values from a solver iterate: undoes bound shifts (`shift + y`),
+    * recombines free-variable splits (`x_plus - x_minus`), drops internal slack columns, and re-adds
+    * fixed variables that were presolved out. `integerOverrides` supplies exact user-unit values for
+    * integral columns keyed by global column index, taking precedence over the reconstructed value.
+    */
   private def reconstructValues(compiled: Compiled, x: DVector,
     integerOverrides: Map[Long, Double]): RDD[((Int, String), Double)] = {
     // per-column primal values, aligned with the compiled column order
@@ -1020,7 +970,10 @@ private[dsl] final class LpCompiler(problem: LpProblem, config: SolveConfig) ext
       Iterator.single((activity, violation))
     }.reduce { case ((left, lv), (right, rv)) =>
       var i = 0
-      while (i < left.length) { left(i) += right(i); i += 1 }
+      while (i < left.length) {
+        left(i) += right(i);
+        i += 1
+      }
       (left, math.max(lv, rv))
     }
     compiled.rowSpecs.foldLeft(boundViolation) { (worst, row) =>
@@ -1036,6 +989,12 @@ private[dsl] final class LpCompiler(problem: LpProblem, config: SolveConfig) ext
     }
   }
 
+  /**
+    * General original-unit feasibility check, used when the model contains presolved/merged rows, fixed
+    * variables or free splits. Reconstructs user values, then computes the worst relative bound and
+    * constraint-row violation over the original (pre-transformation) model. Stays fully distributed,
+    * reducing only a scalar to the driver.
+    */
   private def reconstructedOriginalViolation(compiled: Compiled, x: DVector): Double = {
     val values = reconstructValues(compiled, x, Map.empty)
     val bounds = compiled.plans.map { p =>

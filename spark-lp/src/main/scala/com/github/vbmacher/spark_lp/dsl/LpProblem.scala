@@ -1,5 +1,7 @@
 package com.github.vbmacher.spark_lp.dsl
 
+import com.github.vbmacher.spark_lp.dsl.compiler.LpCompiler
+
 import org.apache.spark.rdd.RDD
 import org.apache.spark.sql.functions.{col, struct}
 import org.apache.spark.sql.{Column, DataFrame, Dataset, Encoder, Row, SparkSession}

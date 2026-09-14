@@ -771,3 +771,30 @@ try {
 ----
 
 See `benchmarks/starts/README.md` for equal-tolerance start/no-start measurements, including snapshot/validation overhead. Warm starts can reduce solver work and can also increase total elapsed time.
+
+== MIP search tuning
+
+Enable cuts, strong branching and concurrent nodes independently through `MipConfig.search`:
+
+[source,scala]
+----
+val result = model.solve(SolveConfig(mip = MipConfig(
+  maxNodes = 1000,
+  search = MipSearchConfig(
+    cuts = MipCutsConfig(enabled = true, maxRounds = 2, maxCutsPerNode = 20, maxCuts = 100),
+    strongBranching = StrongBranchingConfig(enabled = true,
+      maxCandidates = 4, maxIterations = 5, maxProbes = 100),
+    parallelNodes = 2,
+    maxConcurrentLocalBytes = 1024L * 1024 * 1024))))
+try println(result.mip.map(_.search)) finally result.close()
+----
+
+Defaults disable cuts and strong branching and use one worker. `MipCutsConfig` supports binary knapsack cover cuts with a default numerical allowance of `1e-9` and maximum coefficient ratio `1e12`. `maxRounds` applies per searched node; `maxCutsPerNode` includes inherited cuts and bounds the total rows appended there; `maxCuts` limits successful additions across the search. Zero cut budgets disable that work. Cuts below the root remain restricted to their branch domain.
+
+Strong branching considers up to `maxCandidates` fractional variables and up to two LP probes for each. `maxIterations` applies to each probe; `maxProbes` is a whole-search cap, with zero disabling probes. Incomplete probes keep a valid inherited bound and do not manufacture incumbents. Probes and cut re-solves add work beyond `maxNodes`, which counts launched search nodes. `solution.iterations` includes this extra LP work; `solution.mip.get.search` separates relaxation count, cut rounds, global/local cut additions, strong probes, peak concurrent LPs and estimated concurrent Newton bytes.
+
+`parallelNodes` bounds active LP relaxations, including cut re-solves and probes. `maxConcurrentLocalBytes` defaults to 1 GiB and rejects a parallel configuration whose estimated worst-case concurrent Newton storage exceeds it. It is an estimate, not a JVM/process/executor memory limit. Size driver metadata, executor cache/shuffle memory and Spark cores separately. The default CG estimate includes its 256 MiB preconditioner budget per active relaxation; increasing workers can require increasing the explicit concurrent budget. Automatic Newton selection uses CG when cuts are present. Many tiny Spark jobs can make parallelism slower; measure with the application's scheduling configuration and model sizes.
+
+Warm starts, absolute/relative gaps, `MipControl` deadlines, cancellation and progress remain active in every mode. Global bounds include running nodes, and a stop retains independently feasible incumbents, including a validated start. Cleanup waits for cooperative worker completion. Callbacks run on the driver coordinator; keep them short. Under backpressure, older node-iteration diagnostic events can be coalesced, while incumbent/global-bound updates remain coordinated. Parallel completion order is nondeterministic. Use `MipSearchConfig()` for the serial best-first/most-fractional baseline.
+
+The link:algorithm.adoc[algorithm guide] defines cut validity, bound acceptance and memory estimates. The link:../benchmarks/mip-search/README.md[benchmark report] measures the individual options and all combinations at equal tolerances, including regressions.

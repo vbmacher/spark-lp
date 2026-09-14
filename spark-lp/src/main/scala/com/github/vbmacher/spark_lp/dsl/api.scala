@@ -167,7 +167,8 @@ final case class MipConfig(
   gapTolerance: Double = 1e-9,
   absoluteGapTolerance: Double = 0.0,
   control: MipControl = MipControl(),
-  sosZeroTolerance: Double = 1e-6) {
+  sosZeroTolerance: Double = 1e-6,
+  search: MipSearchConfig = MipSearchConfig()) {
   require(java.lang.Double.isFinite(sosZeroTolerance) && sosZeroTolerance >= 0.0, "SOS zero tolerance must be finite and nonnegative")
   require(absoluteGapTolerance >= 0.0 && !absoluteGapTolerance.isInfinite,
     "absoluteGapTolerance must be finite and nonnegative")
@@ -191,7 +192,8 @@ final case class LpResiduals(primal: Double, dual: Double, gap: Double)
 /** Certified-search metadata in original objective units; absent values are not zero gaps. */
 final case class MipSummary(incumbent: Option[Double], bestBound: Option[Double],
   absoluteGap: Option[Double], relativeGap: Option[Double], processedNodes: Int,
-  openNodes: Int, termination: String, elapsedSeconds: Double = 0.0)
+  openNodes: Int, termination: String, elapsedSeconds: Double = 0.0,
+  search: MipSearchStatistics = MipSearchStatistics())
 
 private[dsl] object MipGap {
   def absolute(incumbent: Double, bound: Double): Double = math.max(0.0, incumbent - bound)

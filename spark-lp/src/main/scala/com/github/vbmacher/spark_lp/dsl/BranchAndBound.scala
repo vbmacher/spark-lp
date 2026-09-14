@@ -1,12 +1,14 @@
 package com.github.vbmacher.spark_lp.dsl
 
-import com.github.vbmacher.spark_lp.{LP, CandidateInfo, SolveControl, StopReason}
+import com.github.vbmacher.spark_lp.{LP, CandidateInfo, SolveControl, SolveProgress, StopReason}
 import com.github.vbmacher.spark_lp.dsl.compiler.{Compiled, LpCompiler}
 import com.github.vbmacher.spark_lp.vectors.DVector
 import org.apache.spark.mllib.linalg.DenseVector
 import org.apache.spark.sql.SparkSession
 
 import scala.collection.mutable
+import java.util.concurrent.{ArrayBlockingQueue, Callable, ExecutorCompletionService, Executors, Future, ThreadFactory, TimeUnit}
+import java.util.concurrent.atomic.{AtomicBoolean, AtomicInteger, AtomicLong}
 
 /**
   * Branch-and-bound search over the integral columns of a compiled model.
@@ -38,16 +40,48 @@ private[dsl] final class BranchAndBound(
   import com.github.vbmacher.spark_lp.vectors.dmatrix.implicits._
 
   private val control = config.mip.control
+  private val search = config.mip.search
+  private val coordinator = Thread.currentThread()
+  private val stopFlag = new AtomicBoolean(false)
+  private val relaxations = new AtomicInteger(0)
+  private val activeRelaxations = new AtomicInteger(0)
+  private val peakRelaxations = new AtomicInteger(0)
+  private val activeLocalBytes = new AtomicLong(0L)
+  private val peakLocalBytes = new AtomicLong(0L)
+  private val nodeEvents = new ArrayBlockingQueue[(Int, SolveProgress)](1024)
+  private val inFlight = mutable.Map.empty[Int, Node]
+  private var cutRounds = 0
+  private var globalCuts = 0
+  private var localCuts = 0
+  private var strongProbes = 0
   private val started = control.nanoTime()
   private var stopReason: Option[StopReason] = None
   private def elapsed: Double = math.max(0L, control.nanoTime() - started).toDouble / 1e9
   private def stopped(): Boolean = {
+    if (Thread.currentThread() ne coordinator) return stopFlag.get()
     if (stopReason.isEmpty) {
       if (control.timeLimit.exists(limit => control.nanoTime() - started >= limit.toNanos))
         stopReason = Some(StopReason.TimeLimit)
       else if (control.shouldStop()) stopReason = Some(StopReason.UserRequested)
     }
-    stopReason.nonEmpty
+    if (stopReason.nonEmpty) stopFlag.set(true)
+    stopFlag.get()
+  }
+
+  private def nodeProgress(number: Int, event: SolveProgress): Unit = {
+    if (Thread.currentThread() eq coordinator) control.onNodeProgress(number, event)
+    else if (!nodeEvents.offer(number -> event)) { nodeEvents.poll(); nodeEvents.offer(number -> event); () }
+  }
+  private def drainProgress(): Unit = {
+    var event = nodeEvents.poll()
+    while (event != null) { control.onNodeProgress(event._1, event._2); event = nodeEvents.poll() }
+  }
+  private def estimatedLocalBytes(rows: Int, hasCuts: Boolean): Long = {
+    val solver = if (hasCuts && config.newtonSolver == NewtonSolver.Auto) NewtonSolver.ConjugateGradient else compiler.newtonSolver(rows)
+    val m = BigInt(rows)
+    val estimate = if (solver == NewtonSolver.Cholesky) 16 * m * m + 128 * m
+      else 128 * m + BigInt(config.cgConfig.preconditionerMemoryBytes)
+    estimate.min(BigInt(Long.MaxValue)).toLong
   }
 
   private val intCols = compiled.intCols
@@ -68,7 +102,6 @@ private[dsl] final class BranchAndBound(
   private var incumbent: Option[Candidate] = None
   private var unboundedProof: Option[Candidate] = None
   private var rootX: DVector = _
-  private var rootSummary: LP.SolveSummary = _
   private var sawUnboundedNode = false
   // false once any node is left unresolved: Optimal / Infeasible can no longer be claimed
   private var exact = true
@@ -95,7 +128,8 @@ private[dsl] final class BranchAndBound(
       bound = Double.NegativeInfinity))
 
     emit(open)
-    while (open.nonEmpty && unboundedProof.isEmpty && solvedNodes < config.mip.maxNodes && !stopped()) {
+    if (search.parallelNodes > 1) parallelSearch(open)
+    else while (open.nonEmpty && unboundedProof.isEmpty && solvedNodes < config.mip.maxNodes && !stopped()) {
       val node = open.dequeue()
       if (!prunable(node.bound)) {
         processNode(node, open)
@@ -113,8 +147,63 @@ private[dsl] final class BranchAndBound(
     intGSet.unpersist(blocking = false)
   }
 
+  private def parallelSearch(open: mutable.PriorityQueue[Node]): Unit = {
+    val worstRows = compiled.numRows.toLong + (if (search.cuts.enabled) search.cuts.maxCutsPerNode else 0)
+    if (worstRows > Int.MaxValue || BigInt(estimatedLocalBytes(worstRows.toInt, search.cuts.enabled)) * search.parallelNodes >
+      BigInt(search.maxConcurrentLocalBytes)) throw new LpModelException("Parallel MIP Newton memory estimate exceeds maxConcurrentLocalBytes")
+    val workerIds = new AtomicInteger(0)
+    val executor = Executors.newFixedThreadPool(search.parallelNodes, new ThreadFactory {
+      override def newThread(task: Runnable): Thread = new Thread(task, s"spark-lp-mip-${workerIds.incrementAndGet()}")
+    })
+    val completion = new ExecutorCompletionService[Either[Throwable, LP.SolveSummary]](executor)
+    val pending = mutable.Map.empty[Future[Either[Throwable, LP.SolveSummary]], (Node, Int)]
+    try {
+      var finished = false
+      while (!finished) {
+        drainProgress()
+        stopped()
+        if (unboundedProof.nonEmpty) stopFlag.set(true)
+        while (pending.size < search.parallelNodes && open.nonEmpty && solvedNodes < config.mip.maxNodes && !stopped()) {
+          val node = open.dequeue()
+          if (prunable(node.bound)) remember(node.bound)
+          else if (solvedNodes == 0 || !inconsistentBounds(node)) {
+            solvedNodes += 1
+            val ordinal = solvedNodes
+            val future = completion.submit(new Callable[Either[Throwable, LP.SolveSummary]] {
+              override def call(): Either[Throwable, LP.SolveSummary] =
+                try Right(solveRelaxation(node, ordinal == 1, config.maxIterations, ordinal))
+                catch { case scala.util.control.NonFatal(e) => Left(e) }
+            })
+            pending(future) = node -> ordinal
+            inFlight(ordinal) = node
+          }
+        }
+        if (pending.nonEmpty) {
+          val ready = completion.poll(50, TimeUnit.MILLISECONDS)
+          if (ready != null) {
+            val (node, ordinal) = pending.remove(ready).get
+            inFlight.remove(ordinal)
+            processNode(node, open, Some(ready.get()), ordinal)
+            emit(open)
+          }
+        } else finished = open.isEmpty || stopped() || solvedNodes >= config.mip.maxNodes || unboundedProof.nonEmpty
+      }
+      drainProgress()
+    } finally {
+      stopFlag.set(true)
+      executor.shutdown()
+      // Cooperative LP stops preserve normal cleanup. Completed but unconsumed results are owned here.
+      pending.keys.foreach { future =>
+        try future.get().foreach { summary => summary.x.unpersist(false); summary.dualCertificate.foreach(_.unpersist(false)) }
+        catch { case scala.util.control.NonFatal(_) => () }
+      }
+      while (!executor.awaitTermination(50, TimeUnit.MILLISECONDS)) ()
+      inFlight.clear(); nodeEvents.clear()
+    }
+  }
+
   private def metadata(open: mutable.PriorityQueue[Node], complete: Boolean): MipSummary = {
-    val lower = (open.iterator.map(_.bound) ++ Iterator(closedBound, unresolvedBound) ++
+    val lower = (open.iterator.map(_.bound) ++ inFlight.valuesIterator.map(_.bound) ++ Iterator(closedBound, unresolvedBound) ++
       incumbent.iterator.map(_.objMin)).min
     val bound = if (lower.isNaN || lower.isInfinite) None else Some(lower)
     val inc = incumbent.map(c => compiled.senseMult * c.objMin + compiled.objConstant)
@@ -125,7 +214,9 @@ private[dsl] final class BranchAndBound(
     } else stopReason.map(_.toString).getOrElse(
       if (solvedNodes >= config.mip.maxNodes && open.nonEmpty) "NodeLimit" else "Unresolved")
     MipSummary(inc, bound.map(b => compiled.senseMult * b + compiled.objConstant),
-      gap, relative, solvedNodes, open.size, termination, elapsed)
+      gap, relative, solvedNodes - inFlight.size, open.size + inFlight.size, termination, elapsed,
+      MipSearchStatistics(relaxations.get(), cutRounds, globalCuts, localCuts, strongProbes,
+        peakRelaxations.get(), peakLocalBytes.get()))
   }
 
   private def emit(open: mutable.PriorityQueue[Node]): Unit = {
@@ -138,31 +229,52 @@ private[dsl] final class BranchAndBound(
     MipGap.accepted(inc.objMin, bound, compiled.senseMult * inc.objMin + compiled.objConstant, config.mip)
   }
 
-  private def processNode(node: Node, open: mutable.PriorityQueue[Node]): Unit = {
-    val isRoot = solvedNodes == 0
-    if (!isRoot && inconsistentBounds(node)) return
-    solvedNodes += 1
-    val summary =
+  private def solveRelaxation(node: Node, isRoot: Boolean, maxIterations: Int, ordinal: Int = solvedNodes): LP.SolveSummary = {
+    val bytes = estimatedLocalBytes(compiled.numRows + node.cuts.size, node.cuts.nonEmpty)
+    val active = activeRelaxations.incrementAndGet()
+    val memory = activeLocalBytes.addAndGet(bytes)
+    peakRelaxations.accumulateAndGet(active, new java.util.function.IntBinaryOperator { override def applyAsInt(a: Int, b: Int): Int = math.max(a, b) })
+    peakLocalBytes.accumulateAndGet(memory, new java.util.function.LongBinaryOperator { override def applyAsLong(a: Long, b: Long): Long = math.max(a, b) })
+    relaxations.incrementAndGet()
+    var relaxation: MipNodeRelaxation = null
+    try {
+      relaxation = new MipNodeRelaxation(compiled, nodeRhs(node), node.cuts, node.lower, node.upper)
+      relaxation.toBase(LP.solveSummary(
+      c = relaxation.c, AT = relaxation.AT, b = relaxation.b,
+      tolerance = config.tolerance, maxIter = maxIterations, etaIter = config.etaIteration,
+      valueCap = config.valueCap, eps = config.epsilon, infeasibilityTolerance = config.infeasibilityTolerance,
+      solver = if (node.cuts.nonEmpty && config.newtonSolver == NewtonSolver.Auto) NewtonSolver.ConjugateGradient
+        else compiler.newtonSolver(relaxation.rows),
+      cgTolerance = config.cgTolerance, cgConfig = config.cgConfig, cgMaxIterations = config.cgMaxIterations,
+      initialPrimal = if (isRoot && node.cuts.isEmpty) compiler.startPrimal(compiled) else None,
+      onStartApplied = () => compiler.startApplied(),
+      control = SolveControl(shouldStop = () => stopped(), onProgress = event =>
+        nodeProgress(ordinal, event.copy(iterate = event.iterate.map(metrics =>
+          metrics.copy(objectiveValue = compiled.senseMult * (metrics.objectiveValue + shiftCost(node)) + compiled.objConstant)))))))
+    } finally {
+      try if (relaxation != null) relaxation.close()
+      finally { activeRelaxations.decrementAndGet(); activeLocalBytes.addAndGet(-bytes) }
+    }
+  }
+
+  private def usableBound(summary: LP.SolveSummary, node: Node): Option[Double] = {
+    val bound = summary.dualObjectiveValue + shiftCost(node)
+    if (summary.termination == LP.Termination.Converged && java.lang.Double.isFinite(bound) && summary.dualResidual <= config.tolerance)
+      Some(math.max(node.bound, bound)) else None
+  }
+
+  private def processNode(initialNode: Node, open: mutable.PriorityQueue[Node],
+    ready: Option[Either[Throwable, LP.SolveSummary]] = None, ordinal: Int = 0): Unit = {
+    var node = initialNode
+    val isRoot = if (ready.isDefined) ordinal == 1 else solvedNodes == 0
+    if (ready.isEmpty) {
+      if (!isRoot && inconsistentBounds(node)) return
+      solvedNodes += 1
+    }
+    val nodeNumber = if (ready.isDefined) ordinal else solvedNodes
+    var summary =
       try {
-        LP.solveSummary(
-          c = compiled.c,
-          AT = compiled.AT,
-          b = nodeRhs(node),
-          tolerance = config.tolerance,
-          maxIter = config.maxIterations,
-          etaIter = config.etaIteration,
-          valueCap = config.valueCap,
-          eps = config.epsilon,
-          infeasibilityTolerance = config.infeasibilityTolerance,
-          solver = compiler.newtonSolver(compiled.numRows),
-          cgTolerance = config.cgTolerance,
-          cgConfig = config.cgConfig,
-          cgMaxIterations = config.cgMaxIterations,
-          initialPrimal = if (isRoot) compiler.startPrimal(compiled) else None,
-          onStartApplied = () => compiler.startApplied(),
-          control = SolveControl(shouldStop = () => stopped(), onProgress = event =>
-            control.onNodeProgress(solvedNodes, event.copy(iterate = event.iterate.map(metrics =>
-              metrics.copy(objectiveValue = compiled.senseMult * (metrics.objectiveValue + shiftCost(node)) + compiled.objConstant))))))
+        ready.map(_.fold(throw _, identity)).getOrElse(solveRelaxation(node, isRoot, config.maxIterations))
       } catch {
         case e: LpNumericalException =>
           if (isRoot) throw e
@@ -170,15 +282,39 @@ private[dsl] final class BranchAndBound(
           unresolvedBound = math.min(unresolvedBound, node.bound)
           return
       }
+    try {
+    var rounds = 0
+    var continueCuts = true
+    while (search.cuts.enabled && continueCuts && rounds < search.cuts.maxRounds &&
+      node.cuts.size < search.cuts.maxCutsPerNode && globalCuts + localCuts < search.cuts.maxCuts &&
+      summary.termination == LP.Termination.Converged && !stopped()) {
+      val remaining = math.min(search.cuts.maxCutsPerNode - node.cuts.size, search.cuts.maxCuts - globalCuts - localCuts)
+      val added = MipCoverCuts.generate(intCols, nodeRhs(node).values, node.lower, node.upper,
+        unboundedDirections.collect { case (row, (true, _)) => row }.toSet, integerValues(node, summary.x),
+        isRoot, search.cuts, node.cuts.map(_.signature).toSet, remaining)
+      if (added.isEmpty) continueCuts = false
+      else {
+        val nextNode = node.copy(bound = usableBound(summary, node).getOrElse(node.bound), cuts = node.cuts ++ added)
+        val previous = summary
+        try {
+          summary = solveRelaxation(nextNode, isRoot = false, config.maxIterations, nodeNumber)
+          totalIterations += previous.iterations
+          previous.x.unpersist(false); previous.dualCertificate.foreach(_.unpersist(false))
+          node = nextNode; rounds += 1; cutRounds += 1
+          if (isRoot) globalCuts += added.size else localCuts += added.size
+        } catch {
+          case _: LpNumericalException => continueCuts = false // Retain the valid uncut relaxation and its bound.
+        }
+      }
+    }
     totalIterations += summary.iterations
     if (isRoot) {
       rootX = summary.x
-      rootSummary = summary
     }
 
     // full solver-form objective of the node iterate, comparable across nodes
     val objMin = summary.objectiveValue + shiftCost(node)
-    val lowerBound = summary.dualObjectiveValue + shiftCost(node)
+    val lowerBound = math.max(node.bound, summary.dualObjectiveValue + shiftCost(node))
 
     summary.termination match {
       case LP.Termination.Converged =>
@@ -187,7 +323,7 @@ private[dsl] final class BranchAndBound(
           val vals = integerValues(node, summary.x)
           mostFractional(node, vals) match {
             case Some((j, v)) =>
-              branch(node, j, v, lowerBound, open)
+              branchWithProbes(node, vals, j, v, lowerBound, open, nodeNumber)
             case None =>
               roundedValues(node, vals) match {
                 case Some(rounded) if feasibleRounding(node, summary.x, vals, rounded) =>
@@ -238,8 +374,9 @@ private[dsl] final class BranchAndBound(
         branchOrGiveUp(node, integerValues(node, summary.x), open)
     }
 
-    if ((summary.x ne rootX) && !incumbent.exists(_.x eq summary.x) && !unboundedProof.exists(_.x eq summary.x)) {
-      release(summary.x)
+    } finally {
+      if ((summary.x ne rootX) && !incumbent.exists(_.x eq summary.x) && !unboundedProof.exists(_.x eq summary.x)) release(summary.x)
+      summary.dualCertificate.foreach(_.unpersist(false))
     }
   }
 
@@ -370,12 +507,50 @@ private[dsl] final class BranchAndBound(
 
   /** Splits the node on column `j` around the fractional value `v` (both children are non-empty). */
   private def branch(node: Node, j: Int, v: Double, childBound: Double, open: mutable.PriorityQueue[Node]): Unit = {
+    children(node, j, v, childBound).foreach(open.enqueue(_))
+  }
+
+  private def children(node: Node, j: Int, v: Double, childBound: Double): Vector[Node] = {
     val upper = node.upper.clone()
     upper(j) = math.floor(v)
     val lower = node.lower.clone()
     lower(j) = math.floor(v) + 1.0
-    open.enqueue(Node(node.lower, upper, childBound))
-    open.enqueue(Node(lower, node.upper, childBound))
+    Vector(Node(node.lower, upper, childBound, node.cuts), Node(lower, node.upper, childBound, node.cuts))
+  }
+
+  private def branchWithProbes(node: Node, values: Map[Long, Double], fallbackIndex: Int, fallbackValue: Double,
+    bound: Double, open: mutable.PriorityQueue[Node], nodeNumber: Int): Unit = {
+    val policy = search.strongBranching
+    if (!policy.enabled || strongProbes >= policy.maxProbes || stopped()) {
+      branch(node, fallbackIndex, fallbackValue, bound, open)
+      return
+    }
+    val candidates = intCols.indices.filter(j => node.lower(j) < node.upper(j))
+      .map(j => (j, userValue(node, values, j))).filter { case (_, x) => math.abs(x - math.rint(x)) > config.mip.integralityTolerance }
+      .sortBy { case (j, x) => (-math.abs(x - math.rint(x)), j) }.take(policy.maxCandidates)
+    var best = children(node, fallbackIndex, fallbackValue, bound)
+    var bestScore = Double.NegativeInfinity
+    candidates.iterator.takeWhile(_ => strongProbes < policy.maxProbes && !stopped()).foreach { case (j, value) =>
+      val probed = children(node, j, value, bound).map { child =>
+        if (strongProbes >= policy.maxProbes || stopped()) Some(child)
+        else if (inconsistentBounds(child)) None
+        else {
+          strongProbes += 1
+          try {
+            val probe = solveRelaxation(child, isRoot = false, policy.maxIterations, nodeNumber)
+            totalIterations += probe.iterations
+            try {
+              if (probe.termination == LP.Termination.PrimalInfeasible) None
+              else Some(child.copy(bound = usableBound(probe, child).getOrElse(child.bound)))
+            } finally { probe.x.unpersist(false); probe.dualCertificate.foreach(_.unpersist(false)) }
+          } catch { case _: LpNumericalException => Some(child) }
+        }
+      }
+      val gains = probed.map(_.map(c => math.max(0.0, c.bound - bound)).getOrElse(1e100))
+      val score = 10.0 * gains.min + gains.max
+      if (score > bestScore) { bestScore = score; best = probed.flatten }
+    }
+    best.foreach(open.enqueue(_))
   }
 
   /**
@@ -459,7 +634,8 @@ private[dsl] final class BranchAndBound(
 private[dsl] object BranchAndBound {
 
   /** One open subproblem: integral bounds per column (aligned with `intCols`) and its best bound. */
-  private final case class Node(lower: Array[Double], upper: Array[Double], bound: Double)
+  private final case class Node(lower: Array[Double], upper: Array[Double], bound: Double,
+    cuts: Vector[MipCoverCut] = Vector.empty)
 
   /** A retained iterate: solver-form objective, iterate, exact integer overrides and diagnostics. */
   private final case class Candidate(

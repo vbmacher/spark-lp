@@ -1,0 +1,161 @@
+package com.github.vbmacher.spark_lp.dsl
+
+import com.github.vbmacher.spark_lp.dsl.implicits._
+import com.holdenkarau.spark.testing.DataFrameSuiteBase
+import org.apache.spark.sql.SparkSession
+import org.scalatest.funsuite.AnyFunSuite
+
+class MipSearchSuite extends AnyFunSuite with DataFrameSuiteBase {
+  private def knapsack()(implicit spark: SparkSession): (LpProblem, Vector[LpVariable], Double) = {
+    val model = LpProblem("search", Maximize)
+    val xs = Vector.tabulate(6)(i => model.variable(s"item$i", category = Binary))
+    val weights = Vector(2.0, 3.0, 4.0, 5.0, 7.0, 9.0)
+    val profits = Vector(4.0, 5.0, 7.0, 8.0, 11.0, 13.0)
+    model += lpDot(profits, xs) + 7.0
+    model += (lpDot(weights, xs) <= 12.0)
+    val optimum = (0 until 64).map { mask =>
+      val bits = xs.indices.map(i => if ((mask & (1 << i)) != 0) 1.0 else 0.0)
+      (weights.zip(bits).map { case (a, b) => a * b }.sum, profits.zip(bits).map { case (a, b) => a * b }.sum)
+    }.filter(_._1 <= 12.0).map(_._2).max + 7.0
+    (model, xs, optimum)
+  }
+
+  test("cuts and strong branching preserve an independently enumerated MIP optimum") {
+    implicit val ss: SparkSession = spark
+    val modes = Vector(MipSearchConfig(), MipSearchConfig(cuts = MipCutsConfig(enabled = true)),
+      MipSearchConfig(strongBranching = StrongBranchingConfig(enabled = true, maxCandidates = 2, maxIterations = 8, maxProbes = 12)),
+      MipSearchConfig(cuts = MipCutsConfig(enabled = true),
+        strongBranching = StrongBranchingConfig(enabled = true, maxCandidates = 2, maxIterations = 8, maxProbes = 12)))
+    modes.foreach { policy =>
+      val (model, xs, expected) = knapsack()
+      val result = model.solve(SolveConfig(mip = MipConfig(search = policy)))
+      try {
+        assert(result.status == LpStatus.Optimal && math.abs(result.objectiveValue - expected) < 1e-6)
+        val validation = model.validateCandidate(model.candidateValues(xs.map(v => v -> result.value(v))), CandidateValidationConfig(tolerance = 1e-6))
+        try assert(validation.feasible) finally validation.close()
+        val statistics = result.mip.get.search
+        if (policy.cuts.enabled) assert(statistics.globalCuts > 0 && statistics.globalCuts + statistics.localCuts <= policy.cuts.maxCuts)
+        if (policy.strongBranching.enabled) assert(statistics.strongProbes > 0 && statistics.strongProbes <= policy.strongBranching.maxProbes)
+      } finally result.close()
+    }
+  }
+
+  test("incomplete bounded probes preserve a valid bound and do not create an incumbent") {
+    implicit val ss: SparkSession = spark
+    val (model, _, optimum) = knapsack()
+    val result = model.solve(SolveConfig(mip = MipConfig(maxNodes = 1,
+      search = MipSearchConfig(strongBranching = StrongBranchingConfig(enabled = true, maxIterations = 1, maxProbes = 2)))))
+    try {
+      assert(result.status == LpStatus.IterationLimit && !result.candidate.available)
+      assert(result.mip.get.bestBound.exists(_ >= optimum - 1e-6))
+      assert(result.mip.get.search.strongProbes == 2)
+      assert(result.mip.get.processedNodes == 1)
+    } finally result.close()
+  }
+
+  test("parallel nodes coordinate bounds and incumbents while respecting node and memory budgets") {
+    implicit val ss: SparkSession = spark
+    val coordinator = Thread.currentThread()
+    val model = LpProblem("parallel", Maximize)
+    val xs = Vector.tabulate(4)(i => model.variable(s"x$i", category = Binary))
+    model += lpDot(Vector(1.0, 2.0, 3.0, 4.0), xs)
+    model += (lpDot(Vector.fill(4)(2.0), xs) <= 5.0)
+    val events = scala.collection.mutable.ArrayBuffer.empty[MipProgress]
+    val policy = MipSearchConfig(parallelNodes = 2)
+    val result = model.solve(SolveConfig(mip = MipConfig(search = policy, control = MipControl(
+      onProgress = event => { assert(Thread.currentThread() eq coordinator); events += event },
+      onNodeProgress = (_, _) => assert(Thread.currentThread() eq coordinator)))))
+    try {
+      assert(result.status == LpStatus.Optimal && math.abs(result.objectiveValue - 7.0) < 1e-6)
+      assert(result.mip.get.search.peakConcurrentNodes == 2)
+      assert(events.flatMap(_.bestBound).forall(_ >= 7.0 - 1e-6))
+      assert(events.flatMap(_.incumbent).forall(_ <= 7.0 + 1e-6))
+      assert(result.mip.get.search.estimatedPeakLocalBytes <= policy.maxConcurrentLocalBytes)
+    } finally result.close()
+    val limited = model.solve(SolveConfig(mip = MipConfig(maxNodes = 2, search = policy)))
+    try assert(limited.status == LpStatus.IterationLimit && limited.mip.get.processedNodes <= 2) finally limited.close()
+    intercept[LpModelException](model.solve(SolveConfig(mip = MipConfig(search = policy.copy(maxConcurrentLocalBytes = 1)))))
+    import scala.collection.JavaConverters._
+    assert(!Thread.getAllStackTraces.keySet().asScala.exists(t => t.isAlive && t.getName.startsWith("spark-lp-mip-")))
+  }
+
+  test("parallel cancellation retains a start and callback failures clean up worker resources") {
+    implicit val ss: SparkSession = spark
+    val before = sc.getPersistentRDDs.keySet
+    val model = LpProblem("parallel stop", Maximize)
+    val xs = Vector.tabulate(4)(i => model.variable(s"x$i", category = Binary))
+    model += lpDot(Vector(1.0, 2.0, 3.0, 4.0), xs)
+    model += (lpDot(Vector.fill(4)(2.0), xs) <= 5.0)
+    val start = model.start(xs.zip(Vector(0.0, 0.0, 1.0, 1.0)))
+    val stop = new java.util.concurrent.atomic.AtomicBoolean(false)
+    val policy = MipSearchConfig(parallelNodes = 2)
+    val result = model.solve(SolveConfig(start = Some(start), mip = MipConfig(search = policy,
+      control = MipControl(shouldStop = () => stop.get(), onNodeProgress = (number, _) => if (number >= 2) stop.set(true)))))
+    try {
+      assert(result.status == LpStatus.Stopped && result.candidate.feasible && result.objectiveValue == 7.0)
+      assert(result.start.exists(_.seededIncumbent))
+      assert(result.mip.get.bestBound.exists(_ >= 7.0 - 1e-6))
+    } finally { result.close(); start.close() }
+    intercept[IllegalStateException](model.solve(SolveConfig(mip = MipConfig(search = policy,
+      control = MipControl(onNodeProgress = (number, _) => if (number >= 2) throw new IllegalStateException("callback failure"))))))
+    import scala.collection.JavaConverters._
+    assert(!Thread.getAllStackTraces.keySet().asScala.exists(t => t.isAlive && t.getName.startsWith("spark-lp-mip-")))
+    assert(sc.getPersistentRDDs.keySet.subsetOf(before))
+  }
+
+  test("combined search preserves shifted integer minimization and SOS semantics") {
+    implicit val ss: SparkSession = spark
+    val policy = MipSearchConfig(cuts = MipCutsConfig(enabled = true, maxRounds = 1, maxCuts = 8),
+      strongBranching = StrongBranchingConfig(enabled = true, maxCandidates = 2, maxIterations = 8, maxProbes = 8),
+      parallelNodes = 2)
+    val integers = LpProblem("shifted minimization", Minimize)
+    val x = integers.variable("x", lowerBound = -1.0, upperBound = Some(2.0), category = Integer)
+    val y = integers.variable("y", lowerBound = -1.0, upperBound = Some(2.0), category = Integer)
+    integers += 3.0 * x + 4.0 * y + 7.0
+    integers += (2.0 * x + 3.0 * y >= 2.0)
+    val expected = (for (a <- -1 to 2; b <- -1 to 2 if 2 * a + 3 * b >= 2) yield 3 * a + 4 * b + 7).min
+    val result = integers.solve(SolveConfig(mip = MipConfig(search = policy)))
+    try {
+      assert(result.status == LpStatus.Optimal && math.abs(result.objectiveValue - expected) < 1e-6)
+      val check = integers.validateCandidate(integers.candidateValues(Seq(x -> result.value(x), y -> result.value(y))),
+        CandidateValidationConfig(tolerance = 1e-6))
+      try assert(check.feasible) finally check.close()
+      assert(result.mip.get.bestBound.exists(_ <= expected + 1e-6))
+    } finally result.close()
+
+    val sos = LpProblem("parallel SOS", Maximize)
+    val members = Vector.tabulate(3)(i => sos.variable(s"s$i", upperBound = Some(1.0)))
+    sos += lpDot(Vector(1.0, 2.0, 3.0), members)
+    sos.addSos1("selection", members.zip(Vector(1.0, 2.0, 3.0)))
+    val selected = sos.solve(SolveConfig(mip = MipConfig(search = policy)))
+    try {
+      assert(selected.status == LpStatus.Optimal && math.abs(selected.objectiveValue - 3.0) < 1e-6)
+      val check = sos.validateCandidate(sos.candidateValues(members.map(v => v -> selected.value(v))),
+        CandidateValidationConfig(tolerance = 1e-6))
+      try assert(check.feasible) finally check.close()
+    } finally selected.close()
+  }
+
+
+  test("parallel deadlines before and during root initialization preserve candidate availability") {
+    implicit val ss: SparkSession = spark
+    import scala.concurrent.duration._
+    for (inside <- Vector(false, true)) {
+      val (model, _, _) = knapsack()
+      var clock = 0L
+      val policy = MipSearchConfig(parallelNodes = 2, cuts = MipCutsConfig(enabled = true),
+        strongBranching = StrongBranchingConfig(enabled = true))
+      val control = MipControl(timeLimit = Some(1.second), nanoTime = () => clock,
+        onProgress = _ => if (!inside) clock = 2000000000L,
+        onNodeProgress = (_, _) => if (inside) clock = 2000000000L)
+      val result = model.solve(SolveConfig(mip = MipConfig(search = policy, control = control)))
+      try {
+        assert(result.status == LpStatus.Stopped && result.stopReason.contains(com.github.vbmacher.spark_lp.StopReason.TimeLimit))
+        assert(!result.candidate.available && result.mip.get.incumbent.isEmpty)
+      } finally result.close()
+    }
+    import scala.collection.JavaConverters._
+    assert(!Thread.getAllStackTraces.keySet().asScala.exists(t => t.isAlive && t.getName.startsWith("spark-lp-mip-")))
+  }
+
+}

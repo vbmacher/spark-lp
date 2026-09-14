@@ -32,7 +32,7 @@ final class LpSolution private[dsl](
   /**
     * Per-constraint diagnostics: `name`, `group` (when present), `activity`, `sense`, `rhs`,
     * `slack` (the distance to the bound in the constraint's own direction: `rhs - activity` for
-    * `<=`, `activity - rhs` for `>=`), `dual` (reserved, always NULL) and `note` (presolve notes).
+    * `<=`, `activity - rhs` for `>=`), `dual` (objective sensitivity to original RHS), `dual_note` (unavailability reason) and `note` (presolve notes).
     * At [[LpStatus.IterationLimit]] and the infeasibility-related statuses the iterate need not be
     * primal-feasible, so slack may be materially negative and equality rows may be violated;
     * `residuals.primal` quantifies this, and at [[LpStatus.Infeasible]] the negative slacks locate
@@ -46,7 +46,8 @@ final class LpSolution private[dsl](
   val evidence: Option[LpEvidence] = None,
   /** Status and candidate feasibility apply to the continuous relaxation when true. */
   val isRelaxation: Boolean = false,
-  val mip: Option[MipSummary] = None) extends AutoCloseable {
+  val mip: Option[MipSummary] = None,
+  private[dsl] val reducedCostData: Option[RDD[((Int, String), Double)]] = None) extends AutoCloseable {
 
   private var closed = false
 
@@ -60,8 +61,11 @@ final class LpSolution private[dsl](
     new LpRoundedValues(this, rounding)
   }
 
-  private[dsl] def requireCandidate(): Unit = {
+  private[dsl] def requireOpen(): Unit =
     if (closed) throw new LpModelException("Solution is closed")
+
+  private[dsl] def requireCandidate(): Unit = {
+    requireOpen()
     if (!candidate.available) throw new LpModelException("No completed iterate is available for this solve")
   }
 
@@ -79,11 +83,37 @@ final class LpSolution private[dsl](
     value
   }
 
+  /** Original-coordinate reduced cost, or None when LP sensitivity is unavailable for this variable. */
+  def reducedCost(variable: LpVariable): Option[Double] = {
+    requireOpen()
+    requireOwner(variable.handle)
+    val id = (variable.handle.setIndex, variable.selectedKey.getOrElse(""))
+    reducedCostData.flatMap(_.filter(_._1 == id).values.take(1).headOption)
+  }
+
+  /** Domain rows plus nullable lp_reduced_cost; absent sensitivity is never encoded as zero. */
+  def reducedCosts[K](variables: LpVariableSet[K]): DataFrame = {
+    requireOpen()
+    requireOwner(variables.handle)
+    val h = variables.handle
+    val si = h.setIndex
+    val sc = h.problem.spark.sparkContext
+    val costs = reducedCostData.getOrElse(sc.emptyRDD[((Int, String), Double)])
+      .filter(_._1._1 == si).map { case ((_, key), value) => key -> value }
+    val values = h.domain.keyPairs().mapValues(_ => ()).leftOuterJoin(costs)
+      .mapValues { case (_, value) => value.getOrElse(Double.NaN) }
+    import org.apache.spark.sql.functions.{col, isnan, lit, when}
+    h.domain.attachValues(values, h.name).withColumnRenamed("lp_value", "lp_reduced_cost")
+      .withColumn("lp_reduced_cost", when(isnan(col("lp_reduced_cost")), lit(null).cast("double"))
+        .otherwise(col("lp_reduced_cost")))
+  }
+
   /** Releases the materialised result. Finish all Spark actions on values before closing. */
   override def close(): Unit = {
     closed = true
     userValues.unpersist(blocking = false)
     evidence.foreach(_.close())
+    reducedCostData.foreach(_.unpersist(false))
   }
 
   /** The original variable domain plus `lp_variable` (display name) and `lp_value` columns. */

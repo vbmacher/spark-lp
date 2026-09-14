@@ -428,3 +428,72 @@ Foreign-model terms, missing/non-finite values, unavailable candidates and close
 an explicit error. An available stopped or infeasible iterate can be evaluated for diagnostics;
 the result of an expression is not a feasibility or optimality claim. Complete evaluation before
 closing the solution. Variables declared after the solve have no values in the retained assignment.
+
+
+=== Original model inspection
+
+`val view = model.inspect` captures read-only declarations, objective/sense and constants without a
+Spark action. Later declaration/objective edits do not alter this view. Lazy input data is not copied:
+keep sources stable through expanded inspection, or materialize inputs for a durable snapshot.
+`variableDeclarations` and `constraintDeclarations` are local declaration metadata, including IDs,
+names, categories, domain kinds, bounds and row senses.
+
+`view.variables`, `view.constraints`, `view.coefficients` and `view.objectiveCoefficients` expose
+original expanded data as RDDs. `diagonalCoefficients` and `quadraticFactors` preserve quadratic
+objectives separately. IDs pair a declaration index with a canonical encoded key; scalar keys are
+empty. Declaration order is deterministic; distributed row ordering is unspecified. Repeated
+coefficients aggregate and exact zero coefficients disappear while empty original rows remain.
+Expanded coefficient/constraint methods perform source validation actions and never collect a whole
+matrix or family. These uncached RDDs own no solver resources; callers own any persistence they add.
+
+`view.statistics()` performs exact Spark counts, separating declaration counts from expanded variables,
+rows, constraint nonzeros and objective nonzeros. These are original-model sizes: fixed variables,
+redundant rows and contradictory rows remain visible, and solver slacks, shifts, splits and factor
+auxiliaries are excluded. Inspection does not optimize or mutate the model.
+
+
+=== Independent candidate validation
+
+`model.validateCandidate(model.candidateValues(Seq(x -> 2.0, family("a") -> 1.0)))` checks a complete
+independent assignment. Distributed callers supply `RDD[LpCandidateValue]` using original model-local
+IDs from inspection. Missing, duplicate, foreign and non-finite values produce an infeasible report
+with no objective. Local handle conversion rejects foreign models before creating the RDD. Partial
+assignments are not completed automatically.
+
+`report.violations` contains distributed per-variable bound/integrality and per-constraint violations.
+Absolute row/bound tolerance defaults to `1e-8`; integrality tolerance defaults to `1e-6`. Feasibility
+requires every applicable check to pass. `maxViolation` is the maximum raw absolute violation (infinity
+for malformed assignments); use each record's `accepted` flag for its corresponding tolerance.
+`CandidateValidationConfig(relaxIntegrality = true)` skips only integrality checks: declared bounds,
+binary `[0,1]` bounds and original constraints still apply. This validation mode does not tighten
+integer bounds to their enclosed integer endpoints.
+
+The independently computed objective includes sense, constants, diagonal curvature and squared
+factors, including for infeasible but well-formed assignments. Numeric overflow makes it unavailable.
+Validation performs Spark actions, keeps inputs distributed and never runs optimization or claims
+optimality. Keep lazy sources stable during these actions. Close the report after reading violations;
+only report-owned caches are released, preserving caller-owned candidate/input caches.
+
+
+=== Portable model and component data
+
+`LpPortableModel.fromView(model.inspect)` provides schema-versioned public data for variable
+metadata, original rows, sparse coefficients, affine objective, curvature and squared factors.
+`LpPortableModel.variable(x)`, `.expression(expr)` and `.constraint(pending)` convert individual
+components. IDs are model-local and repeated coefficients add. Coefficient collections remain RDDs;
+conversion evaluates source validation actions without collecting domains or matrices. Schema `1`
+is explicit; unsupported schema versions are rejected rather than guessed.
+
+`val imported = data.toProblem(maxLocalRows = 10000)` binds a new model to the supplied Spark session.
+Variable IDs and canonical/composite keys are preserved. Grouped rows become named scalar row
+expressions; `imported.constraintIds` maps portable row IDs to their reconstructed identities.
+`imported.variable(id)`, `.expression(data)` and `.constraint(data)` bind components to this model.
+Import explicitly collects bounded row metadata, never variable domains or coefficients. Imported
+variable domains expose canonical `lp_key` values, names and results; original application columns
+and executable coefficient source plans are not serialized. Source and imported models are independent.
+
+Duplicate identities/names, missing references, non-finite coefficients and invalid schema/bounds are
+rejected. `LpSolutionData` represents optional result metadata and value availability separately;
+it does not establish a fresh feasibility or optimality proof. Its distributed values retain the
+source solution's lifetime unless callers materialize their own copy. Data RDDs own no implicit caches;
+callers control source consistency and persistence.

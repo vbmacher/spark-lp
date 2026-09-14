@@ -61,6 +61,27 @@ final class LpProblem private[dsl](
     category: VariableCategory = Continuous): LpVariable =
     new LpVariable(register(name, lowerBound, upperBound, category, new ScalarDomain(spark)))
 
+  /** Allocates scalar variables locally in input order; keys must be unique and non-null. */
+  def indexedVariables[K: LpKeyEncoder](
+    name: String, keys: Iterable[K], lowerBound: Double = 0.0,
+    upperBound: Option[Double] = None, category: VariableCategory = Continuous): LpLocalVariables[K] = {
+    val entries = LpLocalVariables.validated(keys)
+    val names = entries.map { case (_, encoded) => s"$name[$encoded]" }
+    require(!names.exists(n => handles.exists(_.name == n)), "Local variable name already exists")
+    new LpLocalVariables(entries.zip(names).map { case ((key, _), n) =>
+      key -> variable(n, lowerBound, upperBound, category)
+    })
+  }
+
+  /** Cartesian product in row-major order; both axes are validated even when the product is empty. */
+  def matrixVariables[R: LpKeyEncoder, C: LpKeyEncoder](
+    name: String, rows: Iterable[R], columns: Iterable[C], lowerBound: Double = 0.0,
+    upperBound: Option[Double] = None, category: VariableCategory = Continuous): LpLocalVariables[(R, C)] = {
+    val r = LpLocalVariables.validated(rows).map(_._1)
+    val c = LpLocalVariables.validated(columns).map(_._1)
+    indexedVariables(name, r.flatMap(row => c.map(column => row -> column)), lowerBound, upperBound, category)
+  }
+
   /** One decision variable per unique value of `key` in `domain`. */
   def variables(
     name: String,

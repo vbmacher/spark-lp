@@ -8,11 +8,27 @@ import org.apache.spark.sql.SparkSession
 
 import java.io.File
 
-/**
-  * This example reads a linear program in MPS format and solves it using LP.solve.
+/** Solves a continuous linear minimization problem supplied as an MPS file.
   *
-  * The example can be executed as follows:
+  * The input file defines all problem data: a cost coefficient for each variable,
+  * linear equality and inequality rows with their right-hand sides, and variable
+  * bounds. The goal is to find variable values satisfying those rows and bounds while
+  * minimizing the linear objective. There is no built-in business problem or expected
+  * objective value; both depend on the file supplied by the caller.
+  *
+  * JOptimizer's MPS parser reads the input, and its standard-form converter transforms
+  * the problem into minimizing c transpose x subject to A x = b and x >= 0. The example
+  * distributes c and the columns of A with Spark, retains b on the driver, and calls
+  * LP.solve. This is a continuous LP path; it does not perform integer optimization.
+  *
+  * Output consists of the objective value and the standard-form solution vector. That
+  * vector may contain auxiliary variables and transformed original variables; this
+  * example does not map it back to the original MPS variable names or coordinates.
+  *
+  * Supply exactly one argument, the path to an MPS file readable by the driver:
+  * {{{
   * sbt 'examplesSpark_3_5/runMain com.github.vbmacher.spark_lp.examples.ExampleMPS /absolute/path/problem.mps'
+  * }}}
   */
 object ExampleMPS extends App {
 

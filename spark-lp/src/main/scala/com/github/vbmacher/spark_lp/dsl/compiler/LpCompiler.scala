@@ -33,6 +33,9 @@ private[dsl] final class LpCompiler(problem: LpProblem, config: SolveConfig) ext
   private implicit val spark: SparkSession = problem.spark
   private val sc = spark.sparkContext
   private val caches = new CachedRDDs
+  private var propagationPasses = 0
+  private var boundReductions = Vector.empty[LpBoundReduction]
+  private var substitutions = Map.empty[Int, LpSubstitution]
   private var separableInteger = false
   private var inferredBounds = Map.empty[Int, Map[String, LpBounds]]
 
@@ -41,7 +44,8 @@ private[dsl] final class LpCompiler(problem: LpProblem, config: SolveConfig) ext
       h.category == Integer && (h.metadata.bounds +: h.metadata.members.values.toVector)
         .exists(b => b.lower.isNegInfinity || b.upper.isEmpty)
     }
-    if (!needsInference || problem.constraints.isEmpty || config.relaxIntegrality) None
+    val full = config.presolve.enabled && config.presolve.effort == PresolveEffort.Full
+    if ((!needsInference && !full) || !config.presolve.enabled || problem.constraints.isEmpty || config.relaxIntegrality) None
     else {
       problem.handles.foreach { h =>
         LpVariableEditing.validate(h.metadata.bounds, h.category)
@@ -49,13 +53,19 @@ private[dsl] final class LpCompiler(problem: LpProblem, config: SolveConfig) ext
       }
       val propagation = LpBoundPropagation.run(problem.inspect, config.boundInference)
       try {
+        propagationPasses = propagation.passes
         if (propagation.contradiction.isEmpty) {
-          separableInteger = problem.quadratic.isEmpty && problem.inspect.coefficients.map(c => c.row -> 1L)
+          separableInteger = needsInference && problem.quadratic.isEmpty && problem.inspect.coefficients.map(c => c.row -> 1L)
             .reduceByKey(_ + _).filter(_._2 > 1L).take(1).isEmpty
-          val selected = if (separableInteger) propagation.variables else propagation.variables.filter(_.category == Integer)
+          val selected = if (separableInteger || full) propagation.variables else propagation.variables.filter(_.category == Integer)
           val inferred = selected.take(config.boundInference.maxLocalChanges + 1)
           if (inferred.length > config.boundInference.maxLocalChanges)
             fail(s"Integer bound inference exceeds maxLocalChanges=${config.boundInference.maxLocalChanges}")
+          boundReductions = inferred.toVector.flatMap { v =>
+            val original = problem.handles(v.id.family).metadata.at(v.id.key)
+            val implied = LpBounds(v.lower, v.upper)
+            if (original == implied) None else Some(LpBoundReduction(v.id, original, implied))
+          }
           inferredBounds = inferred.groupBy(_.id.family).map { case (family, variables) =>
             family -> variables.map(v => v.id.key -> LpBounds(v.lower, v.upper)).toMap
           }
@@ -77,10 +87,13 @@ private[dsl] final class LpCompiler(problem: LpProblem, config: SolveConfig) ext
       StructField("dual_note", StringType)))
     val rows = problem.inspect.constraints.map(r => Row(r.name, if (r.group.isEmpty) null else r.group.mkString(","),
       Double.NaN, r.sense, r.rhs, Double.NaN, null, detail, "No optimal continuous LP dual available"))
+    val statistics = problem.inspect.statistics()
     new LpSolution(LpStatus.Infeasible, Double.NaN, 0, LpResiduals(Double.NaN, Double.NaN, Double.NaN),
       spark.createDataFrame(rows, schema), problem, sc.emptyRDD, CandidateInfo.Unavailable,
       isRelaxation = config.relaxIntegrality,
-      mip = Some(MipSummary(None, None, None, None, 0, 0, "PresolveInfeasible")))
+      mip = if (problem.handles.exists(_.category != Continuous)) Some(MipSummary(None, None, None, None, 0, 0, "PresolveInfeasible")) else None,
+      presolve = Some(LpPresolveSummary(config.presolve.enabled, config.presolve.effort, propagationPasses,
+        statistics.variables, statistics.constraints.toInt, 0, 0, 0, 0, 0, boundReductions, Vector.empty)))
   }
 
   override def close(): Unit = caches.close()
@@ -103,12 +116,13 @@ private[dsl] final class LpCompiler(problem: LpProblem, config: SolveConfig) ext
       fail("stopAfterIteration and SolveControl are supported only for continuous models")
     if (compiled.direct.nonEmpty) {
       val direct = compiled.direct.get
-      val violation = originalValuesViolation(compiled, direct.values)
+      val restored = restoreSubstitutions(compiled, direct.values)
+      val violation = originalValuesViolation(compiled, restored)
       buildSolution(compiled, sc.emptyRDD,
         if (direct.unbounded) LpStatus.Unbounded else LpStatus.Optimal,
         direct.objectiveValue, 0,
         if (direct.unbounded) LpResiduals(0.0, Double.NaN, Double.NaN) else LpResiduals(0.0, 0.0, 0.0),
-        Map.empty, Some(CandidateInfo(true, violation <= config.control.feasibilityTolerance, Some(0))), originalValues = Some(direct.values),
+        Map.empty, Some(CandidateInfo(true, violation <= config.control.feasibilityTolerance, Some(0))), originalValues = Some(restored),
         mip = analyticalMip(if (direct.unbounded) LpStatus.Unbounded else LpStatus.Optimal, direct.objectiveValue))
     } else if (compiled.numCols == 0) {
       val feasible = compiled.rowSpecs.forall { row =>
@@ -216,7 +230,7 @@ private[dsl] final class LpCompiler(problem: LpProblem, config: SolveConfig) ext
       plan.offset = colCursor
       colCursor += plan.columns
     }
-    val numUserCols = colCursor
+    var numUserCols = colCursor
 
     // --- expanded constraint rows and their symbolic terms
     val rowSpecs = mutable.ArrayBuffer.empty[RowSpec]
@@ -294,6 +308,32 @@ private[dsl] final class LpCompiler(problem: LpProblem, config: SolveConfig) ext
     val freeSets = plans.filter(_.kind == SplitKind).map(_.handle.setIndex).toSet
     if (curvature.filter(x => freeSets(x._1._1)).take(1).nonEmpty)
       fail("Curved free variables are unsupported by separable QP; supply a finite lower bound")
+    if (config.presolve.enabled && config.presolve.effort == PresolveEffort.Full &&
+      problem.quadratic.isEmpty && config.presolve.maxSubstitutions > 0) {
+      val free = plans.filter(p => p.handle.category == Continuous && !p.kind.isInstanceOf[FixedKind])
+        .map(p => p.handle.setIndex -> p.handle.metadata).toMap
+      val equalities = rowSpecs.filter(r => r.sense == LpSense.Eq && !r.internalBound).map(_.rowId).toSet
+      val singleton = userTermsAgg.map { case ((si, key, row), value) => ((si, key), (1L, row, value)) }
+        .reduceByKey { case ((n, row, value), (m, _, _)) => (n + m, row, value) }
+        .filter { case ((si, key), (count, row, _)) =>
+          free.get(si).exists(m => m.at(key).lower.isNegInfinity && m.at(key).upper.isEmpty) && count == 1 && equalities(row)
+        }
+        .leftOuterJoin(linearTerms).filter(_._2._2.forall(_ == 0.0))
+        .map { case ((si, key), ((_, row, coefficient), _)) => row -> (si, key, coefficient) }
+        .reduceByKey { (a, b) => if (a._1 < b._1 || a._1 == b._1 && a._2 < b._2) a else b }
+        .sortByKey().take(config.presolve.maxSubstitutions)
+      substitutions = singleton.map { case (row, (si, key, a)) =>
+        row -> LpSubstitution(LpVariableId(si, key), rowSpecs(row).name, a, rowSpecs(row).rhsUser)
+      }.toMap
+      substitutions.foreach { case (row, substitution) =>
+        plans(substitution.variable.family).excluded += substitution.variable.key
+        rowSpecs(row).emitted = false
+        rowSpecs(row).note = Some("presolved: free zero-cost singleton column substitution")
+      }
+      colCursor = 0L
+      plans.foreach { p => p.offset = colCursor; colCursor += p.columns }
+      numUserCols = colCursor
+    }
     val shifts = plans.map { p => p.kind match {
       case FixedKind(v) => p.handle.setIndex -> v
       case ShiftedKind(v, _) => p.handle.setIndex -> v
@@ -354,12 +394,15 @@ private[dsl] final class LpCompiler(problem: LpProblem, config: SolveConfig) ext
     if (notFinite(objConstant)) fail("Non-finite objective after bound shifts")
 
     val fixedSetIdx = sc.broadcast(fixedVals.keySet)
-    val solverTerms = caches.cache(userTermsAgg.filter { case ((si, _, _), _) => !fixedSetIdx.value.contains(si) })
+    val substitutedRows = substitutions.keySet
+    val solverTerms = caches.cache(userTermsAgg.filter { case ((si, _, row), _) =>
+      !fixedSetIdx.value.contains(si) && !substitutedRows(row)
+    })
 
     // --- zero-term rows: trivially satisfied rows are presolved away, infeasible ones rejected
     val liveRows = solverTerms.map(_._1._3).distinct().collect().toSet
     rowSpecs.foreach { rs =>
-      if (!liveRows.contains(rs.rowId)) {
+      if (rs.emitted && !liveRows.contains(rs.rowId)) {
         val feasible = rs.sense.violation(-rs.b0) <= PresolveTolerance
         if (!feasible) {
           fail(s"Constraint '${rs.name}' has no remaining terms but requires 0 ${rs.sense.symbol} ${rs.b0} " +
@@ -371,7 +414,7 @@ private[dsl] final class LpCompiler(problem: LpProblem, config: SolveConfig) ext
     }
 
     // --- duplicate equality rows: consistent duplicates merge, conflicting ones fail
-    detectDuplicateRows(rowSpecs, solverTerms)
+    if (config.presolve.enabled) detectDuplicateRows(rowSpecs, solverTerms)
 
     // With no active rows, the linear objective separates over validated domains.
     if (!hasCurvature && (rowSpecs.forall(!_.emitted) || separableInteger)) {
@@ -386,7 +429,7 @@ private[dsl] final class LpCompiler(problem: LpProblem, config: SolveConfig) ext
         }
         val metadata = p.metadata
         val useInferred = separableInteger
-        p.keys.map { case (key, _) =>
+        p.activeKeys.map { case (key, _) =>
           if (useInferred) {
             val bounds = metadata.at(key)
             ((si, key), (if (bounds.lower.isNegInfinity) None else Some(bounds.lower), bounds.upper))
@@ -411,7 +454,7 @@ private[dsl] final class LpCompiler(problem: LpProblem, config: SolveConfig) ext
       return new Compiled(sc.emptyRDD, sc.emptyRDD, new DenseVector(Array.emptyDoubleArray),
         0, 0L, sc.emptyRDD, rowSpecs.toIndexedSeq, plans, objConstant, sign, userTermsAgg,
         IndexedSeq.empty, originalCosts = Some(linearTerms), originalCurvature = Some(curvature),
-        direct = Some(DirectResult(choices.mapValues(_._1), directObjective, unbounded)))
+        direct = Some(DirectResult(choices.mapValues(_._1), directObjective, unbounded)), substitutions = substitutions)
     }
 
     var rowCursor = 0
@@ -429,10 +472,10 @@ private[dsl] final class LpCompiler(problem: LpProblem, config: SolveConfig) ext
       p.kind match {
         case ShiftedKind(shift, Some(upper)) =>
           validateRhs(upper - shift, s"upper bound of variable '${p.handle.name}' after bound shift")
-          checkRowBudget(rowCursor + p.count,
-            s"upper bound rows of variable set '${p.handle.name}' (+${p.count} rows)")
+          checkRowBudget(rowCursor + p.activeCount,
+            s"upper bound rows of variable set '${p.handle.name}' (+${p.activeCount} rows)")
           boundBlocks += BoundBlock(p, rowCursor, upper - shift)
-          rowCursor += p.count.toInt
+          rowCursor += p.activeCount.toInt
         case _ => ()
       }
     }
@@ -440,7 +483,7 @@ private[dsl] final class LpCompiler(problem: LpProblem, config: SolveConfig) ext
     if (numUserCols == 0 && plans.exists(_.count > 0)) {
       return new Compiled(sc.emptyRDD, sc.emptyRDD, new DenseVector(Array.emptyDoubleArray),
         0, 0L, sc.emptyRDD, rowSpecs.toIndexedSeq, plans, objConstant,
-        if (problem.sense == Maximize) -1.0 else 1.0, userTermsAgg, IndexedSeq.empty)
+        if (problem.sense == Maximize) -1.0 else 1.0, userTermsAgg, IndexedSeq.empty, substitutions = substitutions)
     }
     if (numRows == 0) {
       fail(s"Problem '${problem.name}' compiled to an empty model: all constraint rows were presolved away")
@@ -451,7 +494,7 @@ private[dsl] final class LpCompiler(problem: LpProblem, config: SolveConfig) ext
     rowSpecs.foreach { rs => if (rs.emitted) bArray(rs.finalIdx) = rs.b0 }
     boundBlocks.foreach { bb =>
       var i = 0
-      while (i < bb.plan.count) {
+      while (i < bb.plan.activeCount) {
         bArray(bb.rowBase + i) = bb.rhs
         i += 1
       }
@@ -469,7 +512,7 @@ private[dsl] final class LpCompiler(problem: LpProblem, config: SolveConfig) ext
     }
     boundBlocks.foreach { bb =>
       var i = 0
-      while (i < bb.plan.count) {
+      while (i < bb.plan.activeCount) {
         slacks += ((slackCursor, (bb.rowBase + i, 1.0)))
         slackCursor += 1
         i += 1
@@ -655,6 +698,7 @@ private[dsl] final class LpCompiler(problem: LpProblem, config: SolveConfig) ext
       senseMult = senseMult,
       userTermsAgg = userTermsAgg,
       intCols = intCols,
+      substitutions = substitutions,
       quadratic = qVector,
       originalCosts = Some(linearTerms),
       originalCurvature = Some(curvature))
@@ -1098,7 +1142,7 @@ private[dsl] final class LpCompiler(problem: LpProblem, config: SolveConfig) ext
       case LpStatus.Unbounded => compiled.senseMult * Double.NegativeInfinity
       case _ => compiled.senseMult * summary.objectiveValue + compiled.objConstant
     }
-    val prices = if (status == LpStatus.Optimal && problem.quadratic.isEmpty)
+    val prices = if (status == LpStatus.Optimal && problem.quadratic.isEmpty && boundReductions.isEmpty)
       multipliers.map(lambda => compiled.rowSpecs.filter(r => r.emitted && !r.dualNonUnique)
         .map(r => r.rowId -> (compiled.senseMult * lambda(r.finalIdx))).toMap)
       else None
@@ -1109,7 +1153,7 @@ private[dsl] final class LpCompiler(problem: LpProblem, config: SolveConfig) ext
 
   private def buildEvidence(compiled: Compiled, summary: LP.SolveSummary,
     status: LpStatus): Option[LpEvidence] = {
-    if (compiled.rowSpecs.exists(_.internalBound)) return None
+    if (compiled.rowSpecs.exists(_.internalBound) || compiled.substitutions.nonEmpty || boundReductions.nonEmpty) return None
     if (summary.primalCertificate.isEmpty && summary.dualCertificate.isEmpty) return None
     def snapshot[A: scala.reflect.ClassTag](rdd: RDD[A]): RDD[A] = {
       val saved = caches.checkpoint(rdd)
@@ -1206,7 +1250,38 @@ private[dsl] final class LpCompiler(problem: LpProblem, config: SolveConfig) ext
         case _ => None
       }
     }
-    if (fixedRdds.isEmpty) varValues else sc.union(varValues +: fixedRdds)
+    restoreSubstitutions(compiled, if (fixedRdds.isEmpty) varValues else sc.union(varValues +: fixedRdds), direction)
+  }
+
+  private def restoreSubstitutions(compiled: Compiled, values: RDD[((Int, String), Double)],
+    direction: Boolean = false): RDD[((Int, String), Double)] = {
+    if (compiled.substitutions.isEmpty) values
+    else {
+      val substitutions = compiled.substitutions
+      val activities = compiled.userTermsAgg.filter { case ((si, key, row), _) =>
+        substitutions.get(row).exists(s => s.variable != LpVariableId(si, key))
+      }.map { case ((si, key, row), a) => ((si, key), (row, a)) }.join(values)
+        .map { case (_, ((row, a), value)) => row -> (a * value) }.reduceByKey(_ + _)
+      val restored = sc.parallelize(substitutions.toVector).leftOuterJoin(activities).map {
+        case (_, (substitution, activity)) =>
+          val value = ((if (direction) 0.0 else substitution.rhs) - activity.getOrElse(0.0)) / substitution.coefficient
+          ((substitution.variable.family, substitution.variable.key), value)
+      }
+      values.union(restored)
+    }
+  }
+
+  private def presolveSummary(compiled: Compiled): LpPresolveSummary = {
+    val plans = compiled.plans.take(problem.handles.size)
+    val fixed = plans.filter(_.kind.isInstanceOf[FixedKind]).map(_.count).sum
+    val variables = plans.map(_.count).sum
+    val factorRows = problem.quadratic.toSeq.flatMap(_.factors).count(_._2 != 0.0)
+    val rows = compiled.rowSpecs.filterNot(_.internalBound).dropRight(factorRows)
+    val solved = compiled.direct.nonEmpty || compiled.numCols == 0
+    LpPresolveSummary(config.presolve.enabled, config.presolve.effort, propagationPasses,
+      variables, rows.size, if (solved) 0L else variables - fixed - compiled.substitutions.size,
+      if (solved) 0 else rows.count(_.emitted), compiled.numCols, compiled.numRows, fixed,
+      boundReductions, compiled.substitutions.toVector.sortBy(_._1).map(_._2))
   }
 
   /** Check original units, including presolved/merged rows, bound shifts and free splits.
@@ -1353,7 +1428,8 @@ private[dsl] final class LpCompiler(problem: LpProblem, config: SolveConfig) ext
       StructField("dual", DoubleType, nullable = true),
       StructField("note", StringType, nullable = true),
       StructField("dual_note", StringType, nullable = true)))
-    val rows = compiled.rowSpecs.filterNot(_.internalBound).map { rs =>
+    val factorRows = problem.quadratic.toSeq.flatMap(_.factors).count(_._2 != 0.0)
+    val rows = compiled.rowSpecs.filterNot(_.internalBound).dropRight(factorRows).map { rs =>
       val act = if (available) activity.getOrElse(rs.rowId, 0.0) else Double.NaN
       val slack = rs.sense match {
         case LpSense.Ge => act - rs.rhsUser
@@ -1403,7 +1479,8 @@ private[dsl] final class LpCompiler(problem: LpProblem, config: SolveConfig) ext
       evidence = evidence,
       isRelaxation = config.relaxIntegrality,
       mip = mip,
-      reducedCostData = reducedCosts)
+      reducedCostData = reducedCosts,
+      presolve = Some(presolveSummary(compiled)))
   }
 }
 

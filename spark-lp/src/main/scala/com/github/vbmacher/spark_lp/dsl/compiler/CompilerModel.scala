@@ -1,6 +1,6 @@
 package com.github.vbmacher.spark_lp.dsl.compiler
 
-import com.github.vbmacher.spark_lp.dsl.{LpSense, VarSetHandle, VariableMetadata}
+import com.github.vbmacher.spark_lp.dsl.{LpSense, LpSubstitution, VarSetHandle, VariableMetadata}
 import com.github.vbmacher.spark_lp.vectors.{DMatrix, DVector}
 import org.apache.spark.Partitioner
 import org.apache.spark.mllib.linalg.{DenseVector, Vector => MLVector}
@@ -89,17 +89,23 @@ private[dsl] final class SetPlan(
   val metadata: VariableMetadata) {
 
   var offset: Long = 0L
+  var excluded: Set[String] = Set.empty
+  def activeCount: Long = count - excluded.size
+  def activeKeys: RDD[(String, Seq[String])] = {
+    val removed = excluded
+    keys.filter(k => !removed(k._1))
+  }
 
   def columns: Long = kind match {
     case FixedKind(_) => 0L
-    case SplitKind => 2 * count
-    case ShiftedKind(_, _) => count
-    case ReflectedKind(_) => count
+    case SplitKind => 2 * activeCount
+    case ShiftedKind(_, _) => activeCount
+    case ReflectedKind(_) => activeCount
   }
 
   /** Keys sorted by encoded form; ordering never depends on partition order. */
   lazy val sortedKeys: RDD[(String, (Long, Seq[String]))] =
-    keys.sortBy(_._1).zipWithIndex().map { case ((enc, disp), i) => (enc, (i, disp)) }
+    activeKeys.sortBy(_._1).zipWithIndex().map { case ((enc, disp), i) => (enc, (i, disp)) }
 }
 
 /** Everything the solver call and the solution reconstruction need. */
@@ -119,7 +125,8 @@ private[dsl] final class Compiled(
   val quadratic: Option[DVector] = None,
   val originalCosts: Option[RDD[((Int, String), Double)]] = None,
   val originalCurvature: Option[RDD[((Int, String), Double)]] = None,
-  val direct: Option[DirectResult] = None)
+  val direct: Option[DirectResult] = None,
+  val substitutions: Map[Int, LpSubstitution] = Map.empty)
 
 /** Analytic result for a separable linear objective with no active user rows. */
 private[dsl] final case class DirectResult(

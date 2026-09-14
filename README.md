@@ -9,7 +9,7 @@ a predictor-corrector interior-point solver, and branch-and-bound for integer va
 
 - [Usage and installation](docs/usage.adoc)
 - [Runnable examples](examples/README.md)
-- [Algorithm, Mermaid diagrams, and scaling limits](docs/algorithm.adoc)
+- [Algorithm and scaling limits](docs/algorithm.adoc)
 - [Benchmarks](benchmarks/README.md)
 
 Build with JDK 11: `sbt +test`. For Spark 3.5 only:

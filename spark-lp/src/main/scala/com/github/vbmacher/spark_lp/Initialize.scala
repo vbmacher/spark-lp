@@ -29,7 +29,7 @@ object Initialize extends LazyLogging {
     * @return starting points (x, lambda, s) and the computed dimensions of rows DMatrix (n, m).
     */
   def init(c: DVector, A: DMatrix, b: DenseVector): Initialization =
-    init(c, A, b, newton.CholeskyFactory)
+    init(c, A, b, new newton.CholeskyFactory())
 
   /**
     * Compute the heuristic starting points with the supplied normal-equations solver:

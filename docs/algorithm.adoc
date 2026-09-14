@@ -95,11 +95,10 @@ A numerical failure retries those tests on the last completed iterate before rai
 |`Auto` |Cholesky through 10000 equality-form rows (or a lower `maxLocalConstraints` cap); CG above it. |Follows the selected strategy.
 |===
 
-The shared core/DSL cutoff is 10000 rows to avoid long CG sequences and repeated
-preconditioner escalation on medium-sized allocation models; see
-link:../benchmarks/allocation.md[the allocation investigation]. This is a workload-driven
-policy, not a universal measured crossover. The earlier
-link:../benchmarks/README.md[local synthetic benchmarks] favored CG at smaller sizes.
+The shared core/DSL cutoff of 10000 rows is an unmeasured heuristic intended to
+limit long CG sequences and repeated preconditioner escalation on medium-sized models.
+The link:../benchmarks/src/results/TODO.md[pending benchmark campaign] will evaluate
+the tradeoff; no measured crossover is currently established in the results report.
 `maxLocalConstraints` remains a separate resource cap (default 10000): lowering it can
 switch Auto earlier; raising it does not raise the cutoff. To use Cholesky
 above 10000 rows, select it explicitly and allow enough rows with that resource cap.
@@ -150,7 +149,7 @@ routine. Any nonzero coupling prevents a split; no entries are dropped by tolera
 Blocks are detected anew for each weighted system. The packed accumulator is allocated
 within executor tasks to avoid shipping an `O(m^2)` zero value in the task closure;
 the dense aggregation and its memory requirements remain. See
-link:../benchmarks/allocation.md[the allocation workload measurements] for the performance
+link:../benchmarks/src/results/REPORT.md[the allocation workload measurements] for the performance
 impact and the limits of the synthetic Auto crossover on this workload.
 
 The driver-local `org.apache.spark.wrappers.ConjugateGradient` wrapper owns the PCG
@@ -161,7 +160,7 @@ and partial-Cholesky preconditioner, and retains rank escalation, monitoring, an
 bounded-inexact acceptance policy. Retrying the wrapper with a stronger preconditioner
 preserves the current solution and cumulative iteration counts without forming a Gramian.
 
-`MatrixFreeConfig` supplies constant scalar diagonal entries `Rp = 1e-8` and
+`CgConfig` supplies constant scalar diagonal entries `Rp = 1e-8` and
 `Rd = 1e-8` by default. These are entries, not their square roots. They stay positive
 throughout a solve. Larger values can improve conditioning but require more outer
 iterations; very small values can lose their effect to roundoff. Scale the LP before
@@ -216,20 +215,31 @@ partial Cholesky. General quadratic programming is outside this implementation.
 
 [source,scala]
 ----
-import com.github.vbmacher.spark_lp.MatrixFreeConfig
+import com.github.vbmacher.spark_lp.newton.CgConfig
 
 val config = SolveConfig(
   newtonSolver = NewtonSolver.ConjugateGradient,
   cgTolerance = 1e-10,
   cgMaxIterations = 1000,
-  matrixFree = MatrixFreeConfig(
+  cgConfig = CgConfig(
     primalRegularization = 1e-8,
     dualRegularization = 1e-8,
     preconditionerRank = 50,
     preconditionerMemoryBytes = 128L * 1024 * 1024))
 ----
 
+`CgConfig` configures the matrix-free conjugate-gradient backend only. Cholesky remains
+the direct alternative, selected through `newtonSolver`; it ignores CG tuning.
+The former `MatrixFreeConfig` type and `matrixFree` argument are now named `CgConfig`
+and `cgConfig`. Import core solver choices and settings directly from
+`com.github.vbmacher.spark_lp.newton`. The DSL continues to expose `NewtonSolver`
+through its wildcard import.
+
 == Opt-in progress policy
+
+Both backends report the same initialization, system-setup, inner-solve and outer-iteration
+phases. See link:usage.adoc#_progress_and_cooperative_stopping_continuous_models[progress usage]
+for callbacks, metric groups, cancellation and result ownership.
 
 `SolveControl.stagnation = Some(StagnationConfig(...))` enables separate outer and inner
 progress windows. Defaults are 10 outer iterations of patience, absolute improvement `1e-10`

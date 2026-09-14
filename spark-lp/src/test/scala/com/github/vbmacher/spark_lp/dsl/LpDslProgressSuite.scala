@@ -20,7 +20,7 @@ class LpDslProgressSuite extends AnyFunSuite with DataFrameSuiteBase {
         model += (x <= 10.0).named("cap")
         val events = ArrayBuffer.empty[SolveProgress]
         val result = model.solve(SolveConfig(tolerance = 1e-30,
-          control = SolveControl(onProgress = Some(events += _), stagnation = Some(
+          control = SolveControl(onProgress = events += _, stagnation = Some(
             StagnationConfig(patience = 2, absoluteImprovement = 100.0, relativeImprovement = 0.0)))))
         try {
           assert(result.status == LpStatus.Stopped)
@@ -29,10 +29,10 @@ class LpDslProgressSuite extends AnyFunSuite with DataFrameSuiteBase {
           assert(math.abs(result.objectiveValue - (2.0 * result.value(x) + offset)) < 1e-6)
           val retained = events.find(e => e.phase == SolvePhase.OuterIteration &&
             e.iteration == result.candidate.iteration.get).get
-          assert(retained.objectiveValue.contains(result.objectiveValue))
-          assert(retained.primalResidual.contains(result.residuals.primal))
-          assert(retained.dualResidual.contains(result.residuals.dual))
-          assert(retained.dualityGap.contains(result.residuals.gap))
+          assert(retained.iterate.map(_.objectiveValue).contains(result.objectiveValue))
+          assert(retained.iterate.map(_.primalResidual).contains(result.residuals.primal))
+          assert(retained.iterate.map(_.dualResidual).contains(result.residuals.dual))
+          assert(retained.iterate.map(_.dualityGap).contains(result.residuals.gap))
           (result.iterations, result.value(x))
         } finally result.close()
       }
@@ -48,7 +48,7 @@ class LpDslProgressSuite extends AnyFunSuite with DataFrameSuiteBase {
     val x = model.variable("x")
     model += lpSum(x)
     model += (x >= 1.0).named("floor")
-    val result = model.solve(SolveConfig(control = SolveControl(shouldStop = Some(() => true))))
+    val result = model.solve(SolveConfig(control = SolveControl(shouldStop = () => true)))
     try {
       assert(result.status == LpStatus.Stopped && result.iterations == 0)
       assert(result.candidate == CandidateInfo.Unavailable)
@@ -82,8 +82,8 @@ class LpDslProgressSuite extends AnyFunSuite with DataFrameSuiteBase {
   test("new controls are rejected for integer models, including fixed integer presolve") {
     implicit val ss: SparkSession = spark
     for (fixed <- Seq(false, true); control <- Seq(
-      SolveControl(onProgress = Some(_ => ())),
-      SolveControl(shouldStop = Some(() => false)),
+      SolveControl(onProgress = _ => ()),
+      SolveControl(shouldStop = () => false),
       SolveControl(timeLimit = Some(1.second)),
       SolveControl(stagnation = Some(StagnationConfig())))) {
       val model = LpProblem("integer-control", Minimize)

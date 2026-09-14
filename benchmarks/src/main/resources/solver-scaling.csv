@@ -1,0 +1,9 @@
+id,m,n,nonzeros_per_row,family,seed,tolerance,heap_gib
+rows-100-vars-1000-width-8,100,1000,8,well,11,1e-8,4
+rows-500-vars-5000-width-8,500,5000,8,well,11,1e-8,4
+rows-1000-vars-10000-width-8,1000,10000,8,well,11,1e-8,4
+rows-5000-vars-50000-width-8,5000,50000,8,well,11,1e-8,4
+rows-10000-vars-100000-width-8,10000,100000,8,well,11,1e-8,4
+rows-1000-vars-100000-width-8,1000,100000,8,well,11,1e-8,4
+rows-1000-vars-1000000-width-8,1000,1000000,8,well,11,1e-8,4
+rows-1000-vars-10000-width-64,1000,10000,64,well,11,1e-8,4

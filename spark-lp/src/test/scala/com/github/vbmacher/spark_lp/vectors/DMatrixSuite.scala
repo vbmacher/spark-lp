@@ -4,7 +4,6 @@ import com.github.vbmacher.spark_lp.TestingUtils._
 import com.holdenkarau.spark.testing.DataFrameSuiteBase
 import dmatrix.implicits._
 import org.apache.spark.mllib.linalg.{DenseVector, Vectors}
-import org.apache.spark.wrappers.Broadcasts
 import org.scalatest.funsuite.AnyFunSuite
 
 class DMatrixSuite extends AnyFunSuite with DataFrameSuiteBase {
@@ -27,7 +26,7 @@ class DMatrixSuite extends AnyFunSuite with DataFrameSuiteBase {
       assert(ops.gramianProduct(p, Some(weights)) ~== Vectors.dense(276.0, 24.0, 432.0) absTol 1e-12)
       assert(reads.value == 2L)
       assert(p.value.values.sameElements(Array(1.0, -2.0, 3.0)))
-    } finally Broadcasts.destroyAsync(p)
+    } finally p.destroy()
   }
 
   test("fused Gramian product of empty input is zero with or without partitions") {
@@ -37,7 +36,7 @@ class DMatrixSuite extends AnyFunSuite with DataFrameSuiteBase {
         sc.parallelize(Seq.empty[org.apache.spark.mllib.linalg.Vector], 8)).foreach { rows =>
         assert(rows.gramianProduct(p).values.sameElements(Array(0.0, 0.0, 0.0)))
       }
-    } finally Broadcasts.destroyAsync(p)
+    } finally p.destroy()
   }
 
   test("packed Gramian combines dense and sparse rows with empty partitions") {

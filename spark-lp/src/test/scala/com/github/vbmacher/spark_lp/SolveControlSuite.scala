@@ -1,5 +1,7 @@
 package com.github.vbmacher.spark_lp
 
+import com.github.vbmacher.spark_lp.newton.{CgConfig, NewtonSolver}
+
 import com.holdenkarau.spark.testing.DataFrameSuiteBase
 import org.apache.spark.mllib.linalg.{DenseVector, Vectors}
 import org.apache.spark.sql.SparkSession
@@ -9,6 +11,21 @@ import scala.collection.mutable.ArrayBuffer
 import scala.concurrent.duration._
 
 class SolveControlSuite extends AnyFunSuite with DataFrameSuiteBase {
+  test("default controls are stable and monitor stamps phase and metric events") {
+    assert(SolveControl() == SolveControl(), "default callbacks must not make an integer model controlled")
+    val events = ArrayBuffer.empty[SolveProgress]
+    var now = 0L
+    val monitor = new SolveMonitor(SolveControl(onProgress = events += _), () => now)
+    monitor.phase(SolvePhase.Initialization)
+    monitor.iteration = 3
+    now = 2000000000L
+    monitor.report(SolvePhase.SystemSetup, work = Some(WorkProgress(2, Some(4))))
+    assert(events.head.iteration == 0 && events.head.iterate.isEmpty && events.head.work.isEmpty)
+    assert(events.last.iteration == 3 && events.last.elapsedSeconds == 2.0)
+    assert(events.last.work.contains(WorkProgress(2, Some(4))))
+    assert(events.last.iterate.isEmpty)
+  }
+
   test("deadline uses an injected monotonic clock; no sleeps") {
     var now = 100L
     val monitor = new SolveMonitor(SolveControl(timeLimit = Some(10.nanos)), () => now)
@@ -50,6 +67,26 @@ class SolveControlSuite extends AnyFunSuite with DataFrameSuiteBase {
     (c, at, new DenseVector(Array(1.0)))
   }
 
+  test("both backends report common setup and inner phases with coherent metric groups") {
+    implicit val ss: SparkSession = spark
+    for (solver <- Seq(NewtonSolver.Cholesky, NewtonSolver.ConjugateGradient)) {
+      val (c, at, b) = fixture()
+      val events = ArrayBuffer.empty[SolveProgress]
+      val result = LP.solveSummary(c, at, b, solver = solver,
+        control = SolveControl(onProgress = events += _))
+      try {
+        assert(result.termination == LP.Termination.Converged)
+        assert(events.exists(_.phase == SolvePhase.SystemSetup))
+        assert(events.exists(_.phase == SolvePhase.InnerSolve))
+        assert(events.filter(_.phase == SolvePhase.OuterIteration).forall(e => e.iterate.nonEmpty && e.work.isEmpty))
+        assert(events.filter(_.phase != SolvePhase.OuterIteration).forall(_.iterate.isEmpty))
+        assert(events.filter(_.work.nonEmpty).forall(e =>
+          e.phase == SolvePhase.SystemSetup || e.phase == SolvePhase.InnerSolve))
+        assert(events.map(_.elapsedSeconds).sliding(2).forall(pair => pair.head <= pair.last))
+      } finally { result.x.unpersist(); c.unpersist(); at.unpersist() }
+    }
+  }
+
   test("all intentional limits retain an earlier feasible iterate and matching metadata") {
     implicit val ss: SparkSession = spark
     val (c, at, b) = fixture()
@@ -58,14 +95,14 @@ class SolveControlSuite extends AnyFunSuite with DataFrameSuiteBase {
       control = SolveControl(feasibilityTolerance = 1e-2))
     val events = ArrayBuffer.empty[SolveProgress]
     val limited = LP.solveSummary(c, at, b, tolerance = 1e-30, maxIter = 4,
-      control = SolveControl(feasibilityTolerance = 1e-2, onProgress = Some(events += _)))
+      control = SolveControl(feasibilityTolerance = 1e-2, onProgress = events += _))
     val stopped = LP.solveSummary(c, at, b, tolerance = 1e-30,
       stopAfterIteration = Some(_ >= 4), control = SolveControl(feasibilityTolerance = 1e-2))
     var now = 0L
     val timed = LP.solveSummary(c, at, b, tolerance = 1e-30, nanoTime = () => now,
       control = SolveControl(feasibilityTolerance = 1e-2, timeLimit = Some(1.second),
-        onProgress = Some(e => if (e.phase == SolvePhase.OuterIteration && e.iteration == 4)
-          now = 1000000000L)))
+        onProgress = e => if (e.phase == SolvePhase.OuterIteration && e.iteration == 4)
+          now = 1000000000L))
     val stalled = LP.solveSummary(c, at, b, tolerance = 1e-30,
       control = SolveControl(feasibilityTolerance = 1e-2,
         stagnation = Some(StagnationConfig(patience = 3, absoluteImprovement = 100.0))))
@@ -84,7 +121,7 @@ class SolveControlSuite extends AnyFunSuite with DataFrameSuiteBase {
         assert(result.x.collect().flatMap(_.values).sameElements(first.x.collect().flatMap(_.values)))
       }
       assert(events.count(_.phase == SolvePhase.OuterIteration) == 4)
-      assert(events.filter(_.phase == SolvePhase.OuterIteration).forall(_.feasible.contains(true)))
+      assert(events.filter(_.phase == SolvePhase.OuterIteration).forall(_.iterate.exists(_.feasible)))
     } finally {
       Seq(first, limited, stopped, timed, stalled).foreach(_.x.unpersist(blocking = true))
     }
@@ -97,12 +134,12 @@ class SolveControlSuite extends AnyFunSuite with DataFrameSuiteBase {
     implicit val ss: SparkSession = spark
     val (c, at, b) = fixture()
     val baseline = sc.getPersistentRDDs.keySet
-    Seq(SolvePhase.Initialization, SolvePhase.InnerSolve, SolvePhase.Preconditioner).foreach { phase =>
+    Seq(SolvePhase.Initialization, SolvePhase.InnerSolve, SolvePhase.SystemSetup).foreach { phase =>
       var stop = false
       val result = LP.solveSummary(c, at, b, solver = NewtonSolver.ConjugateGradient,
-        matrixFree = MatrixFreeConfig(preconditionerRank = 1),
-        control = SolveControl(onProgress = Some(e => if (e.phase == phase) stop = true),
-          shouldStop = Some(() => stop)))
+        cgConfig = CgConfig(preconditionerRank = 1),
+        control = SolveControl(onProgress = e => if (e.phase == phase) stop = true,
+          shouldStop = () => stop))
       assert(result.termination == LP.Termination.Stopped)
       assert(result.candidate == CandidateInfo.Unavailable)
       assert(result.iterations == 0 && result.objectiveValue.isNaN)
@@ -119,8 +156,8 @@ class SolveControlSuite extends AnyFunSuite with DataFrameSuiteBase {
     val at = sc.parallelize(Seq(Vectors.dense(1.0, 0.0), Vectors.dense(0.0, 1.0)), 2)
     var stop = false
     val result = LP.solveSummary(c, at, new DenseVector(Array(1.0, 2.0)),
-      control = SolveControl(onProgress = Some(e => if (e.completedBlocks.contains(1)) stop = true),
-        shouldStop = Some(() => stop)))
+      control = SolveControl(onProgress = e => if (e.phase == SolvePhase.SystemSetup && e.work.exists(_.completed == 1)) stop = true,
+        shouldStop = () => stop))
     assert(stop && result.candidate == CandidateInfo.Unavailable)
     assert(result.stopReason.contains(StopReason.UserRequested))
   }
@@ -131,10 +168,10 @@ class SolveControlSuite extends AnyFunSuite with DataFrameSuiteBase {
       val (c, at, b) = fixture()
       var stop = false
       val result = LP.solveSummary(c, at, b, solver = NewtonSolver.ConjugateGradient,
-        matrixFree = MatrixFreeConfig(preconditionerRank = 1),
-        control = SolveControl(shouldStop = Some(() => stop), onProgress = Some { e =>
-          if ((duringPivot && e.phase == SolvePhase.Preconditioner && e.preconditionerRank.contains(1)) ||
-              (!duringPivot && e.innerSteps.contains(1))) stop = true
+        cgConfig = CgConfig(preconditionerRank = 1),
+        control = SolveControl(shouldStop = () => stop, onProgress = { e =>
+          if ((duringPivot && e.phase == SolvePhase.SystemSetup && e.work.flatMap(_.preconditionerRank).contains(1)) ||
+              (!duringPivot && e.phase == SolvePhase.InnerSolve && e.work.exists(_.completed == 1))) stop = true
         }))
       assert(stop && !result.candidate.available)
       assert(result.stopReason.contains(StopReason.UserRequested))
@@ -150,11 +187,11 @@ class SolveControlSuite extends AnyFunSuite with DataFrameSuiteBase {
     val events = ArrayBuffer.empty[SolveProgress]
     val result = LP.solveSummary(c, at, new DenseVector(Array(1.0, 3.0)),
       solver = NewtonSolver.ConjugateGradient,
-      control = SolveControl(onProgress = Some(events += _),
+      control = SolveControl(onProgress = events += _,
         stagnation = Some(StagnationConfig(maxInnerSteps = 1))))
     assert(result.stopReason.contains(StopReason.NoProgress))
     assert(result.candidate == CandidateInfo.Unavailable)
-    assert(events.last.trueResidual && events.last.innerSteps.contains(1))
+    assert(events.last.work.exists(_.trueResidual) && events.last.work.map(_.completed).contains(1))
   }
 
   test("true-residual probes preserve CG directions on a solve longer than 25 steps") {
@@ -168,10 +205,10 @@ class SolveControlSuite extends AnyFunSuite with DataFrameSuiteBase {
     }.cache()
     val rhs = new DenseVector(Array.tabulate(m)(i => if (i == 0) 1.0 else 0.0))
     val events = ArrayBuffer.empty[SolveProgress]
-    val config = MatrixFreeConfig(preconditionerMemoryBytes = 0)
+    val config = CgConfig(preconditionerMemoryBytes = 0)
     val baseline = new newton.CgFactory(1e-10, 100, config)
     val monitored = new newton.CgFactory(1e-10, 100, config,
-      new SolveMonitor(SolveControl(onProgress = Some(events += _), stagnation = Some(StagnationConfig()))))
+      new SolveMonitor(SolveControl(onProgress = events += _, stagnation = Some(StagnationConfig()))))
     val first = baseline.build(matrix, m, None)
     val second = monitored.build(matrix, m, None)
     try {
@@ -179,8 +216,8 @@ class SolveControlSuite extends AnyFunSuite with DataFrameSuiteBase {
       val actual = second.solve(rhs).values
       assert(actual.zip(expected).forall { case (a, b) => math.abs(a - b) < 1e-10 })
       assert(monitored.innerIterations == baseline.innerIterations)
-      assert(events.exists(e => e.trueResidual && e.innerSteps.contains(25)))
-      assert(events.last.trueResidual && events.last.innerResidual.exists(_ < 1e-10))
+      assert(events.exists(e => e.work.exists(_.trueResidual) && e.work.map(_.completed).contains(25)))
+      assert(events.last.work.exists(_.trueResidual) && events.last.work.flatMap(_.residual).exists(_ < 1e-10))
     } finally { first.release(); second.release(); matrix.unpersist() }
   }
 
@@ -190,7 +227,7 @@ class SolveControlSuite extends AnyFunSuite with DataFrameSuiteBase {
     val baseline = sc.getPersistentRDDs.keySet
     val failure = new IllegalStateException("application callback failed")
     val thrown = intercept[IllegalStateException] {
-      LP.solveSummary(c, at, b, control = SolveControl(onProgress = Some { e =>
+      LP.solveSummary(c, at, b, control = SolveControl(onProgress = { e =>
         if (e.phase == SolvePhase.OuterIteration) throw failure
       }))
     }
@@ -219,8 +256,8 @@ class SolveControlSuite extends AnyFunSuite with DataFrameSuiteBase {
     var stop = false
     val result = LP.solveSummary(c, at, b, solver = NewtonSolver.ConjugateGradient,
       tolerance = 1e-30, control = SolveControl(feasibilityTolerance = 1e-2,
-        onProgress = Some(e => if (e.iteration == 2 && e.phase == SolvePhase.InnerSolve) stop = true),
-        shouldStop = Some(() => stop)))
+        onProgress = e => if (e.iteration == 2 && e.phase == SolvePhase.InnerSolve) stop = true,
+        shouldStop = () => stop))
     try {
       assert(result.stopReason.contains(StopReason.UserRequested))
       assert(result.iterations == 1 && result.candidate == CandidateInfo(true, true, Some(1)))
@@ -233,7 +270,7 @@ class SolveControlSuite extends AnyFunSuite with DataFrameSuiteBase {
     val (c, at, b) = fixture()
     var now = 0L
     val result = LP.solveSummary(c, at, b, nanoTime = () => now,
-      control = SolveControl(timeLimit = Some(1.second), onProgress = Some(_ => now = 1000000000L)))
+      control = SolveControl(timeLimit = Some(1.second), onProgress = _ => now = 1000000000L))
     assert(result.stopReason.contains(StopReason.TimeLimit))
     assert(!result.candidate.available)
     c.unpersist(); at.unpersist()
@@ -245,13 +282,13 @@ class SolveControlSuite extends AnyFunSuite with DataFrameSuiteBase {
     val events = ArrayBuffer.empty[SolveProgress]
     var stop = false
     val result = LP.solveSummary(c, at, b, tolerance = 1.0,
-      control = SolveControl(onProgress = Some { e =>
+      control = SolveControl(onProgress = { e =>
         events += e
         if (e.phase == SolvePhase.OuterIteration) stop = true
-      }, shouldStop = Some(() => stop)))
+      }, shouldStop = () => stop))
     assert(result.termination == LP.Termination.Converged && result.stopReason.isEmpty)
     assert(events.last.iteration == result.iterations)
-    assert(events.last.objectiveValue.contains(result.objectiveValue))
+    assert(events.last.iterate.map(_.objectiveValue).contains(result.objectiveValue))
     result.x.unpersist(); c.unpersist(); at.unpersist()
   }
 }

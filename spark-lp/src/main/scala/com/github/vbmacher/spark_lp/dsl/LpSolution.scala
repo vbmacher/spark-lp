@@ -32,7 +32,7 @@ final class LpSolution private[dsl](
   /**
     * Per-constraint diagnostics: `name`, `group` (when present), `activity`, `sense`, `rhs`,
     * `slack` (the distance to the bound in the constraint's own direction: `rhs - activity` for
-    * `<=`, `activity - rhs` for `>=`), `dual` (reserved, always NULL) and `note` (presolve notes).
+    * `<=`, `activity - rhs` for `>=`), `dual` (objective sensitivity to original RHS), `dual_note` (unavailability reason) and `note` (presolve notes).
     * At [[LpStatus.IterationLimit]] and the infeasibility-related statuses the iterate need not be
     * primal-feasible, so slack may be materially negative and equality rows may be violated;
     * `residuals.primal` quantifies this, and at [[LpStatus.Infeasible]] the negative slacks locate

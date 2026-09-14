@@ -340,3 +340,16 @@ Foreign-model terms, missing/non-finite values, unavailable candidates and close
 an explicit error. An available stopped or infeasible iterate can be evaluated for diagnostics;
 the result of an expression is not a feasibility or optimality claim. Complete evaluation before
 closing the solution. Variables declared after the solve have no values in the retained assignment.
+=== LP shadow prices
+
+For an optimal continuous linear solve, `solution.constraints` includes `dual`: the derivative of
+the original objective value with respect to the original row RHS, within numerical tolerance and
+while the active set is stable. Objective maximization signs and bound shifts are restored. For a
+minimization problem, active `>=` rows typically have nonnegative prices and `<=` rows nonpositive
+prices; equality prices are unrestricted. Maximization reverses these signs.
+
+`dual_note` explains unavailable prices. Presolved rows and all members of merged equivalent rows
+have no unique reconstructed price. Stopped, infeasible, quadratic and ordinary MIP solves do not
+expose LP shadow prices. Degeneracy can make even retained multipliers non-unique; they are local
+sensitivity information, not guarantees for arbitrary RHS changes. Prices share the solution's
+existing diagnostic lifetime and require no separate cached distributed vector.

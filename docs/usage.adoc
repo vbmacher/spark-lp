@@ -364,3 +364,17 @@ axes produce no variables, but each supplied axis is still validated.
 These factories allocate all handles on the driver, using memory proportional to the number of local
 keys or Cartesian-product cells. Use DataFrame/Dataset families for distributed domains; the local
 factories never collect distributed inputs. Values use the ordinary `solution.value(handle)` API.
+
+=== Explicit rounded reports
+
+`val report = solution.rounded(LpRounding(integerTolerance = 1e-6, boundTolerance = 1e-8))`
+provides `report.value(x)` and distributed `report.values(family)`. Integer/binary values snap to
+nearby integers first; all categories then snap to the nearest effective bound within absolute
+bound tolerance (ties choose the lower bound). Integer bounds use ceiling/floor, and binary bounds
+intersect `{0, 1}`. Values outside tolerance and non-finite values are preserved. Tolerances must be
+finite and nonnegative, with integer tolerance below `0.5`. Continuous decimal formatting is separate.
+
+The view has no feasibility, objective or status metadata: snapping can violate constraints. It does
+not change any raw values, solver residuals, evidence or candidate claims. The raw solution owns the
+view's lifetime; complete Spark actions before closing it. Access through either facade after close
+raises an explicit error. Independently validate rounded assignments before using them as candidates.

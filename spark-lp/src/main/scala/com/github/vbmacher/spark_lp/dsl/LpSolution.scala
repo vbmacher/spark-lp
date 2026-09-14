@@ -48,7 +48,8 @@ final class LpSolution private[dsl](
   val isRelaxation: Boolean = false,
   val mip: Option[MipSummary] = None,
   private[dsl] val reducedCostData: Option[RDD[((Int, String), Double)]] = None,
-  val presolve: Option[LpPresolveSummary] = None) extends AutoCloseable {
+  val presolve: Option[LpPresolveSummary] = None,
+  val backend: Option[LpBackendSummary] = None) extends AutoCloseable {
 
   private val metadata = problem.handles.map(h => h.setIndex -> h.metadata).toMap
   private[dsl] def snapshot(handle: VarSetHandle): VariableMetadata = {
@@ -120,6 +121,7 @@ final class LpSolution private[dsl](
     userValues.unpersist(blocking = false)
     evidence.foreach(_.close())
     reducedCostData.foreach(_.unpersist(false))
+    if (backend.nonEmpty) constraints.unpersist(false)
   }
 
   /** The original variable domain plus `lp_variable` (display name) and `lp_value` columns. */

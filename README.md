@@ -15,7 +15,7 @@ a predictor-corrector interior-point solver, and branch-and-bound for integer va
 Build with JDK 11: `sbt +test`. For Spark 3.5 only:
 `sbt 'spark-lpSpark_3_52_12/test' 'examplesSpark_3_5/compile'`.
 Artifact versions are `<spark-version>_<library-version>`; this checkout builds library
-version 1.2.0-SNAPSHOT. Spark is provided by the application.
+version 1.2.0. Spark is provided by the application.
 
 Attribution: [Ehsan M. Kermani's spark-lp](https://github.com/ehsanmok/spark-lp)
 and [Distributed linear programming with Apache Spark](https://open.library.ubc.ca/cIRcle/collections/ubctheses/24/items/1.0340337).

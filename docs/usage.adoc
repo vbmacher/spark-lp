@@ -20,7 +20,7 @@ For a Spark 3.5.3 application using that local build:
 
 [source,scala]
 ----
-libraryDependencies += "com.github.vbmacher" %% "spark-lp" % "3.5.3_1.2.0-SNAPSHOT"
+libraryDependencies += "com.github.vbmacher" %% "spark-lp" % "3.5.3_1.2.0"
 ----
 
 Remote releases use the same `<spark-version>_<library-version>` scheme; choose an

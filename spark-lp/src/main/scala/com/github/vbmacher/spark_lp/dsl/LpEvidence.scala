@@ -7,7 +7,7 @@ final case class EvidenceRow(name: String, group: Option[String], sense: String,
 
 /** Keyed original variable; coefficients use indices into EvidenceModel.rows. */
 final case class EvidenceVariable(name: String, lower: Double, upper: Option[Double],
-  cost: Double, coefficients: Map[Int, Double])
+  cost: Double, coefficients: Map[Int, Double], curvature: Double = 0.0)
 
 /** A materialised original-model snapshot, independent of the solver's transformed matrix. */
 final case class EvidenceModel(rows: IndexedSeq[EvidenceRow],
@@ -93,7 +93,9 @@ object LpEvidenceVerifier {
       val scalar = joined.map { case (_, (v, x)) =>
         val lo = if (v.lower.isNegInfinity) 0.0 else (if (ray) -x else v.lower - x)
         val hi = v.upper.map(u => if (ray) x else x - u).getOrElse(0.0)
-        (if (finite(x)) math.max(checked(lo), checked(hi)) else Double.PositiveInfinity, v.cost * x)
+        val curvatureError = if (ray) checked(math.abs(v.curvature * x)) else 0.0
+        (if (finite(x)) math.max(curvatureError, math.max(checked(lo), checked(hi)))
+          else Double.PositiveInfinity, v.cost * x)
       }.fold((0.0, 0.0)) { case ((a, b), (c, d)) => (math.max(a, c), b + d) }
       val activities = joined.flatMap { case (_, (v, x)) =>
         v.coefficients.map { case (r, a) => (r, a * x) }

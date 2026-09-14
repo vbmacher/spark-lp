@@ -33,6 +33,55 @@ private[dsl] final class LpCompiler(problem: LpProblem, config: SolveConfig) ext
   private implicit val spark: SparkSession = problem.spark
   private val sc = spark.sparkContext
   private val caches = new CachedRDDs
+  private var separableInteger = false
+  private var inferredBounds = Map.empty[Int, Map[String, LpBounds]]
+
+  private def inferIntegerBounds(): Option[String] = {
+    val needsInference = problem.handles.exists { h =>
+      h.category == Integer && (h.metadata.bounds +: h.metadata.members.values.toVector)
+        .exists(b => b.lower.isNegInfinity || b.upper.isEmpty)
+    }
+    if (!needsInference || problem.constraints.isEmpty || config.relaxIntegrality) None
+    else {
+      problem.handles.foreach { h =>
+        LpVariableEditing.validate(h.metadata.bounds, h.category)
+        h.metadata.members.values.foreach(LpVariableEditing.validate(_, h.category))
+      }
+      val propagation = LpBoundPropagation.run(problem.inspect, config.boundInference)
+      try {
+        if (propagation.contradiction.isEmpty) {
+          separableInteger = problem.quadratic.isEmpty && problem.inspect.coefficients.map(c => c.row -> 1L)
+            .reduceByKey(_ + _).filter(_._2 > 1L).take(1).isEmpty
+          val selected = if (separableInteger) propagation.variables else propagation.variables.filter(_.category == Integer)
+          val inferred = selected.take(config.boundInference.maxLocalChanges + 1)
+          if (inferred.length > config.boundInference.maxLocalChanges)
+            fail(s"Integer bound inference exceeds maxLocalChanges=${config.boundInference.maxLocalChanges}")
+          inferredBounds = inferred.groupBy(_.id.family).map { case (family, variables) =>
+            family -> variables.map(v => v.id.key -> LpBounds(v.lower, v.upper)).toMap
+          }
+        }
+        propagation.contradiction
+      } finally propagation.close()
+    }
+  }
+
+  private def analyticalMip(status: LpStatus, objective: Double): Option[MipSummary] =
+    if (config.relaxIntegrality || !problem.handles.exists(_.category != Continuous)) None
+    else if (status == LpStatus.Optimal) Some(MipSummary(Some(objective), Some(objective), Some(0.0), Some(0.0), 0, 0, "SearchExhausted"))
+    else Some(MipSummary(None, None, None, None, 0, 0, "AnalyticalUnbounded"))
+
+  private def infeasibleFromBounds(detail: String): LpSolution = {
+    val schema = StructType(Seq(StructField("name", StringType, false), StructField("group", StringType),
+      StructField("activity", DoubleType), StructField("sense", StringType), StructField("rhs", DoubleType),
+      StructField("slack", DoubleType), StructField("dual", DoubleType), StructField("note", StringType),
+      StructField("dual_note", StringType)))
+    val rows = problem.inspect.constraints.map(r => Row(r.name, if (r.group.isEmpty) null else r.group.mkString(","),
+      Double.NaN, r.sense, r.rhs, Double.NaN, null, detail, "No optimal continuous LP dual available"))
+    new LpSolution(LpStatus.Infeasible, Double.NaN, 0, LpResiduals(Double.NaN, Double.NaN, Double.NaN),
+      spark.createDataFrame(rows, schema), problem, sc.emptyRDD, CandidateInfo.Unavailable,
+      isRelaxation = config.relaxIntegrality,
+      mip = Some(MipSummary(None, None, None, None, 0, 0, "PresolveInfeasible")))
+  }
 
   override def close(): Unit = caches.close()
 
@@ -47,6 +96,7 @@ private[dsl] final class LpCompiler(problem: LpProblem, config: SolveConfig) ext
     * compiler and its cached RDDs are always released when the call returns.
     */
   def solve(): LpSolution = try {
+    inferIntegerBounds().foreach(reason => return infeasibleFromBounds(reason))
     val compiled = compile()
     if (compiled.plans.exists(_.integral) &&
       (config.stopAfterIteration.nonEmpty || config.control != SolveControl()))
@@ -58,13 +108,14 @@ private[dsl] final class LpCompiler(problem: LpProblem, config: SolveConfig) ext
         if (direct.unbounded) LpStatus.Unbounded else LpStatus.Optimal,
         direct.objectiveValue, 0,
         if (direct.unbounded) LpResiduals(0.0, Double.NaN, Double.NaN) else LpResiduals(0.0, 0.0, 0.0),
-        Map.empty, Some(CandidateInfo(true, violation <= config.control.feasibilityTolerance, Some(0))), originalValues = Some(direct.values))
+        Map.empty, Some(CandidateInfo(true, violation <= config.control.feasibilityTolerance, Some(0))), originalValues = Some(direct.values),
+        mip = analyticalMip(if (direct.unbounded) LpStatus.Unbounded else LpStatus.Optimal, direct.objectiveValue))
     } else if (compiled.numCols == 0) {
       val feasible = compiled.rowSpecs.forall { row =>
         row.sense.violation(-row.b0) <= config.control.feasibilityTolerance * (1.0 + math.abs(row.rhsUser))
       }
       buildSolution(compiled, sc.emptyRDD, LpStatus.Optimal, compiled.objConstant, 0,
-        LpResiduals(0.0, 0.0, 0.0), Map.empty, Some(CandidateInfo(true, feasible, Some(0))))
+        LpResiduals(0.0, 0.0, 0.0), Map.empty, Some(CandidateInfo(true, feasible, Some(0))), mip = analyticalMip(LpStatus.Optimal, compiled.objConstant))
     } else if (compiled.intCols.isEmpty) {
       var convergedDual: Option[DenseVector] = None
       val summary = LP.solveSummary(
@@ -190,9 +241,9 @@ private[dsl] final class LpCompiler(problem: LpProblem, config: SolveConfig) ext
     // Per-member bounds use a common family transformation plus explicit original-coordinate rows.
     // Only declarations whose bounds differ from that envelope need extra rows.
     val memberBoundTerms = mutable.ArrayBuffer.empty[((Int, String, Int), Double)]
-    plans.filter(_.handle.metadata.members.nonEmpty).foreach { plan =>
-      val metadata = plan.handle.metadata
-      val envelope = metadata.envelope
+    plans.filter(_.metadata.members.nonEmpty).foreach { plan =>
+      val metadata = plan.metadata
+      val envelope = metadata.envelopeFor(Some(plan.count))
       plan.keys.toLocalIterator.foreach { case (key, _) =>
         val bounds = metadata.at(key)
         Vector((bounds.lower > envelope.lower, LpSense.Ge, bounds.lower),
@@ -323,7 +374,7 @@ private[dsl] final class LpCompiler(problem: LpProblem, config: SolveConfig) ext
     detectDuplicateRows(rowSpecs, solverTerms)
 
     // With no active rows, the linear objective separates over validated domains.
-    if (!hasCurvature && rowSpecs.forall(!_.emitted)) {
+    if (!hasCurvature && (rowSpecs.forall(!_.emitted) || separableInteger)) {
       val sign = if (problem.sense == Maximize) -1.0 else 1.0
       val pieces = plans.map { p =>
         val si = p.handle.setIndex
@@ -333,7 +384,14 @@ private[dsl] final class LpCompiler(problem: LpProblem, config: SolveConfig) ext
           case SplitKind => (None, None)
           case ReflectedKind(upper) => (None, Some(upper))
         }
-        p.keys.map { case (key, _) => ((si, key), (lower, upper)) }
+        val metadata = p.metadata
+        val useInferred = separableInteger
+        p.keys.map { case (key, _) =>
+          if (useInferred) {
+            val bounds = metadata.at(key)
+            ((si, key), (if (bounds.lower.isNegInfinity) None else Some(bounds.lower), bounds.upper))
+          } else ((si, key), (lower, upper))
+        }
       }
       val domains: RDD[((Int, String), (Option[Double], Option[Double]))] =
         if (pieces.isEmpty) sc.emptyRDD else sc.union(pieces)
@@ -613,10 +671,12 @@ private[dsl] final class LpCompiler(problem: LpProblem, config: SolveConfig) ext
     */
   private def buildPlan(handle: VarSetHandle): SetPlan = {
     val where = s"variable '${handle.name}'"
-    val metadata = handle.metadata
+    val metadata = handle.metadata.copy(members = handle.metadata.members ++ inferredBounds.getOrElse(handle.setIndex, Map.empty))
+    val keys = caches.cache(handle.domain.keyPairs())
+    val count = keys.count()
     LpVariableEditing.validate(metadata.bounds, handle.category)
     metadata.members.values.foreach(LpVariableEditing.validate(_, handle.category))
-    val envelope = metadata.envelope
+    val envelope = metadata.envelopeFor(Some(count))
     val declaredLb = envelope.lower
     if (declaredLb.isNaN || declaredLb == Double.PositiveInfinity) {
       fail(s"$where: lower bound must not be NaN or +inf (got $declaredLb); Double.NegativeInfinity means a free variable")
@@ -638,8 +698,6 @@ private[dsl] final class LpCompiler(problem: LpProblem, config: SolveConfig) ext
       }
     }
 
-    val keys = caches.cache(handle.domain.keyPairs())
-    val count = keys.count()
     if (keys.filter(_._1 == null).count() > 0) {
       fail(s"$where: the domain contains null keys")
     }
@@ -662,7 +720,7 @@ private[dsl] final class LpCompiler(problem: LpProblem, config: SolveConfig) ext
       if (upperOpt.contains(lb)) FixedKind(lb)
       else if (lb == Double.NegativeInfinity) upperOpt.map(ReflectedKind).getOrElse(SplitKind)
       else ShiftedKind(lb, upperOpt)
-    new SetPlan(handle, keys, count, kind, integral)
+    new SetPlan(handle, keys, count, kind, integral, metadata)
   }
 
   /**
@@ -680,23 +738,21 @@ private[dsl] final class LpCompiler(problem: LpProblem, config: SolveConfig) ext
       case Binary =>
         (math.max(handle.lowerBound, 0.0), math.min(handle.upperBound.getOrElse(1.0), 1.0))
       case _ =>
-        if (handle.lowerBound == Double.NegativeInfinity) {
-          fail(s"$where: an Integer variable requires a finite lower bound")
-        }
-        val ub = handle.upperBound.getOrElse(
-          fail(s"$where: an Integer variable requires a finite upper bound; declare upperBound explicitly"))
-        (handle.lowerBound, ub)
+        if (problem.constraints.nonEmpty && !separableInteger && !config.relaxIntegrality &&
+          (handle.lowerBound.isNegInfinity || handle.upperBound.isEmpty))
+          fail(s"$where: could not infer a finite integer interval; the built-in search leaves this model unsupported (no finite cap or relaxation is substituted)")
+        (handle.lowerBound, handle.upperBound.getOrElse(Double.PositiveInfinity))
     }
     val lower = math.ceil(lo)
     val upper = math.floor(hi)
-    if (math.abs(lower) > 9007199254740991.0 || math.abs(upper) > 9007199254740991.0) {
+    if (java.lang.Double.isFinite(lower) && math.abs(lower) > 9007199254740991.0 || java.lang.Double.isFinite(upper) && math.abs(upper) > 9007199254740991.0) {
       fail(s"$where: integral bounds must be within +/- (2^53 - 1) for exact Double integers")
     }
     if (lower > upper) {
       val detail = if (category == Binary) " after intersecting the declared bounds with the Binary domain {0, 1}" else ""
       fail(s"$where: no integral values within bounds [$lo, $hi]$detail")
     }
-    (lower, Some(upper), !config.relaxIntegrality)
+    (lower, if (upper.isPosInfinity) None else Some(upper), !config.relaxIntegrality)
   }
 
   // -------------------------------------------------------------------------------------------

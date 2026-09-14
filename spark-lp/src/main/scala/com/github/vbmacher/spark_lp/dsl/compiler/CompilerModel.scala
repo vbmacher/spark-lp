@@ -1,6 +1,6 @@
 package com.github.vbmacher.spark_lp.dsl.compiler
 
-import com.github.vbmacher.spark_lp.dsl.{LpSense, VarSetHandle}
+import com.github.vbmacher.spark_lp.dsl.{LpSense, VarSetHandle, VariableMetadata}
 import com.github.vbmacher.spark_lp.vectors.{DMatrix, DVector}
 import org.apache.spark.Partitioner
 import org.apache.spark.mllib.linalg.{DenseVector, Vector => MLVector}
@@ -85,7 +85,8 @@ private[dsl] final class SetPlan(
   val keys: RDD[(String, Seq[String])],
   val count: Long,
   val kind: PlanKind,
-  val integral: Boolean) {
+  val integral: Boolean,
+  val metadata: VariableMetadata) {
 
   var offset: Long = 0L
 

@@ -124,15 +124,17 @@ class LpDslTransformSuite extends AnyFunSuite with DataFrameSuiteBase {
     assert(solution.objectiveValue ~== 8.0 absTol 1e-4)
   }
 
-  test("a free variable with a finite upper bound is rejected") {
+  test("an upper-only variable reconstructs a constrained value") {
     implicit val ss: SparkSession = spark
     val model = LpProblem("freeUb", Minimize)
     val x = model.variable("x", lowerBound = Double.NegativeInfinity, upperBound = Some(1.0))
     model += lpSum(x)
     model += (x === 0.0).named("pin")
-    val e = intercept[LpModelException](model.solve())
-    assert(e.getMessage.contains("x"))
-    assert(e.getMessage.contains("upper bound"))
+    val result = model.solve()
+    try {
+      assert(result.status == LpStatus.Optimal)
+      assert(math.abs(result.value(x)) < 1e-8)
+    } finally result.close()
   }
 
   test("lowerBound > upperBound is rejected") {

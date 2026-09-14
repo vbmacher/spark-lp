@@ -111,7 +111,8 @@ Integer bounds must be within `+/- (2^53 - 1)` because values use `Double`.
 Continuous variables accept `lowerBound` and `upperBound = Some(value)`.
 Equal bounds fix a variable exactly. Fully fixed and finite-bound-only models need no
 artificial constraint. For a free variable use `lowerBound = Double.NegativeInfinity`;
-express any finite upper limit as a separate `x <= limit` constraint.
+combine it with `upperBound = Some(limit)` for an upper-only continuous variable.
+Upper-only variables compile as `x = limit - y`, `y >= 0`, and results use original units.
 Linear models with no active constraint rows are solved analytically from their
 variable domains and objective coefficients, including empty-variable and constant-only
 models. Results have zero numerical iterations. An improving direction without a
@@ -311,3 +312,14 @@ model += (lpSum(choices.map(x => 1.0 * x)) >= 1.0)
 These helpers use standard Scala `combinations` and `permutations` on input indices.
 They copy a finite local input once (`O(n)` storage) and enumerate outputs lazily;
 output counts grow combinatorially. Do not collect distributed data to use them.
+== Independent model scenarios
+
+`val scenario = model.copy("scenario")` copies variable declarations, objective,
+sense and named scalar/grouped constraints. `scenario.model` is independently
+editable; use `scenario.variable(x)` or `scenario.variables(amounts)` for copied
+handles, and `scenario.expression(expr)` to rebind an expression. Foreign handles
+are rejected. Linear and quadratic objectives preserve their constants and factors.
+Copying performs no Spark actions. Immutable expressions and lazy DataFrame/Dataset
+sources share data plans, so a copy is not a durable source-data snapshot. Keep
+sources stable during each solve or materialize them explicitly. Closing a result
+from one model does not release another model's result or caller-owned input caches.

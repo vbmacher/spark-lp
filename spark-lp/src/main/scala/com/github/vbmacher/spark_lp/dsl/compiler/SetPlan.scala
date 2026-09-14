@@ -17,6 +17,7 @@ private[dsl] final class SetPlan(
     case FixedKind(_) => 0L
     case SplitKind => 2 * count
     case ShiftedKind(_, _) => count
+    case ReflectedKind(_) => count
   }
 
   /** Keys sorted by encoded form; ordering never depends on partition order. */

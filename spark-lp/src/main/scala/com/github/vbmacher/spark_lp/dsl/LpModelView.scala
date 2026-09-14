@@ -28,6 +28,7 @@ final class LpModelView private[dsl](problem: LpProblem) {
   private val rows = problem.constraints.toVector
   val objective: LpExpr = problem.objective.getOrElse(LpExpr.zero)
   private val quadratic = problem.quadratic
+  val sosGroups: Vector[LpSosData] = problem.sosGroups.map(_.data).toVector
   val objectiveConstant: Double = objective.constant
   val variableDeclarations: Vector[LpVariableDeclaration] = handles.map(h =>
     LpVariableDeclaration(h.setIndex, h.name, h.lowerBound, h.upperBound, h.category, h.domain match {

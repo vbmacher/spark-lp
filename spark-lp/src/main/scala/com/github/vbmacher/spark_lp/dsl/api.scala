@@ -164,7 +164,9 @@ final case class MipConfig(
   integralityTolerance: Double = 1e-6,
   gapTolerance: Double = 1e-9,
   absoluteGapTolerance: Double = 0.0,
-  control: MipControl = MipControl()) {
+  control: MipControl = MipControl(),
+  sosZeroTolerance: Double = 1e-6) {
+  require(java.lang.Double.isFinite(sosZeroTolerance) && sosZeroTolerance >= 0.0, "SOS zero tolerance must be finite and nonnegative")
   require(absoluteGapTolerance >= 0.0 && !absoluteGapTolerance.isInfinite,
     "absoluteGapTolerance must be finite and nonnegative")
   require(maxNodes > 0, "maxNodes must be positive")

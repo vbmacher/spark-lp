@@ -57,6 +57,7 @@ object LpExport extends Serializable {
   /** CPLEX-style LP dialect with explicit bounds, integrality, original coefficients and offset. */
   def lp(view: LpModelView, path: Path, naming: ExportNaming = ExportNaming.Normalized,
     overwrite: Boolean = false): LpExportMapping = {
+    if (view.sosGroups.nonEmpty) throw new LpModelException("This export dialect cannot preserve SOS groups; use JSON")
     if (view.hasQuadraticObjective) throw new LpModelException("LP export supports linear objectives only")
     view.statistics()
     val mapping = mappings(view, naming)

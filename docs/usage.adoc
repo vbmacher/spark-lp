@@ -651,3 +651,13 @@ model += (amount <= 12.5)
 val result = model.solve()
 try println(result.value(amount)) finally result.close() // 12
 ----
+
+== Special ordered sets
+
+`model.addSos1("selection", Seq(x -> 1.0, y -> 2.0))` permits at most one nonzero member. `addSos2` permits at most two nonzero members, which must be adjacent in ascending weight order. Members can be scalar variables or selected keyed members. SOS2 weights must be finite and distinct; SOS1 permits ties. Names are unique within a model, duplicate members are rejected, and overlapping groups all apply.
+
+The built-in solver uses binary selectors and exact finite-bound linking constraints. Every member requires finite declared lower and upper bounds; an unsupported unbounded member is rejected without inventing a cap. Continuous, integer and binary members are supported. Quadratic objectives with SOS groups are rejected. Automatic Newton selection uses regularized CG because tight selector constraints can make the normal equations ill-conditioned. Explicit Newton settings remain available.
+
+`MipConfig.sosZeroTolerance` controls incumbent nonzero checks, independently of integrality tolerance. `CandidateValidationConfig.sosZeroTolerance` controls original-model candidate checks. Both default to `1e-6`; zero requests exact zero tests. `relaxIntegrality = true` relaxes the selectors along with integer variables and labels the result as a relaxation. Selector variables and internal linking rows are excluded from public results.
+
+Model copies, inspection, algebra rendering and JSON preserve SOS groups and weight order. LP and MPS export reject SOS models because the implemented dialects cannot preserve their semantics; use JSON for complete interchange.

@@ -147,7 +147,7 @@ private[dsl] final class BranchAndBound(
           valueCap = config.valueCap,
           eps = config.epsilon,
           infeasibilityTolerance = config.infeasibilityTolerance,
-          solver = config.resolvedNewtonSolver(compiled.numRows),
+          solver = compiler.newtonSolver(compiled.numRows),
           cgTolerance = config.cgTolerance,
           cgConfig = config.cgConfig,
           cgMaxIterations = config.cgMaxIterations,
@@ -355,7 +355,8 @@ private[dsl] final class BranchAndBound(
       col.rowCoeffs.foreach { case (r, a) => residual(r) += a * delta }
       residual(col.boundRow) += delta
     }
-    math.sqrt(residual.map(v => v * v).sum) / (1.0 + math.sqrt(rhs.dot(rhs))) < config.tolerance
+    math.sqrt(residual.map(v => v * v).sum) / (1.0 + math.sqrt(rhs.dot(rhs))) < config.tolerance &&
+      compiler.sosFeasible(compiled, x, rounded, config.mip.sosZeroTolerance)
   }
 
   /** Splits the node on column `j` around the fractional value `v` (both children are non-empty). */

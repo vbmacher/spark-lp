@@ -204,4 +204,12 @@ final class LpProblem private[dsl](
     try new LpCompiler(this, config).solve()
     finally synchronized { activeSolves -= 1 }
   }
+
+  def solve(adapter: LpSolverAdapter): LpSolution = solve(adapter, LpAdapterOptions())
+
+  def solve(adapter: LpSolverAdapter, options: LpAdapterOptions): LpSolution = {
+    synchronized { activeSolves += 1 }
+    try LpAdapterSolve.run(this, adapter, options)
+    finally synchronized { activeSolves -= 1 }
+  }
 }

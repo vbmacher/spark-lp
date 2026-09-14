@@ -80,8 +80,9 @@ fi
 bundle=$(mktemp -d "${TMPDIR:-/tmp}/spark-lp-emr.XXXXXXXX")
 run_id="$(date -u +%Y%m%dT%H%M%SZ)-${benchmark}-${case_id}-${bundle##*.}"
 run_uri="$s3_prefix/$run_id"
-source_hash=unrecorded
+source_hash=unrecorded implementation_sha=unrecorded
 if [[ -z $jar_file ]]; then
+  implementation_sha=$(git -C "$repo_dir" rev-parse HEAD)
   (cd "$repo_dir" && sbt 'benchmarksSpark_3_52_12/assembly') >"$bundle/build.log" 2>&1 || die "Build failed: $bundle/build.log"
   shopt -s nullglob
   jars=("$repo_dir"/benchmarks/target/spark_3.5-jvm-2.12/benchmarks-assembly-*.jar)
@@ -94,6 +95,7 @@ fi
 [[ -f $jar_file ]] || die "Missing assembly: $jar_file"
 cp "$jar_file" "$bundle/benchmarks.jar"
 cp "$inventory" "$bundle/$inventory_name"
+cp "$repo_dir/benchmarks/scripts/reconcile.py" "$bundle/reconcile.py"
 jar_hash=$(shasum -a 256 "$bundle/benchmarks.jar" | awk '{print $1}')
 inventory_hash=$(shasum -a 256 "$bundle/$inventory_name" | awk '{print $1}')
 cluster_name=DRY_RUN computer=DRY_RUN
@@ -106,10 +108,12 @@ if ! $dry_run; then
 fi
 jq -n --arg run_id "$run_id" --arg cluster_id "$cluster_id" --arg region "$region" --arg uri "$run_uri" \
   --arg jar_sha256 "$jar_hash" --arg source_archive_sha256 "$source_hash" --arg inventory_sha256 "$inventory_hash" \
+  --arg implementation_sha "$implementation_sha" \
   --arg case_id "$case_id" --arg benchmark "$benchmark" --arg inventory "$inventory_name" \
   --argjson repetitions "$repetitions" --argjson warmups "$warmups" \
   '{run_id:$run_id,cluster_id:$cluster_id,region:$region,artifact_uri:$uri,jar_sha256:$jar_sha256,
-    source_archive_sha256:$source_archive_sha256,inventory_sha256:$inventory_sha256,
+    source_archive_sha256:$source_archive_sha256,inventory_sha256:$inventory_sha256,implementation_sha:$implementation_sha,
+    expected_measured:$repetitions,
     case:$case_id,benchmark:$benchmark,inventory:$inventory,repetitions:$repetitions,warmups:$warmups}' > "$bundle/manifest.json"
 
 # The step receives data as positional arguments, never interpolated shell code.
@@ -120,12 +124,18 @@ region=$1 run_uri=$2 inventory_name=$3 benchmark=$4 case_id=$5 partitions=$6
 executors=$7 executor_cores=$8 executor_heap=$9
 shift 9
 overhead=$1 driver_heap=$2 repetitions=$3 warmups=$4 cluster_name=$5 computer=$6 source_hash=$7 jar_hash=$8 inventory_hash=$9
+shift 9
+implementation_sha=$1
 work=$(mktemp -d /tmp/spark-lp-benchmark.XXXXXXXX)
 output="$work/results"
 mkdir "$output"
 finish() {
   code=$?
   trap - EXIT
+  if ! python3 "$work/reconcile.py" "$output" "$work/manifest.json" "$work/$inventory_name" "$code"; then
+    printf 'Record reconciliation failed; retain step logs and inputs.\n' >&2
+    if ((code == 0)); then code=1; fi
+  fi
   printf '{"exit_code":%s}\n' "$code" > "$output/exit.json"
   if ! aws --region "$region" s3 cp "$output/" "$run_uri/results/" --recursive --only-show-errors; then
     printf 'Artifact upload failed; retained local output: %s\n' "$output" >&2
@@ -136,6 +146,8 @@ finish() {
 trap finish EXIT
 trap 'exit 143' TERM
 trap 'exit 130' INT
+aws --region "$region" s3 cp "$run_uri/input/reconcile.py" "$work/reconcile.py" --only-show-errors
+aws --region "$region" s3 cp "$run_uri/input/manifest.json" "$work/manifest.json" --only-show-errors
 aws --region "$region" s3 cp "$run_uri/input/benchmarks.jar" "$work/benchmarks.jar" --only-show-errors
 aws --region "$region" s3 cp "$run_uri/input/$inventory_name" "$work/$inventory_name" --only-show-errors
 printf '%s  %s\n' "$jar_hash" "$work/benchmarks.jar" | sha256sum -c -
@@ -146,7 +158,7 @@ quote_java_option() {
   value=${value//\"/\\\"}
   printf '"%s"' "$value"
 }
-java_options="$(quote_java_option "-Dbenchmark.emrName=$cluster_name") $(quote_java_option "-Dbenchmark.computer=$computer") -Dbenchmark.sourceHash=$source_hash -Dbenchmark.jarHash=$jar_hash"
+java_options="$(quote_java_option "-Dbenchmark.emrName=$cluster_name") $(quote_java_option "-Dbenchmark.computer=$computer") -Dbenchmark.sourceHash=$source_hash -Dbenchmark.jarHash=$jar_hash -Dbenchmark.sha=$implementation_sha"
 export OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 MKL_NUM_THREADS=1
 command=(spark-submit --master yarn --deploy-mode client --driver-memory "${driver_heap}g"
   --num-executors "$executors" --executor-cores "$executor_cores" --executor-memory "${executor_heap}g"
@@ -166,7 +178,7 @@ jq -n --arg name "spark-lp $benchmark $case_id" --args \
   '[{Type:"CUSTOM_JAR",Name:$name,ActionOnFailure:"CONTINUE",Jar:"command-runner.jar",Args:$ARGS.positional}]' \
   -- bash -c "$bootstrap" spark-lp-step "$region" "$run_uri" "$inventory_name" "$benchmark" "$case_id" "$partitions" \
   "$executors" "$executor_cores" "$executor_heap" "$overhead" "$driver_heap" "$repetitions" "$warmups" \
-  "$cluster_name" "$computer" "$source_hash" "$jar_hash" "$inventory_hash" > "$bundle/steps.json"
+  "$cluster_name" "$computer" "$source_hash" "$jar_hash" "$inventory_hash" "$implementation_sha" > "$bundle/steps.json"
 printf 'Run artifacts: %s\nLocal bundle: %s\n' "$run_uri" "$bundle"
 if $dry_run; then
   printf 'Dry run: no AWS calls made. Step specification: %s/steps.json\n' "$bundle"

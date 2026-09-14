@@ -63,7 +63,7 @@ Generation uses `spark.range`, SQL expressions, joins and aggregations. Coeffici
 
 ## Build and run
 
-Run commands from the repository root, with Java 11 and sbt 1.10.7 available. The module uses Spark 3.5.3 / Scala 2.12.20 and depends on the matching `spark-lp` matrix project. Spark is `Provided`; local execution uses `Test/runMain` to include Spark on the classpath. Timed suites are ordinary objects and do not run during `sbt test`.
+Run commands from the repository root, with Java 11 and sbt 1.10.7 available. The module uses Spark 3.5.3 / Scala 2.12.20 and depends on the matching `spark-lp` matrix project. Spark is `Provided`; local execution uses `Test/runMain` to include Spark on the classpath. Timed suites are ordinary objects and do not run during `sbt test`. Small fixture and backend regression tests run with `sbt 'benchmarksSpark_3_52_12/test'`; launcher/importer tests run with `python3 -m unittest discover -s benchmarks/scripts -p 'test_*.py'`.
 
 ```sh
 sbt 'benchmarksSpark_3_52_12/Test/compile'
@@ -86,7 +86,7 @@ The launcher refuses to overwrite a run, pins BLAS threads to one, alternates ba
 
 ### EMR through AWS CLI
 
-Use AWS CLI credentials with access to the chosen cluster and S3 prefix. The primary node needs AWS CLI, Bash, `timeout`, `sha256sum` and `spark-submit`; its instance role needs read/write access to the artifact prefix. The local launcher requires `jq` and sbt, or a prebuilt assembly supplied with `--jar`.
+Use AWS CLI credentials with access to the chosen cluster and S3 prefix. The primary node needs AWS CLI, Bash, Python 3, `timeout`, `sha256sum` and `spark-submit`; its instance role needs read/write access to the artifact prefix. The local launcher requires `jq` and sbt, or a prebuilt assembly supplied with `--jar`.
 
 Create a dedicated cluster with `aws emr create-cluster`, or use an existing idle cluster. The following example uses existing IAM roles, a chosen subnet and EMR 7.6.0; replace the parameters and size the instances for the [campaign plan](src/results/TODO.md). [AWS CLI cluster creation](https://docs.aws.amazon.com/cli/latest/reference/emr/create-cluster.html).
 
@@ -114,7 +114,7 @@ bash benchmarks/scripts/cluster.sh \
 
 The launcher builds the assembly, uploads the inventory and source archive to a unique run prefix, captures cluster/instance metadata, and submits one `command-runner.jar` step with `aws emr add-steps`. The step stages local inputs on the primary node and invokes `BenchmarkRunner` in YARN client mode. Driver heap comes from the selected CSV row. Use `--help` for executor, partition and repetition arguments; run algorithms sequentially on the same idle cluster. Cholesky is excluded before submission if its estimated payload exceeds half either configured heap. [AWS CLI step submission](https://docs.aws.amazon.com/cli/latest/reference/emr/add-steps.html), [EMR command runner](https://docs.aws.amazon.com/emr/latest/ReleaseGuide/emr-commandrunner.html).
 
-Add `--dry-run --jar /absolute/path/benchmarks-assembly.jar` to inspect the generated step JSON without AWS calls or a build. A prebuilt jar is hashed, but its source digest is marked unrecorded because the launcher cannot establish which source produced it. A launcher build preserves a source archive and its SHA-256 digest. Each run retains the submitted arguments, assembly/inventory hashes and actual runtime environment.
+Add `--dry-run --jar /absolute/path/benchmarks-assembly.jar` to inspect the generated step JSON without AWS calls or a build. A prebuilt jar is hashed, but its source digest and implementation commit are marked unrecorded because the launcher cannot establish which source produced it. A launcher build preserves the checkout commit, a source archive and its SHA-256 digest; the archive captures any uncommitted source changes. The commit is propagated to driver measurements as `implementation_sha`. Each run retains the submitted arguments, assembly/inventory hashes and actual runtime environment.
 
 Submission prints the step ID and S3 run URI. Monitor and download using AWS CLI:
 
@@ -125,7 +125,7 @@ aws s3 cp s3://your-bucket/spark-lp-benchmarks/runs/RUN-ID/ /absolute/artifacts/
 aws emr terminate-clusters --cluster-ids "$BENCHMARK_CLUSTER_ID"
 ```
 
-Raw measurements, environment, command, application log and exit status upload under `results/`; Spark event logs go directly to `events/`, and submission inputs remain under `input/`. The step attempts the result upload on failure as well as success, and preserves a nonzero process exit. A whole-application timeout also bounds generation/validation to `(warmups + repetitions) × 30 minutes + 10 minutes`. Node loss or forced termination can prevent uploads; reconcile missing attempts against the step/container logs before importing. Executor memory sampling remains a [TODO](src/results/TODO.md).
+Raw measurements, environment, command, application log and exit status upload under `results/`; Spark event logs go directly to `events/`, and submission inputs remain under `input/`. Before uploading, the step retains existing records and fills missing repetitions with the process failure followed by `Unrun` slots. An existing watchdog failure is preserved without adding another failure. The step attempts the result upload on failure as well as success, and preserves a nonzero process exit. A whole-application timeout also bounds generation/validation to `(warmups + repetitions) × 30 minutes + 10 minutes`. Node loss or forced termination can prevent uploads; reconcile missing attempts against the step/container logs before importing. Executor memory sampling remains a [TODO](src/results/TODO.md).
 
 ## Results and environments
 

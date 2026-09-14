@@ -71,6 +71,9 @@ private[spark_lp] final class PartialCholesky(
   /** Pivot rows selected so far, in factorization order; its length is the current rank. */
   def indices: Array[Int] = pivots.toArray
 
+  /** Number of pivots actually built, which can be below the requested rank. */
+  def rank: Int = pivots.length
+
   /** Applies the preconditioner, returning `M^(-1) r`. Pivoted rows use the stored triangular
     * factors (forward then back substitution); the remaining rows use the floored Schur diagonal.
     */

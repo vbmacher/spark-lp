@@ -101,9 +101,15 @@ def import_jsonl(root, cid, artifact_uri=None):
         raise ValueError('No records.jsonl or dsl-*.jsonl found')
     c = campaign(cid, cid, [])
     manifest_path = root / 'manifest.json'
+    if not manifest_path.exists():
+        manifest_path = root / 'input' / 'manifest.json'
     manifest = json.loads(manifest_path.read_text()) if manifest_path.exists() else {}
     c['notes'] = [f'Imported from {artifact_uri or str(root)}; preserve the entire original artifact tree.']
-    inventories = list(root.glob('cases.csv'))
+    inventory_root = manifest_path.parent if manifest_path.exists() else root
+    inventory_name = manifest.get('inventory', 'cases.csv')
+    if Path(inventory_name).name != inventory_name:
+        raise ValueError('Manifest inventory must be a filename')
+    inventories = list(inventory_root.glob(inventory_name))
     inventory = {r['id']: r for p in inventories for r in csv.DictReader(io.StringIO(p.read_text()))}
     for p in sorted(set(paths + inventories + list(root.rglob('manifest.json')) + list(root.rglob('environment.json')) +
                         list(root.rglob('command.json')) + list(root.rglob('exit.json')) +
@@ -123,7 +129,7 @@ def import_jsonl(root, cid, artifact_uri=None):
             m = integer(raw.get('m', spec.get('m')))
             n = integer(raw.get('n', spec.get('n'))) or (m*int(spec['multiplier']) if m and spec.get('multiplier') else None)
             if not m or not n:
-                raise ValueError(f'{relative}:{line}: dimensions unavailable; recover cases.csv')
+                raise ValueError(f'{relative}:{line}: dimensions unavailable; recover {inventory_name}')
             # Identity of physical fixture includes its recorded hash, independent of backend.
             case = dict(case_id=case_id, m=m, n=n, nnz=integer(raw.get('nnz')),
                         nnz_basis='recorded' if raw.get('nnz') is not None else 'unavailable',
@@ -165,8 +171,16 @@ def import_jsonl(root, cid, artifact_uri=None):
                             scope='driver process; combined with executors in local mode; includes validation'),
                 application_id=raw.get('application_id'), spark_jobs=raw.get('spark_jobs'), stop_reason=raw.get('reason'))
             c['records'].append(row)
-    if manifest.get('expected_measured') is not None:
-        c['notes'].append(f'Manifest expected_measured={manifest["expected_measured"]}; DSL is additional. Missing records remain unknown, not attempted.')
+    expected = manifest.get('expected_measured')
+    if expected is None and manifest.get('case') and manifest.get('benchmark'):
+        expected = manifest.get('repetitions')
+    if expected is not None:
+        observed = len({(r['case_id'], r['raw']['backend'], r['repetition']) for r in c['records']
+                        if not r['warmup'] and r['accuracy_basis'] != 'bounded-dsl-values'})
+        expected = int(expected)
+        c['notes'].append(f'Manifest expected_measured={expected}; retained_measured_slots={observed}; '
+                          f'missing_measured_slots={max(0, expected-observed)}. '
+                          'DSL is additional. Missing records remain unknown, not attempted.')
     return c
 
 

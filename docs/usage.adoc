@@ -236,13 +236,13 @@ constraint activities and a scalar bound violation using aligned compiled column
 free/fixed variables or merged rows reconstruct user values and reduce a scalar violation.
 Solution vectors stay distributed.
 This componentwise feasibility test differs from the normalized L2 residual used for convergence;
-`candidate.iterate.map(_.feasible)=true` does not imply that every convergence residual is below `tolerance`.
+`candidate.feasible=true` does not imply that every convergence residual is below `tolerance`.
 A stricter candidate tolerance can also reject values accepted by convergence or presolve.
 Retention holds at most one additional distributed iterate and closing the result releases its
 materialized values without releasing caller-owned caches.
 
 If no feasible candidate exists but an iteration completed, values are available for diagnostics
-with `candidate.iterate.map(_.feasible)=false`. If stopping occurred before any iteration completed,
+with `candidate.feasible=false`. If stopping occurred before any iteration completed,
 `candidate.available=false`, the objective/residuals and constraint activities are `NaN`, and
 `value`/`values` throw an explicit no-iterate error. Never publish those results as feasible output.
 New controls are rejected for integer models; branch-and-bound stopping is a separate contract.

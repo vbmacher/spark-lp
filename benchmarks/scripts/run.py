@@ -11,6 +11,7 @@ import subprocess
 import sys
 import tarfile
 import time
+from reconcile import reconcile
 
 ROOT = Path(__file__).resolve().parents[2]
 AXIS = 'benchmarksSpark_3_52_12'
@@ -114,17 +115,7 @@ def main():
                     text = (batch/'application.log').read_text(errors='replace')
                     status = 'Timeout' if code==124 else 'OOM' if 'OutOfMemoryError' in text else 'ProcessFailure'
                     reason = f'Application exit {code}; see application.log'
-            records = batch/'records.jsonl'
-            observed = [json.loads(v) for v in records.read_text().splitlines()] if records.exists() else []
-            if any(v['status'] in ('Timeout','OOM','ProcessFailure') for v in observed):
-                status = 'Unrun'
-            present = {v['repetition'] for v in observed}
-            with records.open('a') as writer:
-                for repetition in range(0 if args.warmups else 1,args.repetitions+1):
-                    if repetition not in present:
-                        writer.write(json.dumps(dict(base,repetition=repetition,warmup=repetition==0,status=status,reason=reason))+'\n')
-                        if status not in ('ResourceExcluded','Unrun'):
-                            status = 'Unrun'
+            reconcile(batch/'records.jsonl', base, args.repetitions, args.warmups, status, reason)
             subprocess.run([sys.executable,str(ROOT/'benchmarks/scripts/analyze.py'),str(output)],check=True)
     manifest['finished_utc'] = time.strftime('%Y-%m-%dT%H:%M:%SZ',time.gmtime())
     (output/'manifest.json').write_text(json.dumps(manifest,indent=2)+'\n')

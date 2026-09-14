@@ -49,6 +49,10 @@ final class LpProblem private[dsl](
   def copy(name: String = this.name): LpModelCopy =
     new LpModelCopy(this, new LpProblem(name, sense, spark))
 
+  /** Solves priorities in this model's objective sense on an independent copy. Close the result. */
+  def solvePriorities(priorities: Seq[LpPriority], config: SolveConfig = SolveConfig()): LpPriorityResult =
+    LpPriorities.solve(this, priorities, config)
+
   /** Creates one decision variable. */
   def variable(
     name: String,

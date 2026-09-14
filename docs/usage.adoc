@@ -279,3 +279,29 @@ Copying performs no Spark actions. Immutable expressions and lazy DataFrame/Data
 sources share data plans, so a copy is not a durable source-data snapshot. Keep
 sources stable during each solve or materialize them explicitly. Closing a result
 from one model does not release another model's result or caller-owned input caches.
+
+=== Prioritized objectives
+
+`solvePriorities` solves an ordered sequence of linear `LpPriority` objectives in the model's
+minimization or maximization sense. Each optimal, feasible stage adds an unnamed preservation row
+on an independent model copy. Its allowance is `absoluteTolerance + relativeTolerance * abs(optimum)`,
+including objective constants; zero optima therefore use the absolute allowance. The compiler assigns
+and validates automatic row names. The source model is unchanged. Any unresolved or unsuccessful
+stage stops the sequence; inspect `complete`, every stage's `solution.status`, and `error`.
+
+[source,scala]
+----
+val priorities = model.solvePriorities(Seq(
+  LpPriority(cost, absoluteTolerance = 1e-6),
+  LpPriority(emissions)))
+try {
+  if (priorities.complete) {
+    val finalSolution = priorities.stages.last.solution.get
+    finalSolution.values(priorities.copied.variables(production)).show()
+  }
+} finally priorities.close()
+----
+
+The result owns all stage solutions and their caches. Numerical solver exceptions are recorded on
+the unsuccessful stage; model validation exceptions propagate and release completed stage results.
+Each stage receives the supplied solve configuration, including its own time limit.

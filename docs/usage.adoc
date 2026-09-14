@@ -276,3 +276,26 @@ with `candidate.feasible=false`. If stopping occurred before any iteration compl
 `value`/`values` throw an explicit no-iterate error. Never publish those results as feasible output.
 Progress and cooperative stopping controls are rejected for integer models;
 branch-and-bound stopping is a separate contract.
+
+== Local combinations and permutations
+
+`LpCombinatorics.combinations(values, size)` and `permutations(values, size)`
+return lazy iterators of vectors. `combinationsUpTo` and `permutationsUpTo` enumerate
+sizes from zero through the smaller of the maximum size and input length.
+Size zero yields one empty vector, oversized fixed sizes yield nothing, and negative
+sizes raise `LpModelException`. Input positions are distinct: repeated values can
+produce repeated output vectors. Ordering follows input-index combinations, with
+index permutations within each combination. Up-to-size ordering is size first.
+
+[source,scala]
+----
+val pairs = LpCombinatorics.combinations(Vector("a", "b", "c"), 2)
+val choices = pairs.map { pair =>
+  model.variable(pair.mkString("pair_", "_", ""), category = Binary)
+}.toVector
+model += (lpSum(choices.map(x => 1.0 * x)) >= 1.0)
+----
+
+These helpers use standard Scala `combinations` and `permutations` on input indices.
+They copy a finite local input once (`O(n)` storage) and enumerate outputs lazily;
+output counts grow combinatorially. Do not collect distributed data to use them.

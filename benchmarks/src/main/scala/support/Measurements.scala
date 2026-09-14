@@ -1,11 +1,12 @@
 package support
 
-import java.io.File
-import java.lang.management.ManagementFactory
-import java.util.concurrent.{Executors, ThreadFactory, TimeUnit}
-import java.util.concurrent.atomic.AtomicLong
 import com.github.vbmacher.spark_lp.SolveProgress
 import org.apache.spark.sql.SparkSession
+
+import java.io.File
+import java.lang.management.ManagementFactory
+import java.util.concurrent.atomic.AtomicLong
+import java.util.concurrent.{Executors, TimeUnit}
 import scala.util.Try
 
 /** Monotonic wall-clock timer for generation, preparation and solver work. */
@@ -64,18 +65,12 @@ final class JvmSampler extends AutoCloseable {
         Runtime.getRuntime.halt(124)
       }
     }, 30, TimeUnit.MINUTES)
-    new AutoCloseable {
-      override def close(): Unit = {
-        scheduled.cancel(false);
-        ()
-      }
-    }
+    () => scheduled.cancel(false)
   }
 
   override def close(): Unit = {
-    sampling.cancel(false);
-    scheduler.shutdownNow();
-    ()
+    sampling.cancel(false)
+    scheduler.shutdownNow()
   }
 }
 
@@ -97,7 +92,7 @@ final class SolveMeasurements {
       phase = name;
       previous = event.elapsedSeconds
     }
-    event.preconditionerRank.foreach(r => if (!ranks.lastOption.contains(r)) ranks += r)
+    event.work.flatMap(_.preconditionerRank).foreach(r => if (!ranks.lastOption.contains(r)) ranks += r)
   }
 
   def validate[A](body: => A): A = {

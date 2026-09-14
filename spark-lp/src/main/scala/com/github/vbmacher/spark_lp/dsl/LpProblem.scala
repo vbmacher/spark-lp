@@ -211,6 +211,11 @@ final class LpProblem private[dsl](
     finally synchronized { activeSolves -= 1 }
   }
 
+  def start(values: org.apache.spark.rdd.RDD[LpCandidateValue], config: LpStartConfig = LpStartConfig()): LpStart =
+    LpStart.create(this, values, config)
+
+  def start(values: Seq[(LpVariable, Double)]): LpStart = start(candidateValues(values))
+
   def solve(adapter: LpSolverAdapter): LpSolution = solve(adapter, LpAdapterOptions())
 
   def solve(adapter: LpSolverAdapter, options: LpAdapterOptions): LpSolution = {

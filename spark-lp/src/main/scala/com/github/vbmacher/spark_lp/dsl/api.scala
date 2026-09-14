@@ -148,7 +148,8 @@ final case class SolveConfig(
   control: com.github.vbmacher.spark_lp.SolveControl = com.github.vbmacher.spark_lp.SolveControl(),
   relaxIntegrality: Boolean = false,
   boundInference: BoundInferenceConfig = BoundInferenceConfig(),
-  presolve: PresolveConfig = PresolveConfig()) {
+  presolve: PresolveConfig = PresolveConfig(),
+  start: Option[LpStart] = None) {
 
   com.github.vbmacher.spark_lp.LP.validateParameters(
     tolerance, maxIterations, etaIteration, valueCap, epsilon, infeasibilityTolerance, cgTolerance)

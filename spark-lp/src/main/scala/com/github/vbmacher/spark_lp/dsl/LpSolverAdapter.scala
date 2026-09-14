@@ -14,7 +14,8 @@ final case class LpSolverCapabilities(lp: Boolean = true, mip: Boolean = false,
 final case class LpAdapterOptions(validation: CandidateValidationConfig = CandidateValidationConfig(),
   timeLimit: Option[FiniteDuration] = None, shouldStop: () => Boolean = () => false,
   onProgress: Option[String => Unit] = None, requireDuals: Boolean = false,
-  maxVariables: Long = 1000000L, maxConstraints: Long = 100000L, maxNonzeros: Long = 10000000L) {
+  maxVariables: Long = 1000000L, maxConstraints: Long = 100000L, maxNonzeros: Long = 10000000L,
+  start: Option[LpStart] = None) {
   require(timeLimit.forall(_.toNanos > 0), "Adapter time limit must be positive")
   require(Seq(maxVariables, maxConstraints, maxNonzeros).forall(_ >= 0), "Adapter transfer limits must be nonnegative")
 }
@@ -25,7 +26,8 @@ final case class LpAdapterOptions(validation: CandidateValidationConfig = Candid
 final case class LpAdapterResult(status: LpStatus, values: Option[RDD[LpCandidateValue]] = None,
   objective: Option[Double] = None, bestBound: Option[Double] = None, iterations: Int = 0,
   rowDuals: Option[RDD[(LpConstraintId, Double)]] = None,
-  reducedCosts: Option[RDD[(LpVariableId, Double)]] = None, diagnostics: Map[String, String] = Map.empty)
+  reducedCosts: Option[RDD[(LpVariableId, Double)]] = None, diagnostics: Map[String, String] = Map.empty,
+  start: Option[LpStartSummary] = None)
 
 final case class LpBackendSummary(name: String, diagnostics: Map[String, String],
   bestBound: Option[Double], independentlyValidated: Boolean)
@@ -45,6 +47,10 @@ trait LpAdapterSession extends AutoCloseable {
 
 private[dsl] object LpAdapterSolve {
   def run(problem: LpProblem, adapter: LpSolverAdapter, options: LpAdapterOptions): LpSolution = {
+    options.start.foreach { start =>
+      if (start.problem ne problem) throw new LpModelException("Start belongs to a different model")
+      start.values
+    }
     val view = problem.inspect
     check(view, adapter.capabilities, options)
     val session = adapter.prepare(view, options)
@@ -64,7 +70,9 @@ private[dsl] object LpAdapterSolve {
 
   def check(view: LpModelView, capabilities: LpSolverCapabilities, options: LpAdapterOptions): Unit = {
     def need(condition: Boolean, detail: String): Unit = if (!condition) throw new LpModelException(s"Adapter does not support $detail")
-    val discrete = view.variableDeclarations.exists(_.category != Continuous) && !options.validation.relaxIntegrality
+    val discrete = (view.variableDeclarations.exists(_.category != Continuous) || view.sosGroups.nonEmpty) && !options.validation.relaxIntegrality
+    need(view.sosGroups.isEmpty || capabilities.sos, "SOS groups")
+    need(options.start.isEmpty || capabilities.starts, "user starts")
     need(if (discrete) capabilities.mip else capabilities.lp, if (discrete) "MIP" else "LP")
     need(!view.hasQuadraticObjective || capabilities.quadratic, "quadratic objectives")
     need(!options.validation.relaxIntegrality, "implicit relaxation; export an explicit relaxed model instead")
@@ -80,6 +88,7 @@ private[dsl] object LpAdapterSolve {
   def normalize(problem: LpProblem, adapter: LpSolverAdapter, options: LpAdapterOptions, raw: LpAdapterResult): LpSolution = {
     def fail(message: String): Nothing = throw new LpModelException(s"Malformed result from ${adapter.name}: $message")
     if (raw.status == null || raw.iterations < 0) fail("invalid status or iteration count")
+    if (options.start.nonEmpty && raw.start.isEmpty) fail("adapter did not report whether the start was used")
     if ((raw.rowDuals.nonEmpty && !adapter.capabilities.duals) ||
       (raw.reducedCosts.nonEmpty && !adapter.capabilities.reducedCosts)) fail("unadvertised sensitivity data")
     if (options.requireDuals && raw.status == LpStatus.Optimal && raw.rowDuals.isEmpty) fail("requested duals are missing")
@@ -150,7 +159,8 @@ private[dsl] object LpAdapterSolve {
       new LpSolution(raw.status, value, raw.iterations, LpResiduals(violation, Double.NaN, Double.NaN),
         frame, problem, values,
         CandidateInfo(raw.values.nonEmpty, feasible, if (raw.values.nonEmpty) Some(raw.iterations) else None),
-        reducedCostData = costs, backend = Some(LpBackendSummary(adapter.name, raw.diagnostics, raw.bestBound, raw.values.nonEmpty)))
+        reducedCostData = costs, backend = Some(LpBackendSummary(adapter.name, raw.diagnostics, raw.bestBound, raw.values.nonEmpty)),
+        start = raw.start)
     } catch { case scala.util.control.NonFatal(e) =>
       values.unpersist(false); costs.foreach(_.unpersist(false)); diagnosticsFrame.foreach(_.unpersist(false)); throw e }
   }

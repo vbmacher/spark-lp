@@ -49,7 +49,8 @@ final class LpSolution private[dsl](
   val mip: Option[MipSummary] = None,
   private[dsl] val reducedCostData: Option[RDD[((Int, String), Double)]] = None,
   val presolve: Option[LpPresolveSummary] = None,
-  val backend: Option[LpBackendSummary] = None) extends AutoCloseable {
+  val backend: Option[LpBackendSummary] = None,
+  val start: Option[LpStartSummary] = None) extends AutoCloseable {
 
   private val metadata = problem.handles.map(h => h.setIndex -> h.metadata).toMap
   private[dsl] def snapshot(handle: VarSetHandle): VariableMetadata = {
@@ -57,6 +58,13 @@ final class LpSolution private[dsl](
     metadata.getOrElse(handle.setIndex, throw new LpModelException("Variable was declared after this solution"))
   }
   private var closed = false
+
+  def asStart(config: LpStartConfig = LpStartConfig()): LpStart = {
+    requireCandidate()
+    LpStart.create(problem, userValues.map { case ((family, key), value) =>
+      LpCandidateValue(LpVariableId(family, key), value)
+    }, config)
+  }
 
   private[dsl] def requireOwner(handle: VarSetHandle): Unit = {
     if (!(handle.problem eq problem)) throw new LpModelException("Variable belongs to a different problem")

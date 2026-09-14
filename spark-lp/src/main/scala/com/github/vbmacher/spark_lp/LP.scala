@@ -173,7 +173,9 @@ object LP extends LazyLogging {
     candidateViolation: Option[DVector => Double] = None,
     nanoTime: () => Long = () => System.nanoTime(),
     inspectConverged: Option[(DVector, DenseVector, DVector) => Unit] = None,
-    quadratic: Option[DVector] = None
+    quadratic: Option[DVector] = None,
+    initialPrimal: Option[DVector] = None,
+    onStartApplied: () => Unit = () => ()
   )(implicit spark: SparkSession): SolveSummary = {
     validateParameters(tolerance, maxIter, etaIter, valueCap, eps, infeasibilityTolerance, cgTolerance)
     require(b.size > 0 && b.values.forall(v => !v.isNaN && !v.isInfinite), "b must be nonempty and finite")
@@ -210,7 +212,14 @@ object LP extends LazyLogging {
           case e if isNumericalFailure(e) => throw numericalFailure("initialization", 0, e)
         }
 
-      var x = init.x
+      var x = initialPrimal.map { supplied =>
+        val validated = supplied.zip(init.x).map { case (hint, default) =>
+          require(hint.size == default.size && hint.values.forall(v => java.lang.Double.isFinite(v) && v > 0.0),
+            "Initial primal blocks must match the solver layout and contain finite positive values")
+          new DenseVector(hint.values.clone())
+        }
+        caches.cache(validated); validated.count(); onStartApplied(); validated
+      }.getOrElse(init.x)
       caches.cache(x)
 
       var lambda = init.lambda

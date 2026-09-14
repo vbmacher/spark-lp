@@ -108,8 +108,9 @@ whole integers and are never widened by the rounding tolerance; they must lie wi
 
 Continuous variables take `lowerBound` and `upperBound = Some(value)`. Equal bounds fix a
 variable exactly. Fully fixed or finite-bound-only models need no artificial constraint. For a
-free variable use `lowerBound = Double.NegativeInfinity` and express any finite upper limit as a
-separate `x <= limit` constraint.
+free variable use `lowerBound = Double.NegativeInfinity`; combine it with
+`upperBound = Some(limit)` for an upper-only continuous variable.
+Upper-only variables compile as `x = limit - y`, `y >= 0`, and results use original units.
 Linear models with no active constraint rows are solved analytically from their
 variable domains and objective coefficients, including empty-variable and constant-only
 models. Results have zero numerical iterations. An improving direction without a

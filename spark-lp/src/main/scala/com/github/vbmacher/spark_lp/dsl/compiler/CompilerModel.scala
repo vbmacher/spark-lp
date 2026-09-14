@@ -30,9 +30,12 @@ private[dsl] final case class ShiftedKind(shift: Double, upper: Option[Double]) 
 /** Free variable, represented as the difference of two non-negative columns `x = x_plus - x_minus`. */
 private[dsl] case object SplitKind extends PlanKind
 
+/** Upper-only variable: x = upper - y, y >= 0. */
+private[dsl] final case class ReflectedKind(upper: Double) extends PlanKind
+
 /**
   * One solver column. `kind`: 0 = plain shifted variable (`x = shift + y`), 1 = positive part of
-  * a free split, 2 = negative part, 3 = internal slack.
+  * a free split, 2 = negative part, 3 = internal slack, 4 = upper reflection (`x = shift - y`).
   */
 private[dsl] final case class ColData(
   setIndex: Int,
@@ -88,6 +91,7 @@ private[dsl] final class SetPlan(
     case FixedKind(_) => 0L
     case SplitKind => 2 * count
     case ShiftedKind(_, _) => count
+    case ReflectedKind(_) => count
   }
 
   /** Keys sorted by encoded form; ordering never depends on partition order. */

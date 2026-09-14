@@ -52,11 +52,12 @@ private[dsl] final class LpCompiler(problem: LpProblem, config: SolveConfig) ext
       fail("stopAfterIteration and SolveControl are supported only for continuous models")
     if (compiled.direct.nonEmpty) {
       val direct = compiled.direct.get
+      val violation = originalValuesViolation(compiled, direct.values)
       buildSolution(compiled, sc.emptyRDD,
         if (direct.unbounded) LpStatus.Unbounded else LpStatus.Optimal,
         direct.objectiveValue, 0,
         if (direct.unbounded) LpResiduals(0.0, Double.NaN, Double.NaN) else LpResiduals(0.0, 0.0, 0.0),
-        Map.empty, Some(CandidateInfo(true, true, Some(0))), originalValues = Some(direct.values))
+        Map.empty, Some(CandidateInfo(true, violation <= config.control.feasibilityTolerance, Some(0))), originalValues = Some(direct.values))
     } else if (compiled.numCols == 0) {
       val feasible = compiled.rowSpecs.forall { row =>
         val violation = row.sense match {
@@ -1165,7 +1166,10 @@ private[dsl] final class LpCompiler(problem: LpProblem, config: SolveConfig) ext
     * reducing only a scalar to the driver.
     */
   private def reconstructedOriginalViolation(compiled: Compiled, x: DVector): Double = {
-    val values = reconstructValues(compiled, x, Map.empty)
+    originalValuesViolation(compiled, reconstructValues(compiled, x, Map.empty))
+  }
+
+  private def originalValuesViolation(compiled: Compiled, values: RDD[((Int, String), Double)]): Double = {
     val bounds = compiled.plans.map { p =>
       val limits = p.kind match {
         case FixedKind(v) => (Some(v), Some(v))

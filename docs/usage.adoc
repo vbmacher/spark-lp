@@ -4,7 +4,7 @@
 
 Define variables over Spark data, add a linear or continuous convex quadratic objective
 and linear constraints, then solve.
-Scala 2.12; Spark is supplied by your application. This checkout builds against Spark
+Scala 2.12; Spark is supplied by your application. Supported Spark versions are
 2.4.8 and 3.0.2–3.5.3; run the tests on the version you deploy.
 
 == Start here
@@ -72,7 +72,7 @@ flowchart LR
 Scalar RHS values apply to every group. A grouped RHS DataFrame contains the grouping
 columns and a numeric `rhs` column, exactly once per key. Terms without a matching RHS
 are errors; an RHS-only group represents a zero-term constraint.
-The existing `lpSum(...)` and `lpSumBy(...)` syntax remains supported.
+`lpSum(...)` and `lpSumBy(...)` provide alternative expression syntax.
 
 == Bounds, integer choices, and typed data
 
@@ -139,7 +139,7 @@ and appends `lp_variable`, `lp_value`. Continuous values are approximate.
 `constraints` contains `name`, `group`, `activity`, `sense`, `rhs`, `slack`, `dual`, `note`.
 Slack is `rhs - activity` for `<=` and equality, and `activity - rhs` for `>=`.
 Equality slack should be near zero; negative inequality slack indicates violation.
-`dual` is currently null. Presolve notes explain removed rows.
+`dual` is null. Presolve notes explain removed rows.
 
 `solution.evidence` optionally exposes typed infeasibility certificates and unbounded
 directions, including a feasible point when available. `proof.verify(tolerance)`
@@ -163,7 +163,7 @@ Keep sources stable during solving and when joining results to domain columns; a
 reads the sources again. Cache or snapshot input data yourself when consistent source contents matter.
 
 See link:algorithm.adoc[the algorithm and scaling limits]. Mermaid blocks require a
-Mermaid-capable AsciiDoc renderer; ordinary Asciidoctor still displays their source.
+Mermaid-capable AsciiDoc renderer; ordinary Asciidoctor displays their source.
 
 == Progress and cooperative stopping (continuous models)
 
@@ -229,8 +229,8 @@ other CG residuals come from the recurrence. `preconditionerRank` is optional an
 applies only to backends with a rank-based preconditioner. Setup may recur within
 `InnerSolve` when CG strengthens its preconditioner; phases are not a one-way sequence.
 
-This replaces the old `Cholesky`/`Preconditioner` phase names and flat progress metrics.
-For example, use `event.iterate.map(_.objectiveValue)` and `event.work.map(_.completed)`.
+Access grouped progress metrics with `event.iterate.map(_.objectiveValue)` and
+`event.work.map(_.completed)`.
 Reporting itself starts no additional Spark actions and collects no distributed vectors.
 Keep callbacks quick; their exceptions propagate unchanged after cleanup.
 
@@ -238,7 +238,7 @@ Checks occur between initialization operations, CG operations, preconditioner pi
 Cholesky blocks. They do not interrupt an already-running Spark action or native call.
 The next safe check can therefore occur after the requested deadline. Convergence and
 certificates already established on a completed iteration take precedence over a coincident
-stop request. `stopAfterIteration` remains available and runs only after nonterminal iterations.
+stop request. `stopAfterIteration` runs only after nonterminal iterations.
 
 On *every intentional limit*, including `maxIterations`, the result contains the best feasible
 completed iterate if one was retained. `iterations` counts all completed iterations;
@@ -265,4 +265,5 @@ If no feasible candidate exists but an iteration completed, values are available
 with `candidate.feasible=false`. If stopping occurred before any iteration completed,
 `candidate.available=false`, the objective/residuals and constraint activities are `NaN`, and
 `value`/`values` throw an explicit no-iterate error. Never publish those results as feasible output.
-New controls are rejected for integer models; branch-and-bound stopping is a separate contract.
+Progress and cooperative stopping controls are rejected for integer models;
+branch-and-bound stopping is a separate contract.

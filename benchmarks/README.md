@@ -59,7 +59,7 @@ Generation uses `spark.range`, SQL expressions, joins and aggregations. Coeffici
 |---|---|
 | `solver-scaling.csv` | How do solve time and memory change as rows, variables and support grow? |
 | `sparsity-and-conditioning.csv` | How do density, scaling, near dependence and degeneracy affect convergence and cost? |
-| `emr-scaling.csv` | How do the algorithms behave on larger distributed problems? Runs are pending; see TODO. |
+| `emr-scaling.csv` | How do the algorithms behave on larger distributed problems? Validation status: pending; see the campaign plan. |
 
 ## Build and run
 
@@ -125,7 +125,7 @@ aws s3 cp s3://your-bucket/spark-lp-benchmarks/runs/RUN-ID/ /absolute/artifacts/
 aws emr terminate-clusters --cluster-ids "$BENCHMARK_CLUSTER_ID"
 ```
 
-Raw measurements, environment, command, application log and exit status upload under `results/`; Spark event logs go directly to `events/`, and submission inputs remain under `input/`. Before uploading, the step retains existing records and fills missing repetitions with the process failure followed by `Unrun` slots. An existing watchdog failure is preserved without adding another failure. The step attempts the result upload on failure as well as success, and preserves a nonzero process exit. A whole-application timeout also bounds generation/validation to `(warmups + repetitions) × 30 minutes + 10 minutes`. Node loss or forced termination can prevent uploads; reconcile missing attempts against the step/container logs before importing. Executor memory sampling remains a [TODO](src/results/TODO.md).
+Raw measurements, environment, command, application log and exit status upload under `results/`; Spark event logs go directly to `events/`, and submission inputs remain under `input/`. Before uploading, the step retains existing records and fills missing repetitions with the process failure followed by `Unrun` slots. An existing watchdog failure is preserved without adding another failure. The step attempts the result upload on failure as well as success, and preserves a nonzero process exit. A whole-application timeout also bounds generation/validation to `(warmups + repetitions) × 30 minutes + 10 minutes`. Node loss or forced termination can prevent uploads; reconcile missing attempts against the step/container logs before importing. Per-executor memory sampling is [pending](src/results/TODO.md).
 
 ## Results and environments
 
@@ -139,7 +139,7 @@ Inspect the imported CSV before placing it under `src/results/data/`. Its filena
 
 The report groups only homogeneous cases/configurations, excludes warmups, reports successful solve-time median/range, and shows failure duration where no attempt converged. No failure becomes a successful timing. Constant columns move above each table; ID and Env remain explicit references. The environment table describes the recorded machine/OS/Spark/Java/EMR environment, not the machine generating the Markdown.
 
-No campaign results are currently recorded. Case inventories in `src/main/resources/` define the inputs for the [remaining runs](src/results/TODO.md). Import measurements from completed runs to populate the report's benchmark, environment and result tables.
+The campaign report has no measurements. Case inventories in `src/main/resources/` define the inputs for the [campaign plan](src/results/TODO.md). Import validated measurements to populate its benchmark, environment and result tables. Separate [QP validation](quadratic/README.md) and [GPU status](gpu/README.md) reports contain their own evidence.
 
 ## Memory
 

@@ -2,8 +2,8 @@
 
 Continuous solve results expose `solution.evidence: Option[LpEvidence]`.
 `None` means evidence is unavailable, including optimal, stopped and integer solves.
-Existing presolve validation errors (contradictory declared bounds, inconsistent
-duplicate equalities, impossible constant rows) remain exceptions rather than solve results.
+Presolve validation errors (contradictory declared bounds, inconsistent
+duplicate equalities, impossible constant rows) raise exceptions rather than return solve results.
 
 ```scala
 val solution = model.solve()
@@ -20,7 +20,7 @@ group labels) and distributed `(setIndex, encodedKey) -> (lower, upper)` bound
 multipliers. `model.variables` includes display names, declared bounds and the
 original sparse coefficients. Fixed variables are retained. Merged/presolved rows
 have zero multipliers. This compiler does not rescale emitted rows: their internal
-multipliers already have original row units. Bound shifts change the right-hand
+multipliers have original row units. Bound shifts change the right-hand
 side, not the row multiplier. Free-variable splits are recombined.
 
 The convention is `A^T y + lower + upper = 0`, with
@@ -47,7 +47,7 @@ These are numerical witnesses, not exact-arithmetic proofs. The caller selects
 the verification tolerance. `solution.close()` releases the evidence snapshots;
 finish Spark actions before closing. No IIS or MIP proof is implied.
 
-For quadratic models the integrated compiler retains the original unshifted linear
+For quadratic models the compiler stores the original unshifted linear
 cost and diagonal curvature in the snapshot. Coupled objectives expose the
 factor-expanded model, including named auxiliary rows/variables; verification of
 this equivalent formulation certifies the original problem after projection onto

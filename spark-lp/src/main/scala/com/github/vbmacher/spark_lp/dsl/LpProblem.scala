@@ -45,6 +45,10 @@ final class LpProblem private[dsl](
     handle
   }
 
+  /** Copies declarations and returns identity mappings; lazy Spark sources are shared. */
+  def copy(name: String = this.name): LpModelCopy =
+    new LpModelCopy(this, new LpProblem(name, sense, spark))
+
   /** Creates one decision variable. */
   def variable(
     name: String,

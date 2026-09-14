@@ -218,6 +218,7 @@ private[dsl] final class LpCompiler(problem: LpProblem, config: SolveConfig) ext
     val shifts = plans.map { p => p.kind match {
       case FixedKind(v) => p.handle.setIndex -> v
       case ShiftedKind(v, _) => p.handle.setIndex -> v
+      case ReflectedKind(v) => p.handle.setIndex -> v
       case _ => p.handle.setIndex -> 0.0
     }}.toMap
     // c' = c + Q*l, k' = k + c*l + 0.5*l^T Q*l.
@@ -251,6 +252,7 @@ private[dsl] final class LpCompiler(problem: LpProblem, config: SolveConfig) ext
     val shiftVals = plans.flatMap { p =>
       p.kind match {
         case ShiftedKind(shift, _) if shift != 0.0 => Some(p.handle.setIndex -> shift)
+        case ReflectedKind(upper) => Some(p.handle.setIndex -> upper)
         case _ => None
       }
     }.toMap
@@ -305,6 +307,7 @@ private[dsl] final class LpCompiler(problem: LpProblem, config: SolveConfig) ext
           case FixedKind(v) => (Some(v), Some(v))
           case ShiftedKind(v, u) => (Some(v), u)
           case SplitKind => (None, None)
+          case ReflectedKind(upper) => (None, Some(upper))
         }
         p.keys.map { case (key, _) => ((si, key), (lower, upper)) }
       }
@@ -427,6 +430,15 @@ private[dsl] final class LpCompiler(problem: LpProblem, config: SolveConfig) ext
             rowRemap.value.get(r).map(fr => (g, (fr, c)))
           }
           costPieces += setCost.join(idx).map { case (_, (c, g)) => (g, senseMult * c) }
+
+        case ReflectedKind(upper) =>
+          val off = p.offset
+          val idx = caches.cache(p.sortedKeys).map { case (enc, (i, _)) => (enc, off + i) }
+          basePieces += idx.map { case (enc, g) => (g, (si, enc, 4: Byte, upper)) }
+          entryPieces += setTerms.join(idx).flatMap { case (_, ((r, c), g)) =>
+            rowRemap.value.get(r).map(fr => (g, (fr, -c)))
+          }
+          costPieces += setCost.join(idx).map { case (_, (c, g)) => (g, -senseMult * c) }
 
         case SplitKind =>
           // free variable: x = x_plus - x_minus, both non-negative
@@ -592,9 +604,6 @@ private[dsl] final class LpCompiler(problem: LpProblem, config: SolveConfig) ext
       case category => integralBounds(handle, category, where)
     }
 
-    if (upperOpt.isDefined && lb == Double.NegativeInfinity) {
-      fail(s"$where: a finite upper bound combined with a -inf lower bound is not supported in this release")
-    }
     upperOpt.foreach { ub =>
       if (lb > ub) {
         fail(s"$where: lowerBound ($lb) > upperBound ($ub)")
@@ -620,7 +629,7 @@ private[dsl] final class LpCompiler(problem: LpProblem, config: SolveConfig) ext
 
     val kind =
       if (upperOpt.contains(lb)) FixedKind(lb)
-      else if (lb == Double.NegativeInfinity) SplitKind
+      else if (lb == Double.NegativeInfinity) upperOpt.map(ReflectedKind).getOrElse(SplitKind)
       else ShiftedKind(lb, upperOpt)
     new SetPlan(handle, keys, count, kind, integral)
   }
@@ -1039,6 +1048,7 @@ private[dsl] final class LpCompiler(problem: LpProblem, config: SolveConfig) ext
       val bounds = snapshot(variables.leftOuterJoin(upper).mapValues { case (v, u) =>
         val ay = v.coefficients.iterator.map { case (r, a) => a * y(r) }.sum
         if (v.upper.contains(v.lower)) (math.max(0.0, -ay), math.min(0.0, -ay))
+        else if (v.lower.isNegInfinity && v.upper.nonEmpty) (0.0, -ay)
         else (if (v.lower.isNegInfinity) 0.0 else -ay - u.getOrElse(0.0), u.getOrElse(0.0))
       })
       InfeasibilityCertificate(model, y, bounds): LpEvidence
@@ -1075,6 +1085,7 @@ private[dsl] final class LpCompiler(problem: LpProblem, config: SolveConfig) ext
         case None =>
           colData.kind match {
             case 0 => Some(((colData.setIndex, colData.enc), (if (direction) 0.0 else colData.shift) + v))
+            case 4 => Some(((colData.setIndex, colData.enc), (if (direction) 0.0 else colData.shift) - v))
             case 1 => Some(((colData.setIndex, colData.enc), v))
             case 2 => Some(((colData.setIndex, colData.enc), -v))
             case _ => None
@@ -1171,6 +1182,7 @@ private[dsl] final class LpCompiler(problem: LpProblem, config: SolveConfig) ext
         case FixedKind(v) => (Some(v), Some(v))
         case ShiftedKind(lower, upper) => (Some(lower), upper)
         case SplitKind => (None, None)
+        case ReflectedKind(upper) => (None, Some(upper))
       }
       p.handle.setIndex -> limits
     }.toMap

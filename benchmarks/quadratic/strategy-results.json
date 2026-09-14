@@ -1,0 +1,53 @@
+[
+  {
+    "n": 128,
+    "m": 16,
+    "factors": 32,
+    "density": 0.05,
+    "seed": 7000,
+    "scipy": "1.16.3",
+    "status": 0,
+    "iterations": 26,
+    "lifted_seconds": 0.000557628000024124,
+    "reference_seconds": 0.0009539209986542119,
+    "dual_relative_error": 6.6957430849248e-12,
+    "normal_residual": 2.3087729182822958e-10,
+    "lifted_sparse_bytes": 8524,
+    "reference_hessian_bytes": 131072,
+    "scope": "single-process strategy experiment; reference dense Hessian used only for verification"
+  },
+  {
+    "n": 512,
+    "m": 32,
+    "factors": 64,
+    "density": 0.02,
+    "seed": 7000,
+    "scipy": "1.16.3",
+    "status": 0,
+    "iterations": 23,
+    "lifted_seconds": 0.0006035030000930419,
+    "reference_seconds": 1.4146534589999646,
+    "dual_relative_error": 3.776223324186699e-12,
+    "normal_residual": 3.430034751753224e-10,
+    "lifted_sparse_bytes": 49444,
+    "reference_hessian_bytes": 2097152,
+    "scope": "single-process strategy experiment; reference dense Hessian used only for verification"
+  },
+  {
+    "n": 128,
+    "m": 16,
+    "factors": 64,
+    "density": 1.0,
+    "seed": 7000,
+    "scipy": "1.16.3",
+    "status": 0,
+    "iterations": 63,
+    "lifted_seconds": 0.005061817000751034,
+    "reference_seconds": 0.007763079998767353,
+    "dual_relative_error": 7.817620201812768e-12,
+    "normal_residual": 4.653729451242361e-10,
+    "lifted_sparse_bytes": 105240,
+    "reference_hessian_bytes": 131072,
+    "scope": "single-process strategy experiment; reference dense Hessian used only for verification"
+  }
+]

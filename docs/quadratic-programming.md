@@ -51,3 +51,64 @@ At degenerate bounds, a small objective gap can coexist with larger variable err
 check stationarity with bound multipliers and complementary products rather than
 requiring identical raw gradients. `QpSuite` independently checks analytic optima,
 KKT witnesses, objective constants, both backends, keyed inputs and rejection paths.
+
+
+## Coupled convex objectives: sparse factors (#70)
+
+Use `QpObjective.squared(expression, weight)` or
+`QpObjective.sumSquares(Seq(expression -> weight, ...))` for sparse cross-variable
+terms. Each factor is a scalar/keyed linear expression. For example:
+
+```scala
+model += QpObjective.squared(x + 2.0 * y - 5.0) +
+         QpObjective.squared(x - y - 1.0)
+```
+
+This represents `sum_k w_k * (a_k^T x + t_k)^2`. Under the standard
+`0.5*x^T Q*x + c^T*x + k` convention, `Q = 2*sum_k w_k*a_k*a_k^T`.
+A factor can use `vars.sum(col("coefficient"))` or `weightedBy` for sparse keyed
+coefficients; every pair of keys in a factor produces the corresponding symmetric
+cross term. Repeated coefficients within a factor sum before solving. Repeated
+factors add their penalties. No dense Hessian or explicit inverse is constructed.
+
+Nonnegative factor weights prove PSD structurally, including rank deficiency.
+Negative weights in a minimization objective are rejected; negate the entire
+objective for concave maximization. Arbitrary raw Hessian entries are deliberately
+not accepted: the caller must supply a PSD factorization, rather than rely on
+nonnegative diagonal checks or random probes. The representation supports any
+provided sparse PSD factorization; dense factors can still be expensive.
+Integer/binary variables and quadratic constraints remain unsupported.
+
+For each factor, compilation introduces `u,v >= 0`, the linear equality
+`a^T*x+t = u-v`, and diagonal objective `w*(u^2+v^2)`.
+For a fixed residual, its minimum is attained with one of `u,v` zero and equals
+`w*(a^T*x+t)^2`. This is an exact convex reduction at the optimum. The lifted
+stationarity equations recover the original gradient through the factor-row
+multipliers. The diagonal-QP solver checks primal/dual residuals and complementarity,
+and its recession test requires zero quadratic curvature. A nonzero-curvature
+auxiliary direction cannot pass that condition.
+
+The reduction adds two columns and one row per factor and uses the existing
+weighted normal operator on the enlarged sparse matrix. CG applies a positive
+definite regularized normal system; it is never applied directly to an indefinite
+KKT matrix. Cholesky still has quadratic driver storage in the enlarged row count;
+CG retains distributed sparse columns and bounded preconditioning storage.
+Near-zero residuals and free-variable splits can cause poor conditioning.
+**Coupled models containing free variables use regularized CG with Auto; explicit
+Cholesky is rejected.** An actual transformed free-variable experiment lost
+Cholesky positive definiteness at iteration 62, whereas CG converged in 11
+iterations. That failed run is retained in the benchmark folder.
+
+Factor lifting supports free, shifted and fixed original variables: all cross terms
+are preserved by transforming the complete factor equality. Auxiliary variables
+are created per compilation and never mutate the user problem. Diagnostics include
+`__qp_factor_*` rows and the returned keyed internal snapshots include auxiliary
+columns; `value`/`values` for the user's variables reconstruct their original units.
+Reserve the `__qp_factor_` prefix for compiler-generated names. Replacing an
+objective or solving repeatedly does not accumulate variables or constraints.
+
+The supplied [comparison](../benchmarks/quadratic/README.md) includes a preimplementation
+linear-system experiment, complete end-to-end runs against analytic solutions,
+accuracy and memory records. Use separable objectives for diagonal Hessians;
+this representation offers cross terms and a structural convexity contract, not a
+performance advantage over the specialized diagonal path.

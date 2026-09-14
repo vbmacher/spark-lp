@@ -146,7 +146,8 @@ final case class SolveConfig(
   stopAfterIteration: Option[Int => Boolean] = None,
   cgConfig: com.github.vbmacher.spark_lp.newton.CgConfig = com.github.vbmacher.spark_lp.newton.CgConfig(),
   control: com.github.vbmacher.spark_lp.SolveControl = com.github.vbmacher.spark_lp.SolveControl(),
-  relaxIntegrality: Boolean = false) {
+  relaxIntegrality: Boolean = false,
+  boundInference: BoundInferenceConfig = BoundInferenceConfig()) {
 
   com.github.vbmacher.spark_lp.LP.validateParameters(
     tolerance, maxIterations, etaIteration, valueCap, epsilon, infeasibilityTolerance, cgTolerance)

@@ -66,6 +66,7 @@ private[dsl] final class LpCompiler(problem: LpProblem, config: SolveConfig) ext
       buildSolution(compiled, sc.emptyRDD, LpStatus.Optimal, compiled.objConstant, 0,
         LpResiduals(0.0, 0.0, 0.0), Map.empty, Some(CandidateInfo(true, feasible, Some(0))))
     } else if (compiled.intCols.isEmpty) {
+      var convergedDual: Option[DenseVector] = None
       val summary = LP.solveSummary(
         c = compiled.c,
         AT = compiled.AT,
@@ -88,8 +89,10 @@ private[dsl] final class LpCompiler(problem: LpProblem, config: SolveConfig) ext
               metrics.copy(objectiveValue = compiled.senseMult * metrics.objectiveValue + compiled.objConstant))))
         }),
         candidateViolation = Some(x => originalViolation(compiled, x)),
+        inspectConverged = Some((_, multipliers, _) =>
+          convergedDual = Some(new DenseVector(multipliers.values.clone()))),
         quadratic = compiled.quadratic)
-      try continuousSolution(compiled, summary)
+      try continuousSolution(compiled, summary, convergedDual)
       finally summary.x.unpersist(blocking = false)
     } else {
       if (config.stopAfterIteration.nonEmpty)
@@ -932,6 +935,8 @@ private[dsl] final class LpCompiler(problem: LpProblem, config: SolveConfig) ext
             val rhsN = rs.b0 / leading(rowId)
             if (math.abs(rhsN - keeperRhsN) <= RhsMatchTolerance * math.max(1.0, math.abs(keeperRhsN))) {
               rs.emitted = false
+              rs.dualNonUnique = true
+              keeper.dualNonUnique = true
               rs.note = Some(s"merged: duplicate of constraint '${keeper.name}'")
             } else {
               fail(s"Constraints '${keeper.name}' and '${rs.name}' have identical normalised coefficients " +
@@ -984,7 +989,7 @@ private[dsl] final class LpCompiler(problem: LpProblem, config: SolveConfig) ext
     * Maps a continuous solver summary to the public status/objective pair and reconstructs the
     * solution — the unchanged single-solve path used whenever the model has no integral columns.
     */
-  private def continuousSolution(compiled: Compiled, summary: LP.SolveSummary): LpSolution = {
+  private def continuousSolution(compiled: Compiled, summary: LP.SolveSummary, multipliers: Option[DenseVector]): LpSolution = {
     val status: LpStatus = summary.termination match {
       case LP.Termination.Converged => LpStatus.Optimal
       case LP.Termination.IterationLimit => LpStatus.IterationLimit
@@ -1001,9 +1006,13 @@ private[dsl] final class LpCompiler(problem: LpProblem, config: SolveConfig) ext
       case LpStatus.Unbounded => compiled.senseMult * Double.NegativeInfinity
       case _ => compiled.senseMult * summary.objectiveValue + compiled.objConstant
     }
+    val prices = if (status == LpStatus.Optimal && problem.quadratic.isEmpty)
+      multipliers.map(lambda => compiled.rowSpecs.filter(r => r.emitted && !r.dualNonUnique)
+        .map(r => r.rowId -> (compiled.senseMult * lambda(r.finalIdx))).toMap)
+      else None
     buildSolution(compiled, summary.x, status, objectiveValue, summary.iterations,
       LpResiduals(summary.primalResidual, summary.dualResidual, summary.dualityGap), Map.empty,
-      Some(summary.candidate), summary.stopReason, buildEvidence(compiled, summary, status))
+      Some(summary.candidate), summary.stopReason, buildEvidence(compiled, summary, status), rowPrices = prices)
   }
 
   private def buildEvidence(compiled: Compiled, summary: LP.SolveSummary,
@@ -1223,7 +1232,8 @@ private[dsl] final class LpCompiler(problem: LpProblem, config: SolveConfig) ext
     stopReason: Option[StopReason] = None,
     evidence: Option[LpEvidence] = None,
     originalValues: Option[RDD[((Int, String), Double)]] = None,
-    mip: Option[MipSummary] = None): LpSolution = {
+    mip: Option[MipSummary] = None,
+    rowPrices: Option[Map[Int, Double]] = None): LpSolution = {
 
     val available = candidate.forall(_.available)
     val userValues = caches.checkpoint(
@@ -1248,14 +1258,21 @@ private[dsl] final class LpCompiler(problem: LpProblem, config: SolveConfig) ext
       StructField("rhs", DoubleType, nullable = false),
       StructField("slack", DoubleType, nullable = false),
       StructField("dual", DoubleType, nullable = true),
-      StructField("note", StringType, nullable = true)))
+      StructField("note", StringType, nullable = true),
+      StructField("dual_note", StringType, nullable = true)))
     val rows = compiled.rowSpecs.map { rs =>
       val act = if (available) activity.getOrElse(rs.rowId, 0.0) else Double.NaN
       val slack = rs.sense match {
         case LpSense.Ge => act - rs.rhsUser
         case _ => rs.rhsUser - act
       }
-      Row(rs.name, rs.group.orNull, act, rs.sense.symbol, rs.rhsUser, slack, null, rs.note.orNull)
+      val price = rowPrices.flatMap(_.get(rs.rowId))
+      val unavailable = if (price.nonEmpty) null
+        else if (rs.dualNonUnique) "Non-unique dual for merged equivalent rows"
+        else if (!rs.emitted) "Presolved row has no uniquely reconstructed dual"
+        else "No optimal continuous LP dual available"
+      Row(rs.name, rs.group.orNull, act, rs.sense.symbol, rs.rhsUser, slack,
+        price.map(Double.box).orNull, rs.note.orNull, unavailable)
     }
     val constraintsDf = spark.createDataFrame(sc.parallelize(rows, 1), schema)
 

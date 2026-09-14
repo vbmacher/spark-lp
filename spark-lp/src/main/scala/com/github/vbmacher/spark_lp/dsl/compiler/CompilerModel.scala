@@ -73,6 +73,7 @@ private[dsl] final class RowSpec(
   /** RHS after fixed-variable and bound-shift folding. */
   var b0: Double = rhsUser
   var note: Option[String] = None
+  var dualNonUnique: Boolean = false
   var emitted: Boolean = true
   var finalIdx: Int = -1
 }

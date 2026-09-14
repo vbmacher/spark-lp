@@ -7,6 +7,22 @@ import org.apache.spark.sql.functions.{col, struct}
 import org.scalatest.funsuite.AnyFunSuite
 
 class LpMemberSuite extends AnyFunSuite with DataFrameSuiteBase {
+  test("squared deviation targets only the selected member") {
+    implicit val ss: SparkSession = spark
+    val localSpark = spark
+    import localSpark.implicits._
+    val model = LpProblem("selected curvature")
+    val xs = model.variables("x", Seq("a", "b").toDF("key"), $"key", upperBound = Some(3.0))
+    model += QpObjective.squaredDeviation(xs("a"), 2.0) + lpSum(xs("b"))
+    val result = model.solve()
+    try {
+      assert(result.status == LpStatus.Optimal)
+      assert(math.abs(result.value(xs("a")) - 2.0) < 1e-5)
+      assert(math.abs(result.value(xs("b"))) < 1e-5)
+      assert(math.abs(result.objectiveValue) < 1e-5)
+    } finally result.close()
+  }
+
   test("member handles mix with scalars and family sums, preserve copies and perform no lookup job") {
     implicit val ss: SparkSession = spark
     val localSpark = spark

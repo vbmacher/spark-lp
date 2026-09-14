@@ -46,7 +46,6 @@ def main():
     parser.add_argument('--output',type=Path,required=True)
     parser.add_argument('--campaign',choices=['solver-scaling','sparsity-and-conditioning'],default='solver-scaling')
     parser.add_argument('--inventory',type=Path)
-    parser.add_argument('--smoke',action='store_true')
     parser.add_argument('--classpath',type=Path,help='Exported benchmarks Test/fullClasspath')
     parser.add_argument('--partitions',type=int,default=8)
     parser.add_argument('--repetitions',type=int,default=5)
@@ -54,7 +53,7 @@ def main():
     args = parser.parse_args()
     if args.partitions < 1 or args.repetitions < 1:
         parser.error('partitions and repetitions must be positive')
-    inventory = args.inventory or RESOURCES/('smoke.csv' if args.smoke else args.campaign+'.csv')
+    inventory = args.inventory or RESOURCES/(args.campaign+'.csv')
     cases = read_cases(inventory)
     output = args.output.resolve()
     output.mkdir(parents=True,exist_ok=False)
@@ -80,7 +79,7 @@ def main():
     env = dict(os.environ,OPENBLAS_NUM_THREADS='1',OMP_NUM_THREADS='1',MKL_NUM_THREADS='1',SPARK_LOCAL_IP='127.0.0.1')
     manifest = dict(started_utc=time.strftime('%Y-%m-%dT%H:%M:%SZ',time.gmtime()),campaign=args.campaign,
                     implementation_sha=sha,source_hash=source_hash,sources=sources,host=platform.uname()._asdict(),
-                    mode='smoke' if args.smoke else 'full-local',warmups=args.warmups,repetitions=args.repetitions,
+                    mode='full-local',warmups=args.warmups,repetitions=args.repetitions,
                     expected_measured=len(cases)*2*args.repetitions,
                     java=subprocess.check_output(['java','-version'],stderr=subprocess.STDOUT,text=True),
                     inventory_sha256=hashlib.sha256(inventory.read_bytes()).hexdigest(),

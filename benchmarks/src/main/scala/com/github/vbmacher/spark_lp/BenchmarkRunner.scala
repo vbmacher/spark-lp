@@ -69,7 +69,7 @@ object BenchmarkRunner {
     val base: Map[String, Any] = Map("schema" -> 1, "campaign" -> campaign, "suite" -> benchmark.suite,
       "warmups" -> warmups, "repetitions" -> repetitions, "case" -> spec.id, "seed" -> spec.seed,
       "hash" -> fingerprint, "backend" -> benchmark.name, "m" -> spec.m, "n" -> spec.n,
-      "generator_version" -> DataGenerator.GeneratorVersion, "nnz" -> nonzeros, "tolerance" -> spec.tolerance, "heap_gib" -> spec.heapGiB,
+      "nnz" -> nonzeros, "tolerance" -> spec.tolerance, "heap_gib" -> spec.heapGiB,
       "partitions" -> partitions, "family" -> spec.family, "nonzeros_per_row" -> spec.width, "generation_seconds" -> generationSeconds,
       "known_objective" -> objective, "implementation_sha" -> sys.props.getOrElse("benchmark.sha", "unrecorded"),
       "source_hash" -> sys.props.getOrElse("benchmark.sourceHash", "unrecorded"),

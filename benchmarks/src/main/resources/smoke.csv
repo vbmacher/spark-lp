@@ -1,7 +1,0 @@
-id,m,n,nonzeros_per_row,family,seed,tolerance,heap_gib
-well-small,4,12,3,well,11,1e-8,4
-wide-small,4,12,3,wide,29,1e-8,4
-dependent-small,4,12,3,dependent,47,1e-8,4
-degenerate-small,4,12,3,degenerate,11,1e-8,4
-dense-small,4,12,12,dense,11,1e-8,4
-diagonal-small,4,12,1,well,29,1e-8,4

@@ -75,6 +75,30 @@ Primary references: [ND4J backends](https://deeplearning4j.konduit.ai/multi-proj
 [PyOpenCL memory ownership](https://documen.tician.de/pyopencl/runtime_memory.html).
 No mandatory ND4J, CUDA, OpenCL or Python dependency enters the core library.
 
+## Supporting multiple vendors (proposed follow-up)
+
+The Apple result applies to the tested device and runtime. It does not establish
+whether NVIDIA, AMD or Intel GPUs benefit this solver. Keep the solver independent
+of the device vendor through a small optional backend interface for preparing,
+applying and releasing the sparse normal operator. Keep matrices resident between
+applications, update weights explicitly, and retain the CPU implementation as a
+fallback. Device selection should check FP64, required operations and available
+memory; vendor names alone do not establish numerical suitability or speed.
+
+[OpenCL](https://www.khronos.org/opencl/) provides a cross-platform kernel API and
+is suitable for extending the existing experiment to other available runtimes.
+For a production implementation, evaluate [SYCL/oneMath](https://github.com/uxlfoundation/oneMath#supported-configurations):
+its Linux sparse BLAS interface has NVIDIA cuSPARSE, AMD rocSPARSE and Intel oneMKL
+backends. This could share the native implementation across those vendors, but
+still requires JVM bindings, platform-specific native packaging, and validation
+of the exact operations and supported device/runtime combinations. Its documented
+support matrix does not provide an Apple GPU backend.
+
+These are design candidates, not implemented acceleration features. No portability
+layer supplies missing native FP64 capability. Apple GPU acceleration would need
+a separately validated numerical approach, such as mixed precision with refinement,
+that still meets the original solver tolerances. Until then, use the CPU path.
+
 ## Reproduce
 
 From this worktree:

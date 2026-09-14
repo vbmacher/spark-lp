@@ -4,7 +4,9 @@
 
 == Compile to equality form
 
-The continuous solver minimizes `c^T x` subject to `A x = b`, `x >= 0`.
+The linear solver minimizes `c^T x` subject to `A x = b`, `x >= 0`.
+Continuous convex QP adds a diagonal quadratic objective in this form; sparse
+coupled factors are reduced to diagonal QP as described below.
 The compiler stores columns of `A` as sparse Spark rows of `AT = A^T`.
 Variable order is `(declaration order, encoded key)`; row order follows constraint
 declaration and group keys. No wide DataFrame pivot is needed.
@@ -211,7 +213,8 @@ original LP. Solving only the regularized equations cannot yield `Optimal`.
 The implementation deliberately retains Mehrotra predictor-corrector steps instead of
 the paper's fixed barrier reduction, uses uniform configurable regularization instead
 of dynamically adjusting individual diagonal entries, and starts with Jacobi before
-partial Cholesky. General quadratic programming is outside this implementation.
+partial Cholesky. Continuous convex quadratic objectives extend these equations as described below;
+nonconvex, mixed-integer quadratic and quadratically constrained models are unsupported.
 
 [source,scala]
 ----
@@ -234,6 +237,32 @@ The former `MatrixFreeConfig` type and `matrixFree` argument are now named `CgCo
 and `cgConfig`. Import core solver choices and settings directly from
 `com.github.vbmacher.spark_lp.newton`. The DSL continues to expose `NewtonSolver`
 through its wildcard import.
+
+== Convex quadratic extension
+
+For `0.5*x^T Q*x + c^T*x`, diagonal `Q` changes the Newton weights to
+`W = (S/X + Q + Rp)^(-1)` and direction recovery includes `Q*dx`.
+Stationarity uses `A^T*lambda + s - c - Q*x`; the objective gap compares
+`0.5*x^T Q*x + c^T*x` with `b^T*lambda - 0.5*x^T Q*x`.
+Recession certificates additionally require `Q*d = 0` within tolerance.
+Bound shifts preserve both the induced linear term and objective constant.
+
+Sparse coupled objectives use PSD factors `sum(w*(a^T*x+t)^2)`.
+Each factor adds nonnegative `u,v`, an equality `a^T*x+t = u-v`, and diagonal
+penalty `w*(u^2+v^2)`. Minimizing over `u,v` recovers the exact original penalty.
+The solver therefore applies the existing distributed weighted normal operator to
+an enlarged sparse matrix, without collecting a dense Hessian or forming its inverse.
+Rows include factor equalities; columns include their two auxiliary variables.
+
+Free-variable splits can make coupled Cholesky systems numerically singular near
+convergence. `Auto` selects regularized CG for coupled models containing free
+variables; explicit Cholesky is rejected. Separable objectives reject curved free
+variables. See link:quadratic-programming.md[representations and restrictions] and
+link:../benchmarks/quadratic/README.md[the measured strategy comparison].
+
+Public evidence retains original unshifted costs and curvature. For coupled QP,
+the equivalent factor-expanded model is exposed explicitly; see
+link:certificates.md[independent certificate verification].
 
 == Opt-in progress policy
 

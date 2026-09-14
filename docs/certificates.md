@@ -39,7 +39,8 @@ separately obtained original-model point with `proof.copy(point = Some(values))`
 The public `LpEvidenceVerifier` independently recomputes these conditions against
 the materialised original-model snapshot, including eliminated variables and rows.
 It checks missing/duplicate keys, nonfinite proof values, signs, stationarity,
-feasibility and normalization. It does not trust status or internal residuals.
+feasibility and normalization. The snapshot can also carry diagonal curvature;
+a recession direction must satisfy `Q*d = 0`. It does not trust status or internal residuals.
 Residuals use absolute original units; large coefficient scales or cancellation
 can make evidence fail a tighter tolerance even when the solver classified it.
 These are numerical witnesses, not exact-arithmetic proofs. The caller selects

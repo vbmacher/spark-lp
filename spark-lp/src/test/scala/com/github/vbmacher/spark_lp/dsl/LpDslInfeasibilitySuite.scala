@@ -157,4 +157,15 @@ class LpDslInfeasibilitySuite extends AnyFunSuite with DataFrameSuiteBase {
     assert(proof.copy(rows = Vector(-1.0 + 1e-7)).verify(1e-6).valid)
   }
 
+  test("independent QP ray verification requires zero curvature along the direction") {
+    val key = (0, "x")
+    val model = EvidenceModel(Vector.empty,
+      sc.parallelize(Seq(key -> EvidenceVariable("x", 0.0, None, -1.0, Map.empty, curvature = 2.0))), Minimize)
+    val direction = sc.parallelize(Seq(key -> 1.0))
+    val point = sc.parallelize(Seq(key -> 0.0))
+    assert(!UnboundedDirection(model, direction, Some(point)).verify().valid)
+    val linear = model.copy(variables = model.variables.mapValues(_.copy(curvature = 0.0)))
+    assert(UnboundedDirection(linear, direction, Some(point)).verify().valid)
+  }
+
 }

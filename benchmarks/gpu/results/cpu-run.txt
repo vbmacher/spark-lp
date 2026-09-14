@@ -1,0 +1,58 @@
+[info] welcome to sbt 1.10.7 (Amazon.com Inc. Java 11.0.26)
+[info] loading global plugins from /home/vbmacher/.sbt/1.0/plugins
+[info] loading settings for project feature-71-build from plugins.sbt...
+[info] loading project definition from /home/vbmacher/projects/spark-lp/.worktrees/feature-71/project
+[info] compiling 2 Scala sources to /home/vbmacher/projects/spark-lp/.worktrees/feature-71/project/target/scala-2.12/sbt-1.0/classes ...
+[info] done compiling
+[info] loading settings for project root from build.sbt...
+[info] set current project to root (in build file:/home/vbmacher/projects/spark-lp/.worktrees/feature-71/)
+[info] compiling 42 Scala sources to /home/vbmacher/projects/spark-lp/.worktrees/feature-71/spark-lp/target/spark_3.5-jvm-2.12/classes ...
+[info] done compiling
+[info] compiling 7 Scala sources to /home/vbmacher/projects/spark-lp/.worktrees/feature-71/benchmarks/target/spark_3.5-jvm-2.12/classes ...
+[info] done compiling
+[info] compiling 1 Scala source to /home/vbmacher/projects/spark-lp/.worktrees/feature-71/benchmarks/target/spark_3.5-jvm-2.12/test-classes ...
+[info] done compiling
+[info] running (fork) com.github.vbmacher.spark_lp.BenchmarkRunner cholesky /home/vbmacher/projects/spark-lp/.worktrees/feature-71/benchmarks/gpu/results/cholesky-sparse /home/vbmacher/projects/spark-lp/.worktrees/feature-71/benchmarks/gpu/cpu-cases.csv sparse 4 2 1
+[info] 26/09/14 10:33:24 WARN , NativeCodeLoader: Unable to load native-hadoop library for your platform... using builtin-java classes where applicable
+[error] WARNING: An illegal reflective access operation has occurred
+[error] WARNING: Illegal reflective access by org.apache.spark.unsafe.Platform (file:/home/vbmacher/projects/spark-lp/.worktrees/feature-71/target/bg-jobs/sbt_758fd649/target/31333c98/f86fb68c/spark-unsafe_2.12-3.5.3.jar) to constructor java.nio.DirectByteBuffer(long,int)
+[error] WARNING: Please consider reporting this to the maintainers of org.apache.spark.unsafe.Platform
+[error] WARNING: Use --illegal-access=warn to enable warnings of further illegal reflective access operations
+[error] WARNING: All illegal access operations will be denied in a future release
+[info] BENCHMARK sparse-cholesky-0 Success 2.596823553s
+[info] BENCHMARK sparse-cholesky-1 Success 1.359591917s
+[info] BENCHMARK sparse-cholesky-2 Success 1.343731671s
+[success] Total time: 21 s, completed Sep 14, 2026, 10:33:36 AM
+[info] running (fork) com.github.vbmacher.spark_lp.BenchmarkRunner cg /home/vbmacher/projects/spark-lp/.worktrees/feature-71/benchmarks/gpu/results/cg-sparse /home/vbmacher/projects/spark-lp/.worktrees/feature-71/benchmarks/gpu/cpu-cases.csv sparse 4 2 1
+[info] 26/09/14 10:33:36 WARN , NativeCodeLoader: Unable to load native-hadoop library for your platform... using builtin-java classes where applicable
+[error] WARNING: An illegal reflective access operation has occurred
+[error] WARNING: Illegal reflective access by org.apache.spark.unsafe.Platform (file:/home/vbmacher/projects/spark-lp/.worktrees/feature-71/target/bg-jobs/sbt_758fd649/target/31333c98/f86fb68c/spark-unsafe_2.12-3.5.3.jar) to constructor java.nio.DirectByteBuffer(long,int)
+[error] WARNING: Please consider reporting this to the maintainers of org.apache.spark.unsafe.Platform
+[error] WARNING: Use --illegal-access=warn to enable warnings of further illegal reflective access operations
+[error] WARNING: All illegal access operations will be denied in a future release
+[info] BENCHMARK sparse-cg-0 Success 3.7107945759999996s
+[info] BENCHMARK sparse-cg-1 Success 2.5311973510000003s
+[info] BENCHMARK sparse-cg-2 Success 2.530584098s
+[success] Total time: 15 s, completed Sep 14, 2026, 10:33:51 AM
+[info] running (fork) com.github.vbmacher.spark_lp.BenchmarkRunner cholesky /home/vbmacher/projects/spark-lp/.worktrees/feature-71/benchmarks/gpu/results/cholesky-dense /home/vbmacher/projects/spark-lp/.worktrees/feature-71/benchmarks/gpu/cpu-cases.csv dense 4 2 1
+[info] 26/09/14 10:33:52 WARN , NativeCodeLoader: Unable to load native-hadoop library for your platform... using builtin-java classes where applicable
+[error] WARNING: An illegal reflective access operation has occurred
+[error] WARNING: Illegal reflective access by org.apache.spark.unsafe.Platform (file:/home/vbmacher/projects/spark-lp/.worktrees/feature-71/target/bg-jobs/sbt_758fd649/target/31333c98/f86fb68c/spark-unsafe_2.12-3.5.3.jar) to constructor java.nio.DirectByteBuffer(long,int)
+[error] WARNING: Please consider reporting this to the maintainers of org.apache.spark.unsafe.Platform
+[error] WARNING: Use --illegal-access=warn to enable warnings of further illegal reflective access operations
+[error] WARNING: All illegal access operations will be denied in a future release
+[info] BENCHMARK dense-cholesky-0 Success 1.794200795s
+[info] BENCHMARK dense-cholesky-1 Success 0.7550518119999999s
+[info] BENCHMARK dense-cholesky-2 Success 0.715344198s
+[success] Total time: 10 s, completed Sep 14, 2026, 10:34:00 AM
+[info] running (fork) com.github.vbmacher.spark_lp.BenchmarkRunner cg /home/vbmacher/projects/spark-lp/.worktrees/feature-71/benchmarks/gpu/results/cg-dense /home/vbmacher/projects/spark-lp/.worktrees/feature-71/benchmarks/gpu/cpu-cases.csv dense 4 2 1
+[info] 26/09/14 10:34:01 WARN , NativeCodeLoader: Unable to load native-hadoop library for your platform... using builtin-java classes where applicable
+[error] WARNING: An illegal reflective access operation has occurred
+[error] WARNING: Illegal reflective access by org.apache.spark.unsafe.Platform (file:/home/vbmacher/projects/spark-lp/.worktrees/feature-71/target/bg-jobs/sbt_758fd649/target/31333c98/f86fb68c/spark-unsafe_2.12-3.5.3.jar) to constructor java.nio.DirectByteBuffer(long,int)
+[error] WARNING: Please consider reporting this to the maintainers of org.apache.spark.unsafe.Platform
+[error] WARNING: Use --illegal-access=warn to enable warnings of further illegal reflective access operations
+[error] WARNING: All illegal access operations will be denied in a future release
+[info] BENCHMARK dense-cg-0 Success 2.276569663s
+[info] BENCHMARK dense-cg-1 Success 1.122656607s
+[info] BENCHMARK dense-cg-2 Success 1.1138533130000001s
+[success] Total time: 11 s, completed Sep 14, 2026, 10:34:12 AM

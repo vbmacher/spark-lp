@@ -43,7 +43,8 @@ final class LpSolution private[dsl](
   private[dsl] val userValues: RDD[((Int, String), Double)],
   val candidate: CandidateInfo,
   val stopReason: Option[StopReason] = None,
-  val evidence: Option[LpEvidence] = None) extends AutoCloseable {
+  val evidence: Option[LpEvidence] = None,
+  val mip: Option[MipSummary] = None) extends AutoCloseable {
 
   private def requireCandidate(): Unit = {
     if (!candidate.available) throw new LpModelException("No completed iterate is available for this solve")

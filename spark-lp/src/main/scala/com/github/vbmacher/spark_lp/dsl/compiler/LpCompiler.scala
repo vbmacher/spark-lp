@@ -1173,7 +1173,8 @@ private[dsl] final class LpCompiler(problem: LpProblem, config: SolveConfig) ext
     integerOverrides: Map[Long, Double],
     candidate: Option[CandidateInfo] = None,
     stopReason: Option[StopReason] = None,
-    evidence: Option[LpEvidence] = None): LpSolution = {
+    evidence: Option[LpEvidence] = None,
+    mip: Option[MipSummary] = None): LpSolution = {
 
     val available = candidate.forall(_.available)
     val userValues = caches.checkpoint(
@@ -1219,6 +1220,7 @@ private[dsl] final class LpCompiler(problem: LpProblem, config: SolveConfig) ext
       userValues = caches.keep(userValues),
       candidate = candidate.getOrElse(CandidateInfo(true, status == LpStatus.Optimal, Some(iterations))),
       stopReason = stopReason,
-      evidence = evidence)
+      evidence = evidence,
+      mip = mip)
   }
 }

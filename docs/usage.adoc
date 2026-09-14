@@ -591,3 +591,19 @@ is a Hadoop-filesystem directory and must not exist unless `overwrite=true`. Dat
 unique temporary sibling before publishing by rename; failures clean the temporary directory. Explicit
 overwrite replaces the existing destination after successful data writing. Rename/overwrite atomicity
 depends on the underlying filesystem. Callers own imported RDD persistence and solution lifetimes.
+
+
+=== Explicit algebra rendering
+
+`LpAlgebra.preview(model.inspect, maxLines = 80)` renders bounded human-readable original algebra,
+with an exact `TRUNCATED` line count when output is omitted. `LpAlgebra.write(model.inspect, writer)`
+streams complete output to a caller-owned writer. Expressions and pending constraints use
+`LpAlgebra.expression(expr, maxTerms)` and `.constraint(row, maxTerms)` with explicit term truncation.
+
+Rendering includes objective sense/constants, named rows, bounds, categories and quadratic factors.
+Repeated coefficients aggregate, numbers use full `Double.toString` precision, and names use escaped
+backtick delimiters. Ordering follows declaration indices and canonical keys. All methods explicitly
+perform Spark actions; full rendering sorts and transfers one partition at a time, so the largest
+partition bounds driver transfer memory. No implicit `toString` triggers model evaluation. Output is
+for human review and does not promise a machine-readable LP-file dialect. Models and caller writers
+remain unchanged/open apart from the requested text write.

@@ -153,3 +153,6 @@ spark-warehouse/
 
 # Bulky benchmark applications, event logs and immutable run snapshots.
 benchmarks/artifacts/
+
+.venv-gpu/
+benchmarks/gpu/results/*/events/

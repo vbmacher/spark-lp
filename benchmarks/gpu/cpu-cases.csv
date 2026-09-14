@@ -1,0 +1,3 @@
+id,m,n,nonzeros_per_row,family,seed,tolerance,heap_gib
+sparse,32,512,8,well,7100,1e-8,4
+dense,32,512,512,dense,7100,1e-8,4

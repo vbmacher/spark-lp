@@ -1,7 +1,7 @@
 package com.github.vbmacher.spark_lp
 
 import java.io.{File, PrintWriter}
-import support.{CaseInventory, DataGenerator, JvmSampler, RuntimeEnvironment, SolveMeasurements, Stopwatch}
+import com.github.vbmacher.spark_lp.support.{CaseInventory, DataGenerator, JvmSampler, RuntimeEnvironment, SolveMeasurements, Stopwatch}
 import com.github.vbmacher.spark_lp.dsl.LpNumericalException
 import org.apache.spark.mllib.linalg.{DenseVector, Vector => SparkVector}
 import org.apache.spark.SparkConf

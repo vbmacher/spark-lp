@@ -1,0 +1,411 @@
+{
+  "distributed-rows-100000-vars-100000000-width-128 / CG / cfg-c4181a1ef4a00325": {
+    "cg-restarts": {
+      "lower_value": 0,
+      "upper_value": 0,
+      "value": 0
+    },
+    "cg-steps": {
+      "lower_value": 473,
+      "upper_value": 473,
+      "value": 473
+    },
+    "driver-heap-bytes-max": {
+      "value": 4672697784
+    },
+    "driver-rss-bytes-max": {
+      "value": 6043189248
+    },
+    "dual-max": {
+      "value": 1.538917736968802e-14
+    },
+    "gap-max": {
+      "value": 3.1255135260001025e-09
+    },
+    "latency": {
+      "lower_value": 332938535336.0,
+      "upper_value": 342795839809.99994,
+      "value": 337008546037.00006
+    },
+    "maximum-rank": {
+      "lower_value": 0,
+      "upper_value": 0,
+      "value": 0
+    },
+    "measured-attempted-count": {
+      "value": 5
+    },
+    "measured-converged-count": {
+      "value": 5
+    },
+    "measured-excluded-count": {
+      "value": 0
+    },
+    "measured-failed-count": {
+      "value": 0
+    },
+    "measured-records-count": {
+      "_evidence": {
+        "campaign": {
+          "campaign_id": "distributed-6-cg",
+          "notes": [],
+          "schedule": [],
+          "schema_version": 1,
+          "title": "Distributed 6 cg"
+        },
+        "case": {
+          "case_id": "distributed-rows-100000-vars-100000000-width-128",
+          "fixture_hash": "8e48f46c683d8b11dbeb7dfabd7fa527c92844a832b013cc76f8ce3a021ca1c4",
+          "m": 100000,
+          "n": 100000000,
+          "nnz": 12800000,
+          "nnz_basis": "see source provenance",
+          "shape": {
+            "family": "well",
+            "nonzeros_per_row": 128,
+            "seed": 11
+          }
+        },
+        "configuration": {
+          "algorithm": "CG",
+          "cg_limit_per_rank": 1000,
+          "cg_tolerance": 1e-10,
+          "configuration_id": "cfg-c4181a1ef4a00325",
+          "control": "",
+          "dual_regularization": 1e-08,
+          "environment": {
+            "blas": "com.github.fommil.netlib.F2jBLAS",
+            "computer": "distributed cluster",
+            "java_version": "11.0.32+9-LTS",
+            "master": "yarn",
+            "os": "Linux",
+            "spark_version": "3.5.3"
+          },
+          "environment_id": "env-fd9b0666003a",
+          "eta": null,
+          "heap_gib": 16,
+          "implementation": "cg",
+          "label": "cg",
+          "memory_topology": {
+            "concurrent_tasks_per_executor": 4,
+            "executors": 16
+          },
+          "outer_limit": 100,
+          "partitions": 1024,
+          "preconditioner_memory_bytes": 268435456,
+          "primal_regularization": 1e-08,
+          "scenario": "",
+          "source_configuration_id": "cfg-68c4f2353f79598e",
+          "source_hash": "fa5cd2d1b4e97415bf30fe2642c32b7c061a0b274c991a752bc1002486eba122",
+          "suite": "com.github.vbmacher.spark_lp.CGBenchmark",
+          "timing_scope": "core solve excluding independent validation",
+          "tolerance": 1e-08,
+          "warmup_case": null,
+          "warmups": 1
+        },
+        "records": [
+          {
+            "accuracy_basis": "independent-original-lp",
+            "algorithm": "CG",
+            "application_id": null,
+            "attempt_id": "distributed-6-cg/distributed-rows-100000-vars-100000000-width-128/cfg-c4181a1ef4a00325/rep-000/attempt-001",
+            "attempt_number": 1,
+            "campaign_id": "distributed-6-cg",
+            "case_id": "distributed-rows-100000-vars-100000000-width-128",
+            "cg_restarts": 0,
+            "cg_steps": 473,
+            "configuration_id": "cfg-c4181a1ef4a00325",
+            "maximum_rank": 0,
+            "memory": {
+              "peak_heap_bytes": 4570732896,
+              "peak_rss_bytes": 6015045632,
+              "scope": "driver process; combined with executors in local mode; includes validation"
+            },
+            "outer_iterations": 12,
+            "provenance": {
+              "line": 1,
+              "source_path": "results/records.jsonl",
+              "source_sha256": "a052981e94e9bf4d18b56fa6a995eebcfd268689005809ea330394c0b402a78e"
+            },
+            "rank_escalations": null,
+            "raw": {},
+            "repetition": 0,
+            "residuals": {
+              "dual": 1.5389177236948353e-14,
+              "gap": 3.1255069670644488e-09,
+              "min_s": 1.8283176766391192e-16,
+              "min_x": 1.2904503030737317e-16,
+              "objective": 66.16585143700229,
+              "objective_error": 2.5799486623573657e-09,
+              "primal": 1.1611985857489185e-11
+            },
+            "run_id": "distributed-6-cg/distributed-rows-100000-vars-100000000-width-128/cfg-c4181a1ef4a00325/rep-000",
+            "solve_seconds": 350.097124863,
+            "spark_jobs": null,
+            "status": "Success",
+            "stop_reason": null,
+            "warmup": true
+          },
+          {
+            "accuracy_basis": "independent-original-lp",
+            "algorithm": "CG",
+            "application_id": null,
+            "attempt_id": "distributed-6-cg/distributed-rows-100000-vars-100000000-width-128/cfg-c4181a1ef4a00325/rep-001/attempt-001",
+            "attempt_number": 1,
+            "campaign_id": "distributed-6-cg",
+            "case_id": "distributed-rows-100000-vars-100000000-width-128",
+            "cg_restarts": 0,
+            "cg_steps": 473,
+            "configuration_id": "cfg-c4181a1ef4a00325",
+            "maximum_rank": 0,
+            "memory": {
+              "peak_heap_bytes": 4656143552,
+              "peak_rss_bytes": 6025748480,
+              "scope": "driver process; combined with executors in local mode; includes validation"
+            },
+            "outer_iterations": 12,
+            "provenance": {
+              "line": 2,
+              "source_path": "results/records.jsonl",
+              "source_sha256": "a052981e94e9bf4d18b56fa6a995eebcfd268689005809ea330394c0b402a78e"
+            },
+            "rank_escalations": null,
+            "raw": {},
+            "repetition": 1,
+            "residuals": {
+              "dual": 1.538917713506214e-14,
+              "gap": 3.1255135260001025e-09,
+              "min_s": 1.8283176767346744e-16,
+              "min_x": 1.2904503030749483e-16,
+              "objective": 66.16585143700267,
+              "objective_error": 2.5799543749787366e-09,
+              "primal": 1.1611985928906074e-11
+            },
+            "run_id": "distributed-6-cg/distributed-rows-100000-vars-100000000-width-128/cfg-c4181a1ef4a00325/rep-001",
+            "solve_seconds": 342.79583980999996,
+            "spark_jobs": null,
+            "status": "Success",
+            "stop_reason": null,
+            "warmup": false
+          },
+          {
+            "accuracy_basis": "independent-original-lp",
+            "algorithm": "CG",
+            "application_id": null,
+            "attempt_id": "distributed-6-cg/distributed-rows-100000-vars-100000000-width-128/cfg-c4181a1ef4a00325/rep-002/attempt-001",
+            "attempt_number": 1,
+            "campaign_id": "distributed-6-cg",
+            "case_id": "distributed-rows-100000-vars-100000000-width-128",
+            "cg_restarts": 0,
+            "cg_steps": 473,
+            "configuration_id": "cfg-c4181a1ef4a00325",
+            "maximum_rank": 0,
+            "memory": {
+              "peak_heap_bytes": 4632628304,
+              "peak_rss_bytes": 6036443136,
+              "scope": "driver process; combined with executors in local mode; includes validation"
+            },
+            "outer_iterations": 12,
+            "provenance": {
+              "line": 3,
+              "source_path": "results/records.jsonl",
+              "source_sha256": "a052981e94e9bf4d18b56fa6a995eebcfd268689005809ea330394c0b402a78e"
+            },
+            "rank_escalations": null,
+            "raw": {},
+            "repetition": 2,
+            "residuals": {
+              "dual": 1.538917725093132e-14,
+              "gap": 3.125510563900129e-09,
+              "min_s": 1.8283176766934517e-16,
+              "min_x": 1.2904503030748534e-16,
+              "objective": 66.16585143700252,
+              "objective_error": 2.579952047614474e-09,
+              "primal": 1.1611993912973346e-11
+            },
+            "run_id": "distributed-6-cg/distributed-rows-100000-vars-100000000-width-128/cfg-c4181a1ef4a00325/rep-002",
+            "solve_seconds": 338.738228559,
+            "spark_jobs": null,
+            "status": "Success",
+            "stop_reason": null,
+            "warmup": false
+          },
+          {
+            "accuracy_basis": "independent-original-lp",
+            "algorithm": "CG",
+            "application_id": null,
+            "attempt_id": "distributed-6-cg/distributed-rows-100000-vars-100000000-width-128/cfg-c4181a1ef4a00325/rep-003/attempt-001",
+            "attempt_number": 1,
+            "campaign_id": "distributed-6-cg",
+            "case_id": "distributed-rows-100000-vars-100000000-width-128",
+            "cg_restarts": 0,
+            "cg_steps": 473,
+            "configuration_id": "cfg-c4181a1ef4a00325",
+            "maximum_rank": 0,
+            "memory": {
+              "peak_heap_bytes": 4672697784,
+              "peak_rss_bytes": 6042722304,
+              "scope": "driver process; combined with executors in local mode; includes validation"
+            },
+            "outer_iterations": 12,
+            "provenance": {
+              "line": 4,
+              "source_path": "results/records.jsonl",
+              "source_sha256": "a052981e94e9bf4d18b56fa6a995eebcfd268689005809ea330394c0b402a78e"
+            },
+            "rank_escalations": null,
+            "raw": {},
+            "repetition": 3,
+            "residuals": {
+              "dual": 1.5389177297274875e-14,
+              "gap": 3.1255092944287145e-09,
+              "min_s": 1.8283176765832091e-16,
+              "min_x": 1.2904503030746254e-16,
+              "objective": 66.16585143700239,
+              "objective_error": 2.5799501434073507e-09,
+              "primal": 1.1611986101277006e-11
+            },
+            "run_id": "distributed-6-cg/distributed-rows-100000-vars-100000000-width-128/cfg-c4181a1ef4a00325/rep-003",
+            "solve_seconds": 336.02308878,
+            "spark_jobs": null,
+            "status": "Success",
+            "stop_reason": null,
+            "warmup": false
+          },
+          {
+            "accuracy_basis": "independent-original-lp",
+            "algorithm": "CG",
+            "application_id": null,
+            "attempt_id": "distributed-6-cg/distributed-rows-100000-vars-100000000-width-128/cfg-c4181a1ef4a00325/rep-004/attempt-001",
+            "attempt_number": 1,
+            "campaign_id": "distributed-6-cg",
+            "case_id": "distributed-rows-100000-vars-100000000-width-128",
+            "cg_restarts": 0,
+            "cg_steps": 473,
+            "configuration_id": "cfg-c4181a1ef4a00325",
+            "maximum_rank": 0,
+            "memory": {
+              "peak_heap_bytes": 4620682704,
+              "peak_rss_bytes": 6043189248,
+              "scope": "driver process; combined with executors in local mode; includes validation"
+            },
+            "outer_iterations": 12,
+            "provenance": {
+              "line": 5,
+              "source_path": "results/records.jsonl",
+              "source_sha256": "a052981e94e9bf4d18b56fa6a995eebcfd268689005809ea330394c0b402a78e"
+            },
+            "rank_escalations": null,
+            "raw": {},
+            "repetition": 4,
+            "residuals": {
+              "dual": 1.538917736968802e-14,
+              "gap": 3.1255092944287132e-09,
+              "min_s": 1.8283176766932811e-16,
+              "min_x": 1.290450303074555e-16,
+              "objective": 66.16585143700242,
+              "objective_error": 2.579950566564489e-09,
+              "primal": 1.161198596210947e-11
+            },
+            "run_id": "distributed-6-cg/distributed-rows-100000-vars-100000000-width-128/cfg-c4181a1ef4a00325/rep-004",
+            "solve_seconds": 337.00854603700003,
+            "spark_jobs": null,
+            "status": "Success",
+            "stop_reason": null,
+            "warmup": false
+          },
+          {
+            "accuracy_basis": "independent-original-lp",
+            "algorithm": "CG",
+            "application_id": null,
+            "attempt_id": "distributed-6-cg/distributed-rows-100000-vars-100000000-width-128/cfg-c4181a1ef4a00325/rep-005/attempt-001",
+            "attempt_number": 1,
+            "campaign_id": "distributed-6-cg",
+            "case_id": "distributed-rows-100000-vars-100000000-width-128",
+            "cg_restarts": 0,
+            "cg_steps": 473,
+            "configuration_id": "cfg-c4181a1ef4a00325",
+            "maximum_rank": 0,
+            "memory": {
+              "peak_heap_bytes": 3875271200,
+              "peak_rss_bytes": 5217247232,
+              "scope": "driver process; combined with executors in local mode; includes validation"
+            },
+            "outer_iterations": 12,
+            "provenance": {
+              "line": 6,
+              "source_path": "results/records.jsonl",
+              "source_sha256": "a052981e94e9bf4d18b56fa6a995eebcfd268689005809ea330394c0b402a78e"
+            },
+            "rank_escalations": null,
+            "raw": {},
+            "repetition": 5,
+            "residuals": {
+              "dual": 1.538917717384757e-14,
+              "gap": 3.1255090828501434e-09,
+              "min_s": 1.8283176766203837e-16,
+              "min_x": 1.2904503030737268e-16,
+              "objective": 66.16585143700242,
+              "objective_error": 2.579950566564489e-09,
+              "primal": 1.1611986253310327e-11
+            },
+            "run_id": "distributed-6-cg/distributed-rows-100000-vars-100000000-width-128/cfg-c4181a1ef4a00325/rep-005",
+            "solve_seconds": 332.938535336,
+            "spark_jobs": null,
+            "status": "Success",
+            "stop_reason": null,
+            "warmup": false
+          }
+        ],
+        "schema_version": 1,
+        "sources": [
+          {
+            "path": "results/records.jsonl",
+            "revision": null,
+            "sha256": "a052981e94e9bf4d18b56fa6a995eebcfd268689005809ea330394c0b402a78e",
+            "uri": null
+          }
+        ]
+      },
+      "value": 5
+    },
+    "measured-unknown-count": {
+      "value": 0
+    },
+    "measured-unrun-count": {
+      "value": 0
+    },
+    "objective-error-max": {
+      "value": 2.5799543749787366e-09
+    },
+    "outer-iterations": {
+      "lower_value": 12,
+      "upper_value": 12,
+      "value": 12
+    },
+    "primal-max": {
+      "value": 1.1611993912973346e-11
+    },
+    "warmup-attempted-count": {
+      "value": 1
+    },
+    "warmup-converged-count": {
+      "value": 1
+    },
+    "warmup-excluded-count": {
+      "value": 0
+    },
+    "warmup-failed-count": {
+      "value": 0
+    },
+    "warmup-records-count": {
+      "value": 1
+    },
+    "warmup-unknown-count": {
+      "value": 0
+    },
+    "warmup-unrun-count": {
+      "value": 0
+    }
+  }
+}

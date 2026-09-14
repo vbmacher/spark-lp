@@ -35,4 +35,5 @@ jobs:
       if: matrix.spark == '3_5'
       run: |
         sbt benchmarksSpark_3_52_12/test
-        python3 -m unittest discover -s benchmarks/scripts -p 'test_*.py'
+        python3 benchmarks/scripts/bencher_export.py --check
+        python3 benchmarks/scripts/report.py check

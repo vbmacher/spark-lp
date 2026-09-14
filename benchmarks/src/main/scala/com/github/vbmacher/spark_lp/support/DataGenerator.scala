@@ -1,4 +1,4 @@
-package support
+package com.github.vbmacher.spark_lp.support
 
 import java.nio.charset.StandardCharsets
 import java.security.MessageDigest

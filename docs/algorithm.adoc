@@ -99,8 +99,8 @@ A numerical failure retries those tests on the last completed iterate before rai
 
 The shared core/DSL cutoff of 10000 rows is an unmeasured heuristic intended to
 limit long CG sequences and repeated preconditioner escalation on medium-sized models.
-Crossover validation is pending; see the
-link:../benchmarks/src/results/TODO.md[benchmark campaign plan].
+The link:../benchmarks/src/results/TODO.md[pending benchmark campaign] will evaluate
+the tradeoff; no measured crossover is currently established in the results report.
 `maxLocalConstraints` is a separate resource cap (default 10000): lowering it can
 switch Auto earlier; raising it does not raise the cutoff. To use Cholesky
 above 10000 rows, select it explicitly and allow enough rows with that resource cap.
@@ -114,9 +114,8 @@ CG avoids that Gramian limit, but row metadata, RHS, residuals, and group keys r
 the driver; matrix indices use `Int`. Each CG step adds distributed work.
 The matrix-free operator streams each stored matrix row once per application: it
 computes the row's dot product, multiplies by its weight, and accumulates the scaled
-row into a partition sum. This avoids a second matrix traversal and intermediate
-partition-sized vectors. Initialization applies its uniform weight as a scalar,
-without constructing a separate weight RDD from the matrix.
+row into a partition sum. Partition scratch is a single row-sized sum vector.
+Initialization applies its uniform weight as a scalar.
 
 === Regularized matrix-free LP equations
 
@@ -145,13 +144,13 @@ The affine predictor uses `q = -x*s`; the corrector uses
 Initialization applies the regularized least-squares inverse with `W0 = I/(1+Rp)`:
 `G0 = A*W0*A^T+Rd`, `xTilde = W0*A^T*G0^(-1)*b`, and
 `yTilde = G0^(-1)*A*W0*c`, followed by strictly positive shifts.
-Cholesky uses unregularized equations with an inverse-slack cap.
+Cholesky is the unregularized reference and applies an inverse-slack cap.
 Exact zero-separated contiguous blocks are factored independently with the same LAPACK
 routine. Any nonzero coupling prevents a split; no entries are dropped by tolerance.
-Blocks are detected anew for each weighted system. The packed accumulator is allocated
-within executor tasks to avoid shipping an `O(m^2)` zero value in the task closure.
-Dense aggregation requires quadratic memory. Performance and crossover validation
-are covered by the link:../benchmarks/src/results/TODO.md[benchmark campaign plan].
+Blocks are detected for each weighted system. Each executor task allocates its packed
+accumulator; dense aggregation requires `O(m^2)` memory per buffer. See
+link:../benchmarks/src/results/REPORT.md[benchmark results] for measured solve times
+and memory observations.
 
 The driver-local `org.apache.spark.wrappers.ConjugateGradient` wrapper owns the PCG
 iteration, warm-start state, restarts, and true-residual replacement. It uses the
@@ -165,7 +164,7 @@ preserves the current solution and cumulative iteration counts without forming a
 `Rd = 1e-8` by default. These are entries, not their square roots. They stay positive
 throughout a solve. Larger values can improve conditioning but require more outer
 iterations; very small values can lose their effect to roundoff. Scale the LP before
-using extreme coefficients. CG weights use `1/(s/x+Rp)` without an inverse-slack
+using extreme coefficients. CG weights use `1/(s/x+Rp)` with no inverse-slack
 cap (`epsilon`/`valueCap`); nonpositive, nonfinite or underflowed weights fail explicitly.
 Dependent feasible equality rows are supported by CG's regularized operator; the direct
 backend requires full row rank.
@@ -193,9 +192,8 @@ these same caps. Rank 0 selects adaptive behavior; a zero byte budget forces Jac
 Sequential pivoting costs one distributed column pass per selected pivot, so beginning
 with Jacobi avoids paying for unnecessary pivots on easy systems.
 For example, reaching ranks 50, 100, 200, 400 and 800 requires 800 column fetches
-when all requested pivots are accepted, instead of 1550 from rebuilding each rank.
-Each pivot requires a distributed pass; neither this reuse nor the fused
-operator removes the synchronization between successive CG steps.
+when all requested pivots are accepted. Each pivot requires a distributed pass,
+and successive CG steps synchronize their distributed results.
 
 `cgTolerance` (default `1e-10`) and `cgMaxIterations` control the inner solve. Its requested
 residual norm is `max(cgTolerance*norm(rhs), 0.1*tolerance*(1+norm(b)))`; initialization
@@ -280,8 +278,7 @@ last meaningful best using `absoluteImprovement + relativeImprovement * abs(best
 The first feasible iterate starts a new window once; later feasibility regressions do not
 reset patience. Small gains can accumulate past the threshold, temporary regressions are
 allowed, and a flat objective does not stop improving residuals. Explicit objective constants
-are excluded from this comparison. Convergence and certificate checks also apply
-when stagnation detection is enabled.
+are excluded from this comparison. Convergence and certificate tests also apply.
 
 Inner progress compares `norm(rhs-G*dy)/norm(rhs)` on true residuals across CG restarts and rank
 changes for the same right-hand side. True residual checks occur at cycle ends and, with the

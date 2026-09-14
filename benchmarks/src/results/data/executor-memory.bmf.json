@@ -1,0 +1,218 @@
+{
+  "distributed-rows-1000-vars-100000-width-32 / cg / original / executor 1": {
+    "executor-heap-bytes-max": {
+      "value": 1344058440
+    },
+    "executor-jvm-nonheap-bytes-max": {
+      "value": 211189864
+    },
+    "executor-observations-count": {
+      "_evidence": {
+        "executor_observation": {
+          "backend": "cg",
+          "case": "distributed-rows-1000-vars-100000-width-32",
+          "executor_id": "1",
+          "peak_heap_bytes": "1344058440",
+          "peak_jvm_nonheap_bytes": "211189864",
+          "peak_rss_bytes": "2380390400",
+          "scope": "whole application including warmup and generation",
+          "variant": "original"
+        },
+        "schema_version": 1
+      },
+      "value": 1
+    },
+    "executor-rss-bytes-max": {
+      "value": 2380390400
+    }
+  },
+  "distributed-rows-1000-vars-100000-width-32 / cg / original / executor 2": {
+    "executor-heap-bytes-max": {
+      "value": 1480547808
+    },
+    "executor-jvm-nonheap-bytes-max": {
+      "value": 218090000
+    },
+    "executor-observations-count": {
+      "_evidence": {
+        "executor_observation": {
+          "backend": "cg",
+          "case": "distributed-rows-1000-vars-100000-width-32",
+          "executor_id": "2",
+          "peak_heap_bytes": "1480547808",
+          "peak_jvm_nonheap_bytes": "218090000",
+          "peak_rss_bytes": "2518634496",
+          "scope": "whole application including warmup and generation",
+          "variant": "original"
+        },
+        "schema_version": 1
+      },
+      "value": 1
+    },
+    "executor-rss-bytes-max": {
+      "value": 2518634496
+    }
+  },
+  "distributed-rows-1000-vars-100000-width-32 / cg / original / executor 3": {
+    "executor-heap-bytes-max": {
+      "value": 1483368480
+    },
+    "executor-jvm-nonheap-bytes-max": {
+      "value": 210796288
+    },
+    "executor-observations-count": {
+      "_evidence": {
+        "executor_observation": {
+          "backend": "cg",
+          "case": "distributed-rows-1000-vars-100000-width-32",
+          "executor_id": "3",
+          "peak_heap_bytes": "1483368480",
+          "peak_jvm_nonheap_bytes": "210796288",
+          "peak_rss_bytes": "2804817920",
+          "scope": "whole application including warmup and generation",
+          "variant": "original"
+        },
+        "schema_version": 1
+      },
+      "value": 1
+    },
+    "executor-rss-bytes-max": {
+      "value": 2804817920
+    }
+  },
+  "distributed-rows-1000-vars-100000-width-32 / cg / original / executor 4": {
+    "executor-heap-bytes-max": {
+      "value": 1529714864
+    },
+    "executor-jvm-nonheap-bytes-max": {
+      "value": 216534344
+    },
+    "executor-observations-count": {
+      "_evidence": {
+        "executor_observation": {
+          "backend": "cg",
+          "case": "distributed-rows-1000-vars-100000-width-32",
+          "executor_id": "4",
+          "peak_heap_bytes": "1529714864",
+          "peak_jvm_nonheap_bytes": "216534344",
+          "peak_rss_bytes": "2479296512",
+          "scope": "whole application including warmup and generation",
+          "variant": "original"
+        },
+        "schema_version": 1
+      },
+      "value": 1
+    },
+    "executor-rss-bytes-max": {
+      "value": 2479296512
+    }
+  },
+  "distributed-rows-1000-vars-100000-width-32 / cholesky / original / executor 1": {
+    "executor-heap-bytes-max": {
+      "value": 1928385472
+    },
+    "executor-jvm-nonheap-bytes-max": {
+      "value": 244976824
+    },
+    "executor-observations-count": {
+      "_evidence": {
+        "executor_observation": {
+          "backend": "cholesky",
+          "case": "distributed-rows-1000-vars-100000-width-32",
+          "executor_id": "1",
+          "peak_heap_bytes": "1928385472",
+          "peak_jvm_nonheap_bytes": "244976824",
+          "peak_rss_bytes": "3123724288",
+          "scope": "whole application including warmup and generation",
+          "variant": "original"
+        },
+        "schema_version": 1
+      },
+      "value": 1
+    },
+    "executor-rss-bytes-max": {
+      "value": 3123724288
+    }
+  },
+  "distributed-rows-1000-vars-100000-width-32 / cholesky / original / executor 2": {
+    "executor-heap-bytes-max": {
+      "value": 1894522896
+    },
+    "executor-jvm-nonheap-bytes-max": {
+      "value": 243336680
+    },
+    "executor-observations-count": {
+      "_evidence": {
+        "executor_observation": {
+          "backend": "cholesky",
+          "case": "distributed-rows-1000-vars-100000-width-32",
+          "executor_id": "2",
+          "peak_heap_bytes": "1894522896",
+          "peak_jvm_nonheap_bytes": "243336680",
+          "peak_rss_bytes": "3283890176",
+          "scope": "whole application including warmup and generation",
+          "variant": "original"
+        },
+        "schema_version": 1
+      },
+      "value": 1
+    },
+    "executor-rss-bytes-max": {
+      "value": 3283890176
+    }
+  },
+  "distributed-rows-1000-vars-100000-width-32 / cholesky / original / executor 3": {
+    "executor-heap-bytes-max": {
+      "value": 1541903784
+    },
+    "executor-jvm-nonheap-bytes-max": {
+      "value": 243193904
+    },
+    "executor-observations-count": {
+      "_evidence": {
+        "executor_observation": {
+          "backend": "cholesky",
+          "case": "distributed-rows-1000-vars-100000-width-32",
+          "executor_id": "3",
+          "peak_heap_bytes": "1541903784",
+          "peak_jvm_nonheap_bytes": "243193904",
+          "peak_rss_bytes": "2705326080",
+          "scope": "whole application including warmup and generation",
+          "variant": "original"
+        },
+        "schema_version": 1
+      },
+      "value": 1
+    },
+    "executor-rss-bytes-max": {
+      "value": 2705326080
+    }
+  },
+  "distributed-rows-1000-vars-100000-width-32 / cholesky / original / executor 4": {
+    "executor-heap-bytes-max": {
+      "value": 1445709664
+    },
+    "executor-jvm-nonheap-bytes-max": {
+      "value": 241951520
+    },
+    "executor-observations-count": {
+      "_evidence": {
+        "executor_observation": {
+          "backend": "cholesky",
+          "case": "distributed-rows-1000-vars-100000-width-32",
+          "executor_id": "4",
+          "peak_heap_bytes": "1445709664",
+          "peak_jvm_nonheap_bytes": "241951520",
+          "peak_rss_bytes": "3234816000",
+          "scope": "whole application including warmup and generation",
+          "variant": "original"
+        },
+        "schema_version": 1
+      },
+      "value": 1
+    },
+    "executor-rss-bytes-max": {
+      "value": 3234816000
+    }
+  }
+}

@@ -27,12 +27,29 @@ class NewtonSystemSuite extends AnyFunSuite with DataFrameSuiteBase {
       val partial = new newton.PartialCholesky(diag(g).toArray, rank,
         j => (0 until 4).map(i => g(i, j)).toArray, 1e-8)
       assert(partial.indices.toSeq == expected.toSeq)
+      assert(partial.rank == expected.size)
       val explicit = factors * factors.t
       (0 until 4).filterNot(expected.contains).foreach(i => explicit(i, i) += schur(i, i))
       Seq(BDV(1.0, 2.0, -3.0, 4.0), BDV(-2.0, 0.5, 0.1, 0.0)).foreach { rhs =>
         assert(norm(partial(rhs) - (explicit \ rhs)) < 1e-11)
       }
     }
+  }
+
+  test("CG progress reports the built rank when all requested pivots are below the floor") {
+    val events = scala.collection.mutable.ArrayBuffer.empty[SolveProgress]
+    val monitor = new SolveMonitor(SolveControl(onProgress = p => events += p))
+    val rows = sc.parallelize(Seq(Vectors.dense(0.0, 0.0)), 1)
+    val factory = new newton.CgFactory(1e-10, 10,
+      CgConfig(preconditionerRank = 2), monitor)(spark)
+    val system = factory.build(rows, 2, None)
+    try {
+      val solution = system.solve(new DenseVector(Array(1.0, 2.0)))
+      assert(math.abs(solution(0) * factory.dualRegularization - 1.0) < 1e-10)
+      val ranks = events.filter(_.phase == SolvePhase.InnerSolve).flatMap(_.work.flatMap(_.preconditionerRank))
+      assert(ranks.nonEmpty && ranks.forall(_ == 0))
+      assert(factory.maximumRank == 0)
+    } finally system.release()
   }
 
   test("exhausted CG accepts only a bounded independently measured inexact defect") {

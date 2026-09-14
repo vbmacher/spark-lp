@@ -77,7 +77,7 @@ private[spark_lp] final class CgFactory(
     private def extendPreconditioner(rank: Int): Unit = {
       partial.extendTo(rank)
       monitor.check()
-      peakRank = math.max(peakRank, partial.indices.length)
+      peakRank = math.max(peakRank, partial.rank)
     }
     extendPreconditioner(currentRank)
 
@@ -105,7 +105,7 @@ private[spark_lp] final class CgFactory(
       val progress = monitor.control.stagnation.map(c => new ProgressWindow(c, c.innerPatience))
       def reportResidual(isTrue: Boolean, residual: Double): Unit = {
         monitor.report(SolvePhase.InnerSolve, work = Some(WorkProgress(cg.iterations,
-          residual = Some(residual), trueResidual = isTrue, preconditionerRank = Some(currentRank))))
+          residual = Some(residual), trueResidual = isTrue, preconditionerRank = Some(partial.rank))))
         if (isTrue && !cg.converged) {
           val stalled = progress.exists(_.observe(cg.iterations, Vector(residual / cg.rhsNorm)))
           if (stalled || monitor.control.stagnation.exists(cg.iterations >= _.maxInnerSteps))

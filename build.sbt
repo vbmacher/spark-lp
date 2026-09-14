@@ -97,9 +97,10 @@ lazy val benchmarks = projectMatrix
           _.settings(
             name := "benchmarks",
             fork := true,
+            Test / parallelExecution := false,
             javaOptions ++= Seq("-Xms4G", "-Xmx4G"),
             libraryDependencies ++= sparkAxes.last._1.sparkLibs.flatMap(r => Seq(r % Provided, r % Test)) ++
-              Seq(Libs.log4jImpl % Test),
+              Seq(Libs.log4jImpl % Test) ++ Libs.scalaTestLibs,
             assembly / assemblyMergeStrategy := {
               case PathList("META-INF", "services", _*) => MergeStrategy.concat
               case PathList("META-INF", _*) => MergeStrategy.discard

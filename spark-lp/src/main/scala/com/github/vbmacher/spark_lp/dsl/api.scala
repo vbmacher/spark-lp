@@ -162,7 +162,8 @@ final case class MipConfig(
   maxNodes: Int = 1000,
   integralityTolerance: Double = 1e-6,
   gapTolerance: Double = 1e-9,
-  absoluteGapTolerance: Double = 0.0) {
+  absoluteGapTolerance: Double = 0.0,
+  control: MipControl = MipControl()) {
   require(absoluteGapTolerance >= 0.0 && !absoluteGapTolerance.isInfinite,
     "absoluteGapTolerance must be finite and nonnegative")
   require(maxNodes > 0, "maxNodes must be positive")
@@ -185,7 +186,7 @@ final case class LpResiduals(primal: Double, dual: Double, gap: Double)
 /** Certified-search metadata in original objective units; absent values are not zero gaps. */
 final case class MipSummary(incumbent: Option[Double], bestBound: Option[Double],
   absoluteGap: Option[Double], relativeGap: Option[Double], processedNodes: Int,
-  openNodes: Int, termination: String)
+  openNodes: Int, termination: String, elapsedSeconds: Double = 0.0)
 
 private[dsl] object MipGap {
   def absolute(incumbent: Double, bound: Double): Double = math.max(0.0, incumbent - bound)

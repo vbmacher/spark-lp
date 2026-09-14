@@ -45,6 +45,9 @@ final class LpModelCopy private[dsl](source: LpProblem, val model: LpProblem) {
     new QpObjective(expression(original.diagonal), expression(original.linear),
       original.factors.map { case (e, weight) => expression(e) -> weight })
 
+  source.sosGroups.foreach { group =>
+    LpSos.add(model, group.name, group.kind, group.members.map { case (v, weight) => variable(v) -> weight })
+  }
   model.objective = source.objective.map(expression)
   model.quadratic = source.quadratic.map(objective)
   source.constraints.foreach {

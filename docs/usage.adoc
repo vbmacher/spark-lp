@@ -52,6 +52,14 @@ flowchart LR
   S --> R["Beef ≈ 60 g; gel ≈ 40 g; cost ≈ 0.52"]
 ----
 
+== Feasibility models
+
+An omitted objective means constant zero for continuous, integer and binary models.
+Add constraints and call `solve()` to find a feasible point. Normal feasibility,
+termination and unavailable-candidate semantics apply. The implicit objective does
+not mutate the model: a later `model += objective` or `setObjective` sets an explicit
+objective for subsequent solves.
+
 == Small vocabulary
 
 [cols="1,2",options="header"]
@@ -104,7 +112,11 @@ Continuous variables accept `lowerBound` and `upperBound = Some(value)`.
 Equal bounds fix a variable exactly. Fully fixed and finite-bound-only models need no
 artificial constraint. For a free variable use `lowerBound = Double.NegativeInfinity`;
 express any finite upper limit as a separate `x <= limit` constraint.
-Other linear models need at least one nontrivial constraint or finite upper bound.
+Linear models with no active constraint rows are solved analytically from their
+variable domains and objective coefficients, including empty-variable and constant-only
+models. Results have zero numerical iterations. An improving direction without a
+finite bound gives `Unbounded`, with a finite feasible assignment available for diagnostics.
+Rows eliminated by presolve retain their original diagnostics.
 Nonzero-curvature QP models also support unconstrained objectives.
 
 For `Dataset[Offer]`, declare

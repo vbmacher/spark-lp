@@ -11,7 +11,8 @@ final case class LpConstraintData(row: LpExpandedConstraint, expression: LpAffin
 final case class LpPortableModel(schemaVersion: Int, name: String, sense: ObjectiveSense,
   declarations: Vector[LpVariableDeclaration], variables: RDD[LpExpandedVariable],
   constraints: RDD[LpExpandedConstraint], coefficients: RDD[LpMatrixCoefficient],
-  objective: LpAffineData, diagonal: RDD[LpCoefficient], factors: Vector[LpQuadraticFactor]) {
+  objective: LpAffineData, diagonal: RDD[LpCoefficient], factors: Vector[LpQuadraticFactor],
+  sosGroups: Vector[LpSosData] = Vector.empty) {
 
   /** Explicit import action: at most maxLocalRows row metadata is brought to the driver. */
   def toProblem(maxLocalRows: Int = 10000, maxLocalOverrides: Int = 10000)(implicit spark: SparkSession): LpImportedModel = {
@@ -81,6 +82,9 @@ final case class LpPortableModel(schemaVersion: Int, name: String, sense: Object
       val affine = LpAffineData(coefficients.filter(_.row == id).map(c => LpCoefficient(c.variable, c.value)), 0.0)
       model += imported.constraint(LpConstraintData(row, affine))
     }
+    sosGroups.foreach { group =>
+      LpSos.add(model, group.name, group.kind, group.members.map(m => imported.variable(m.variable) -> m.weight))
+    }
     imported
   }
 }
@@ -89,7 +93,7 @@ object LpPortableModel {
   val SchemaVersion = 1
   def fromView(view: LpModelView): LpPortableModel = LpPortableModel(SchemaVersion, view.name, view.sense,
     view.variableDeclarations, view.variables, view.constraints, view.coefficients,
-    LpAffineData(view.objectiveCoefficients, view.objectiveConstant), view.diagonalCoefficients, view.quadraticFactors)
+    LpAffineData(view.objectiveCoefficients, view.objectiveConstant), view.diagonalCoefficients, view.quadraticFactors, view.sosGroups)
   def variable(variable: LpVariable): LpExpandedVariable = {
     val h = variable.handle
     LpExpandedVariable(LpVariableId(h.setIndex, variable.selectedKey.getOrElse("")), variable.name,

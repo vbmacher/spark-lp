@@ -9,7 +9,7 @@ import scala.concurrent.duration.FiniteDuration
 final case class LpSolverCapabilities(lp: Boolean = true, mip: Boolean = false,
   quadratic: Boolean = false, infiniteBounds: Boolean = true, starts: Boolean = false,
   callbacks: Boolean = false, duals: Boolean = false, reducedCosts: Boolean = false,
-  nativeSession: Boolean = false)
+  nativeSession: Boolean = false, sos: Boolean = false)
 
 final case class LpAdapterOptions(validation: CandidateValidationConfig = CandidateValidationConfig(),
   timeLimit: Option[FiniteDuration] = None, shouldStop: () => Boolean = () => false,
@@ -63,7 +63,8 @@ private[dsl] object LpAdapterSolve {
 
   def check(view: LpModelView, capabilities: LpSolverCapabilities, options: LpAdapterOptions): Unit = {
     def need(condition: Boolean, detail: String): Unit = if (!condition) throw new LpModelException(s"Adapter does not support $detail")
-    val discrete = view.variableDeclarations.exists(_.category != Continuous) && !options.validation.relaxIntegrality
+    val discrete = (view.variableDeclarations.exists(_.category != Continuous) || view.sosGroups.nonEmpty) && !options.validation.relaxIntegrality
+    need(view.sosGroups.isEmpty || capabilities.sos, "SOS groups")
     need(if (discrete) capabilities.mip else capabilities.lp, if (discrete) "MIP" else "LP")
     need(!view.hasQuadraticObjective || capabilities.quadratic, "quadratic objectives")
     need(!options.validation.relaxIntegrality, "implicit relaxation; export an explicit relaxed model instead")
@@ -119,7 +120,7 @@ private[dsl] object LpAdapterSolve {
       raw.rowDuals.foreach(validateKeys(_, view.constraints.map(_.id)))
       raw.reducedCosts.foreach(validateKeys(_, view.variables.map(_.id)))
       val sensitivity = raw.status == LpStatus.Optimal && !view.hasQuadraticObjective &&
-        view.variableDeclarations.forall(_.category == Continuous)
+        view.sosGroups.isEmpty && view.variableDeclarations.forall(_.category == Continuous)
       if (!sensitivity && (raw.rowDuals.nonEmpty || raw.reducedCosts.nonEmpty)) fail("sensitivity requires an optimal continuous LP")
       costs = raw.reducedCosts.map(_.map { case (id, value) => (id.family -> id.key) -> value }.persist())
       costs.foreach(_.count())

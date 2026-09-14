@@ -158,4 +158,22 @@ class MipSearchSuite extends AnyFunSuite with DataFrameSuiteBase {
     assert(!Thread.getAllStackTraces.keySet().asScala.exists(t => t.isAlive && t.getName.startsWith("spark-lp-mip-")))
   }
 
+
+  test("parallel memory preflight includes uncut Cholesky when cuts are enabled") {
+    implicit val ss: SparkSession = spark
+    val model = LpProblem("uncut memory", Minimize)
+    val xs = Vector.tabulate(4)(i => model.variable(s"x$i", category = Binary))
+    model += lpDot(Vector(1.0, 2.0, 3.0, 4.0), xs)
+    model += (lpDot(Vector.fill(4)(2.0), xs) >= 3.0)
+    // Five uncut rows need 1040 estimated bytes per Cholesky solve. Six cut rows
+    // with a zero CG preconditioner budget need only 768; both paths must be budgeted.
+    val policy = MipSearchConfig(parallelNodes = 2, maxConcurrentLocalBytes = 1800L,
+      cuts = MipCutsConfig(enabled = true, maxCutsPerNode = 1, maxCuts = 1))
+    intercept[LpModelException] {
+      val result = model.solve(SolveConfig(mip = MipConfig(search = policy),
+        cgConfig = com.github.vbmacher.spark_lp.newton.CgConfig(preconditionerMemoryBytes = 0L)))
+      result.close()
+    }
+  }
+
 }

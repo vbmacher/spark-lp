@@ -45,6 +45,20 @@ final class LpProblem private[dsl](
     handle
   }
 
+  /** Checks a complete independent assignment against original rows, bounds and categories. */
+  def validateCandidate(values: RDD[LpCandidateValue],
+    config: CandidateValidationConfig = CandidateValidationConfig()): LpCandidateReport =
+    LpCandidateValidation.validate(this, values, config)
+
+  /** Creates a local scalar/member assignment without accepting foreign model handles. */
+  def candidateValues(values: Seq[(LpVariable, Double)]): RDD[LpCandidateValue] = {
+    val mapped = values.map { case (variable, value) =>
+      if (variable.handle.problem ne this) throw new LpModelException("Candidate contains a foreign variable")
+      LpCandidateValue(LpVariableId(variable.handle.setIndex, variable.selectedKey.getOrElse("")), value)
+    }
+    spark.sparkContext.parallelize(mapped)
+  }
+
   /** Read-only declaration snapshot; source plans are evaluated only by expanded inspection methods. */
   def inspect: LpModelView = new LpModelView(this)
 

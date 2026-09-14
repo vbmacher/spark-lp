@@ -335,3 +335,25 @@ matrix or family. These uncached RDDs own no solver resources; callers own any p
 rows, constraint nonzeros and objective nonzeros. These are original-model sizes: fixed variables,
 redundant rows and contradictory rows remain visible, and solver slacks, shifts, splits and factor
 auxiliaries are excluded. Inspection does not optimize or mutate the model.
+
+=== Independent candidate validation
+
+`model.validateCandidate(model.candidateValues(Seq(x -> 2.0, family("a") -> 1.0)))` checks a complete
+independent assignment. Distributed callers supply `RDD[LpCandidateValue]` using original model-local
+IDs from inspection. Missing, duplicate, foreign and non-finite values produce an infeasible report
+with no objective. Local handle conversion rejects foreign models before creating the RDD. Partial
+assignments are not completed automatically.
+
+`report.violations` contains distributed per-variable bound/integrality and per-constraint violations.
+Absolute row/bound tolerance defaults to `1e-8`; integrality tolerance defaults to `1e-6`. Feasibility
+requires every applicable check to pass. `maxViolation` is the maximum raw absolute violation (infinity
+for malformed assignments); use each record's `accepted` flag for its corresponding tolerance.
+`CandidateValidationConfig(relaxIntegrality = true)` skips only integrality checks: declared bounds,
+binary `[0,1]` bounds and original constraints still apply. This validation mode does not tighten
+integer bounds to their enclosed integer endpoints.
+
+The independently computed objective includes sense, constants, diagonal curvature and squared
+factors, including for infeasible but well-formed assignments. Numeric overflow makes it unavailable.
+Validation performs Spark actions, keeps inputs distributed and never runs optimization or claims
+optimality. Keep lazy sources stable during these actions. Close the report after reading violations;
+only report-owned caches are released, preserving caller-owned candidate/input caches.

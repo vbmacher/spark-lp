@@ -37,6 +37,57 @@ private[dsl] final class LpCompiler(problem: LpProblem, config: SolveConfig) ext
   private var substitutions = Map.empty[Int, LpSubstitution]
   private var separableInteger = false
   private var inferredBounds = Map.empty[Int, Map[String, LpBounds]]
+  private var preparedStart: Option[PreparedStart] = None
+
+  private def unusedStart(detail: String): Unit = preparedStart.filter(_.usable).foreach { start =>
+    start.summary = start.summary.copy(disposition = LpStartDisposition.Unsupported, detail = detail)
+  }
+  private[dsl] def startApplied(): Unit = preparedStart.foreach(_.applied())
+  private[dsl] def startIncumbent: Option[(RDD[((Int, String), Double)], Double, Double)] =
+    preparedStart.filter(s => s.usable && s.summary.complete && s.summary.feasible).flatMap { s =>
+      s.objective.map { objective => s.applied(incumbent = true); (s.values, objective, s.maxViolation) }
+    }
+
+  /** Map original-coordinate hints into the exact partition/column order, including row slacks. */
+  private[dsl] def startPrimal(compiled: Compiled): Option[DVector] = preparedStart.filter(_.usable).flatMap { start =>
+    import com.github.vbmacher.spark_lp.vectors.dmatrix.implicits._
+    val hints = compiled.sortedCols.filter(_._2.setIndex >= 0)
+      .map { case (g, c) => (c.setIndex -> c.enc) -> (g, c.kind, c.shift) }.join(start.values)
+      .map { case (_, ((g, kind, shift), value)) =>
+        val transformed = kind match {
+          case 0 => value - shift
+          case 1 => math.max(0.0, value)
+          case 2 => math.max(0.0, -value)
+          case 4 => shift - value
+          case _ => 0.0
+        }
+        g -> transformed
+      }
+    val raw = caches.cache(compiled.sortedCols.leftOuterJoin(hints, compiled.sortedCols.partitioner.get)
+      .mapPartitions(it => Iterator.single(new DenseVector(it.toArray.sortBy(_._1).map {
+        case (_, (column, hint)) => if (column.kind == 3) 0.0 else hint.getOrElse(1.0)
+      }))))
+    if (raw.filter(v => v.values.exists(x => !java.lang.Double.isFinite(x))).take(1).nonEmpty) {
+      start.summary = start.summary.copy(disposition = LpStartDisposition.Rejected, detail = "Start overflows solver coordinates", used = false)
+      None
+    } else {
+      val activity = compiled.AT.adjointProduct(raw).values
+      val rhs = compiled.b.values
+      val floor = start.config.interiorFloor
+      val result = compiled.sortedCols.zipPartitions(raw) { (columns, blocks) =>
+        val values = blocks.next().values
+        Iterator.single(new DenseVector(columns.zipWithIndex.map { case ((_, column), i) =>
+          val value = if (column.kind == 3) {
+            val coefficients = column.vector.toSparse
+            val row = coefficients.indices.head
+            (rhs(row) - activity(row)) / coefficients.values.head
+          } else values(i)
+          math.max(floor, value)
+        }.toArray))
+      }
+      Some(caches.cache(result))
+    }
+  }
 
   private[dsl] def newtonSolver(rows: Int): NewtonSolver =
     if (problem.sosGroups.nonEmpty && config.newtonSolver == NewtonSolver.Auto) NewtonSolver.ConjugateGradient
@@ -84,6 +135,7 @@ private[dsl] final class LpCompiler(problem: LpProblem, config: SolveConfig) ext
     else Some(MipSummary(None, None, None, None, 0, 0, "AnalyticalUnbounded"))
 
   private def infeasibleFromBounds(detail: String): LpSolution = {
+    unusedStart("Presolve establishes infeasibility before iterative initialization")
     val schema = StructType(Seq(StructField("name", StringType, false), StructField("group", StringType),
       StructField("activity", DoubleType), StructField("sense", StringType), StructField("rhs", DoubleType),
       StructField("slack", DoubleType), StructField("dual", DoubleType), StructField("note", StringType),
@@ -96,10 +148,11 @@ private[dsl] final class LpCompiler(problem: LpProblem, config: SolveConfig) ext
       isRelaxation = config.relaxIntegrality,
       mip = if (problem.handles.exists(_.category != Continuous)) Some(MipSummary(None, None, None, None, 0, 0, "PresolveInfeasible")) else None,
       presolve = Some(LpPresolveSummary(config.presolve.enabled, config.presolve.effort, propagationPasses,
-        statistics.variables, statistics.constraints.toInt, 0, 0, 0, 0, 0, boundReductions, Vector.empty)))
+        statistics.variables, statistics.constraints.toInt, 0, 0, 0, 0, 0, boundReductions, Vector.empty)),
+      start = preparedStart.map(_.summary))
   }
 
-  override def close(): Unit = caches.close()
+  override def close(): Unit = try caches.close() finally preparedStart.foreach(_.close())
 
   /** Raises an [[LpModelException]] carrying `message`; never returns. */
   private def fail(message: String): Nothing = throw new LpModelException(message)
@@ -112,8 +165,13 @@ private[dsl] final class LpCompiler(problem: LpProblem, config: SolveConfig) ext
     * compiler and its cached RDDs are always released when the call returns.
     */
   def solve(): LpSolution = try {
+    preparedStart = config.start.map(LpStartProcessing.prepare(problem, _, CandidateValidationConfig(
+      tolerance = config.tolerance, integralityTolerance = config.mip.integralityTolerance,
+      relaxIntegrality = config.relaxIntegrality, sosZeroTolerance = config.mip.sosZeroTolerance)))
+    if (problem.quadratic.nonEmpty) unusedStart("Built-in user starts currently support LP and MIP objectives")
     inferIntegerBounds().foreach(reason => return infeasibleFromBounds(reason))
     val compiled = compile()
+    if (compiled.direct.nonEmpty || compiled.numCols == 0) unusedStart("Analytical solve does not use an iterative initialization")
     if (compiled.plans.exists(_.integral) &&
       (config.stopAfterIteration.nonEmpty || config.control != SolveControl()))
       fail("stopAfterIteration and SolveControl are supported only for continuous models")
@@ -164,7 +222,8 @@ private[dsl] final class LpCompiler(problem: LpProblem, config: SolveConfig) ext
         candidateViolation = Some(x => originalViolation(compiled, x)),
         inspectConverged = Some((_, multipliers, _) =>
           convergedDual = Some(new DenseVector(multipliers.values.clone()))),
-        quadratic = compiled.quadratic)
+        quadratic = compiled.quadratic,
+        initialPrimal = startPrimal(compiled), onStartApplied = () => startApplied())
       try continuousSolution(compiled, summary, convergedDual)
       finally summary.x.unpersist(blocking = false)
     } else {
@@ -1526,6 +1585,6 @@ private[dsl] final class LpCompiler(problem: LpProblem, config: SolveConfig) ext
       isRelaxation = config.relaxIntegrality,
       mip = mip,
       reducedCostData = reducedCosts,
-      presolve = Some(presolveSummary(compiled)))
+      presolve = Some(presolveSummary(compiled)), start = preparedStart.map(_.summary))
   }
 }

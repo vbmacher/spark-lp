@@ -81,6 +81,13 @@ private[dsl] final class BranchAndBound(
 
 
   def solve(): LpSolution = try {
+    compiler.startIncumbent.foreach { case (values, objective, violation) =>
+      val objMin = compiled.senseMult * (objective - compiled.objConstant)
+      val empty = spark.sparkContext.emptyRDD[DenseVector]
+      val summary = LP.SolveSummary(objMin, empty, 0, LP.Termination.IterationLimit,
+        violation, Double.NaN, Double.NaN, candidate = CandidateInfo(true, true, Some(0)))
+      incumbent = Some(Candidate(objMin, empty, Map.empty, summary, Some(values)))
+    }
     val open = mutable.PriorityQueue.empty[Node](Ordering.by[Node, Double](_.bound).reverse)
     open.enqueue(Node(
       lower = intCols.map(_.rootLower).toArray,
@@ -151,6 +158,8 @@ private[dsl] final class BranchAndBound(
           cgTolerance = config.cgTolerance,
           cgConfig = config.cgConfig,
           cgMaxIterations = config.cgMaxIterations,
+          initialPrimal = if (isRoot) compiler.startPrimal(compiled) else None,
+          onStartApplied = () => compiler.startApplied(),
           control = SolveControl(shouldStop = () => stopped(), onProgress = event =>
             control.onNodeProgress(solvedNodes, event.copy(iterate = event.iterate.map(metrics =>
               metrics.copy(objectiveValue = compiled.senseMult * (metrics.objectiveValue + shiftCost(node)) + compiled.objConstant))))))
@@ -420,6 +429,7 @@ private[dsl] final class BranchAndBound(
               iterations = totalIterations,
               residuals = residualsOf(inc.summary),
               integerOverrides = inc.values, mip = finalMetadata,
+              originalValues = inc.originalValues.map(_.map(identity)),
               candidate = Some(CandidateInfo(true, true, Some(inc.summary.iterations))),
               stopReason = if (status == LpStatus.Stopped) stopReason else None)
           case None =>
@@ -456,5 +466,6 @@ private[dsl] object BranchAndBound {
     objMin: Double,
     x: DVector,
     values: Map[Long, Double],
-    summary: LP.SolveSummary)
+    summary: LP.SolveSummary,
+    originalValues: Option[org.apache.spark.rdd.RDD[((Int, String), Double)]] = None)
 }

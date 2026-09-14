@@ -743,3 +743,31 @@ try {
 ----
 
 The public-API conformance suite is `spark-lp/src/test/scala/example/adapters/NativeSessionSuite.scala`. Backend API details and callback semantics are defined by the https://ergo-code.github.io/HiGHS/stable/interfaces/python/[HiGHS Python documentation] and https://github.com/ERGO-Code/HiGHS/blob/master/examples/call_highs_from_python.py[HiGHS callback examples].
+
+== LP warm starts and MIP starts
+
+`model.start(Seq(x -> 1.0, items("a") -> 2.0))` creates an independently owned distributed assignment snapshot. `model.start(rddOfCandidateValues, LpStartConfig(...))` accepts original identity/value records without collecting them on the driver. Pass the result as `SolveConfig(start = Some(start))` and close it after its last use. `solution.asStart()` snapshots retained values before the source solution closes; the start then remains usable independently. Creating a start materializes a local Spark checkpoint, so caller-owned source caches are not released by its close operation.
+
+Full and partial assignments are supported. Missing keys are allowed by default and use neutral solver-coordinate values during initialization. `allowPartial = false` requires every current model variable. Duplicate/foreign identities and non-finite values reject the start. Starts are associated with their originating model; cross-model reuse requires explicit identity remapping. Every solve revalidates the snapshot against current domains, bounds, categories, rows and objective. Renaming does not change identity. Changed bounds, source data or new variables can make an assignment infeasible or incomplete. Closed starts and attempts to snapshot a closed solution fail explicitly.
+
+`LpStartConfig.repairBounds` defaults to true: out-of-bound hints are clipped. Near-integral values are rounded within the configured MIP integrality tolerance and the resulting point is checked against the original rows again. A fractional or row-infeasible hint does not establish an incumbent. `requireFeasible = true` rejects anything except a complete feasible assignment. Rejected hints leave the mathematical model and cold solve intact; fixing variables is a separate operation.
+
+For a built-in continuous LP, original values are transformed through lower shifts, upper reflections and free-variable splits. Row slacks are reconstructed from the proposed primal activity, missing coordinates receive neutral values, and all solver coordinates are lifted to at least `interiorFloor` (default `1e-3`). The infeasible-start interior-point method computes fresh dual multipliers and dual slacks through its regular initialization; no basis or dual start is assumed. Interior lifting can change feasibility, so a hint is not reported as a completed feasible iterate. Quadratic and analytical solve paths explicitly report that iterative user starts are unsupported or unused.
+
+For MIP and SOS models, a complete independently validated assignment seeds the incumbent before node search. Its original objective, including constants and sense, participates in pruning and gap logic. An early stop can retain it even with zero processed nodes; it does not create a root bound or an optimality claim. The root relaxation can also use its primal hint. Partial/fractional hints alone cannot create a feasible incumbent. Original values survive presolve and are reconstructed in public results.
+
+`solution.start` reports `Accepted`, `Repaired`, `Rejected` or `Unsupported`, a reason, completeness and feasibility, whether initialization actually used the start, whether it seeded an incumbent, and preparation time. Acceptance does not imply use when a stop occurs before initialization. Start construction time is separate from this preparation field. Custom adapters advertise start support and must return usage metadata; unsupported adapters reject the request explicitly. The HiGHS bridge supports its native solution/start-file operations; generic `LpAdapterOptions.start` is explicitly unsupported by that adapter.
+
+[source,scala]
+----
+val initial = model.start(Seq(x -> 1.0, y -> 0.0))
+try {
+  val result = model.solve(SolveConfig(start = Some(initial)))
+  try {
+    println(result.start)
+    println(result.objectiveValue)
+  } finally result.close()
+} finally initial.close()
+----
+
+See `benchmarks/starts/README.md` for equal-tolerance start/no-start measurements, including snapshot/validation overhead. Warm starts can reduce solver work and can also increase total elapsed time.

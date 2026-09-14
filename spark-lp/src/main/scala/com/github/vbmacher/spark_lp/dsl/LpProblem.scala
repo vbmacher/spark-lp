@@ -45,6 +45,9 @@ final class LpProblem private[dsl](
     handle
   }
 
+  /** Read-only declaration snapshot; source plans are evaluated only by expanded inspection methods. */
+  def inspect: LpModelView = new LpModelView(this)
+
   /** Copies declarations and returns identity mappings; lazy Spark sources are shared. */
   def copy(name: String = this.name): LpModelCopy =
     new LpModelCopy(this, new LpProblem(name, sense, spark))

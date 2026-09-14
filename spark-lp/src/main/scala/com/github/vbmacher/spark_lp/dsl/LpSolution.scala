@@ -47,7 +47,8 @@ final class LpSolution private[dsl](
   /** Status and candidate feasibility apply to the continuous relaxation when true. */
   val isRelaxation: Boolean = false,
   val mip: Option[MipSummary] = None,
-  private[dsl] val reducedCostData: Option[RDD[((Int, String), Double)]] = None) extends AutoCloseable {
+  private[dsl] val reducedCostData: Option[RDD[((Int, String), Double)]] = None,
+  val presolve: Option[LpPresolveSummary] = None) extends AutoCloseable {
 
   private val metadata = problem.handles.map(h => h.setIndex -> h.metadata).toMap
   private[dsl] def snapshot(handle: VarSetHandle): VariableMetadata = {

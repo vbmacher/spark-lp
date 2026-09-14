@@ -1,6 +1,6 @@
 package com.github.vbmacher.spark_lp.dsl
 
-import com.github.vbmacher.spark_lp.LP
+import com.github.vbmacher.spark_lp.{LP, CandidateInfo, SolveControl, StopReason}
 import com.github.vbmacher.spark_lp.dsl.compiler.{Compiled, LpCompiler}
 import com.github.vbmacher.spark_lp.vectors.DVector
 import org.apache.spark.mllib.linalg.DenseVector
@@ -37,6 +37,19 @@ private[dsl] final class BranchAndBound(
   import com.github.vbmacher.spark_lp.vectors.dense_vector.implicits._
   import com.github.vbmacher.spark_lp.vectors.dmatrix.implicits._
 
+  private val control = config.mip.control
+  private val started = control.nanoTime()
+  private var stopReason: Option[StopReason] = None
+  private def elapsed: Double = math.max(0L, control.nanoTime() - started).toDouble / 1e9
+  private def stopped(): Boolean = {
+    if (stopReason.isEmpty) {
+      if (control.timeLimit.exists(limit => control.nanoTime() - started >= limit.toNanos))
+        stopReason = Some(StopReason.TimeLimit)
+      else if (control.shouldStop()) stopReason = Some(StopReason.UserRequested)
+    }
+    stopReason.nonEmpty
+  }
+
   private val intCols = compiled.intCols
   private val n = intCols.size
   private val rootLower: Array[Double] = intCols.map(_.rootLower).toArray
@@ -61,6 +74,11 @@ private[dsl] final class BranchAndBound(
   private var exact = true
   private var solvedNodes = 0
   private var totalIterations = 0
+  private var closedBound = Double.PositiveInfinity
+  private var unresolvedBound = Double.PositiveInfinity
+  private var finalMetadata: Option[MipSummary] = None
+  private def remember(bound: Double): Unit = closedBound = math.min(closedBound, bound)
+
 
   def solve(): LpSolution = try {
     val open = mutable.PriorityQueue.empty[Node](Ordering.by[Node, Double](_.bound).reverse)
@@ -69,15 +87,18 @@ private[dsl] final class BranchAndBound(
       upper = intCols.map(_.rootUpper).toArray,
       bound = Double.NegativeInfinity))
 
-    while (open.nonEmpty && unboundedProof.isEmpty && solvedNodes < config.mip.maxNodes) {
+    emit(open)
+    while (open.nonEmpty && unboundedProof.isEmpty && solvedNodes < config.mip.maxNodes && !stopped()) {
       val node = open.dequeue()
       if (!prunable(node.bound)) {
         processNode(node, open)
-      }
+      } else remember(node.bound)
+      emit(open)
     }
 
     // outstanding nodes below the incumbent bound do not compromise optimality
     val searchComplete = unboundedProof.isEmpty && open.forall(node => prunable(node.bound))
+    finalMetadata = Some(metadata(open, searchComplete))
     assemble(searchComplete)
   } finally {
     (incumbent.map(_.x).toSeq ++ unboundedProof.map(_.x).toSeq ++ Option(rootX)).distinct
@@ -85,8 +106,29 @@ private[dsl] final class BranchAndBound(
     intGSet.unpersist(blocking = false)
   }
 
+  private def metadata(open: mutable.PriorityQueue[Node], complete: Boolean): MipSummary = {
+    val lower = (open.iterator.map(_.bound) ++ Iterator(closedBound, unresolvedBound) ++
+      incumbent.iterator.map(_.objMin)).min
+    val bound = if (lower.isNaN || lower.isInfinite) None else Some(lower)
+    val inc = incumbent.map(c => compiled.senseMult * c.objMin + compiled.objConstant)
+    val gap = for (candidate <- incumbent; b <- bound) yield MipGap.absolute(candidate.objMin, b)
+    val relative = for (g <- gap; value <- inc) yield MipGap.relative(g, value)
+    val termination = if (complete && exact) {
+      if (gap.exists(_ > 0.0)) "GapTolerance" else "SearchExhausted"
+    } else stopReason.map(_.toString).getOrElse(
+      if (solvedNodes >= config.mip.maxNodes && open.nonEmpty) "NodeLimit" else "Unresolved")
+    MipSummary(inc, bound.map(b => compiled.senseMult * b + compiled.objConstant),
+      gap, relative, solvedNodes, open.size, termination, elapsed)
+  }
+
+  private def emit(open: mutable.PriorityQueue[Node]): Unit = {
+    val m = metadata(open, complete = false)
+    control.onProgress(MipProgress(m.processedNodes, m.openNodes, m.incumbent, m.bestBound,
+      m.absoluteGap, m.relativeGap, m.elapsedSeconds))
+  }
+
   private def prunable(bound: Double): Boolean = incumbent.exists { inc =>
-    bound >= inc.objMin - config.mip.gapTolerance * math.max(1.0, math.abs(inc.objMin))
+    MipGap.accepted(inc.objMin, bound, compiled.senseMult * inc.objMin + compiled.objConstant, config.mip)
   }
 
   private def processNode(node: Node, open: mutable.PriorityQueue[Node]): Unit = {
@@ -108,11 +150,15 @@ private[dsl] final class BranchAndBound(
           solver = config.resolvedNewtonSolver(compiled.numRows),
           cgTolerance = config.cgTolerance,
           cgConfig = config.cgConfig,
-          cgMaxIterations = config.cgMaxIterations)
+          cgMaxIterations = config.cgMaxIterations,
+          control = SolveControl(shouldStop = () => stopped(), onProgress = event =>
+            control.onNodeProgress(solvedNodes, event.copy(iterate = event.iterate.map(metrics =>
+              metrics.copy(objectiveValue = compiled.senseMult * (metrics.objectiveValue + shiftCost(node)) + compiled.objConstant))))))
       } catch {
         case e: LpNumericalException =>
           if (isRoot) throw e
           exact = false // the node stays unresolved; a better solution may hide in it
+          unresolvedBound = math.min(unresolvedBound, node.bound)
           return
       }
     totalIterations += summary.iterations
@@ -127,7 +173,8 @@ private[dsl] final class BranchAndBound(
 
     summary.termination match {
       case LP.Termination.Converged =>
-        if (!prunable(lowerBound)) {
+        val usableBound = !lowerBound.isNaN && !lowerBound.isInfinite && summary.dualResidual <= config.tolerance
+        if (usableBound && !prunable(lowerBound)) {
           val vals = integerValues(node, summary.x)
           mostFractional(node, vals) match {
             case Some((j, v)) =>
@@ -142,10 +189,12 @@ private[dsl] final class BranchAndBound(
                     incumbent.foreach(old => release(old.x))
                     incumbent = Some(Candidate(roundedObjective, summary.x, rounded, summary))
                   }
+                  remember(lowerBound)
                 case _ => branchOrGiveUp(node, vals, open)
               }
           }
-        }
+        } else if (usableBound && prunable(lowerBound)) remember(lowerBound)
+        else { exact = false; unresolvedBound = math.min(unresolvedBound, node.bound) }
       case LP.Termination.PrimalInfeasible =>
         () // Farkas certificate: the node provably holds no feasible point
       case LP.Termination.DualInfeasible =>
@@ -161,7 +210,22 @@ private[dsl] final class BranchAndBound(
         } else {
           branchOrGiveUp(node, vals, open)
         }
-      case LP.Termination.IterationLimit | LP.Termination.Stopped =>
+      case LP.Termination.Stopped =>
+        exact = false
+        unresolvedBound = math.min(unresolvedBound, node.bound)
+        if (summary.candidate.available) {
+          val vals = integerValues(node, summary.x)
+          roundedValues(node, vals).filter(r => feasibleRounding(node, summary.x, vals, r)).foreach { rounded =>
+            val objective = objMin + intCols.indices.map { j =>
+              intCols(j).cost * (rounded(intCols(j).g) - node.lower(j) - vals(intCols(j).g))
+            }.sum
+            if (incumbent.forall(objective < _.objMin)) {
+              incumbent.foreach(old => release(old.x))
+              incumbent = Some(Candidate(objective, summary.x, rounded, summary))
+            }
+          }
+        }
+      case LP.Termination.IterationLimit =>
         branchOrGiveUp(node, integerValues(node, summary.x), open)
     }
 
@@ -319,7 +383,9 @@ private[dsl] final class BranchAndBound(
           case Some(k) =>
             val mid = math.min(node.upper(k) - 1.0, math.floor(node.lower(k) / 2.0 + node.upper(k) / 2.0))
             branch(node, k, mid, node.bound, open)
-          case None => exact = false // fully fixed and still unresolved
+          case None =>
+            exact = false // fully fixed and still unresolved
+            unresolvedBound = math.min(unresolvedBound, node.bound)
         }
     }
   }
@@ -339,11 +405,12 @@ private[dsl] final class BranchAndBound(
           objectiveValue = compiled.senseMult * Double.NegativeInfinity,
           iterations = totalIterations,
           residuals = residualsOf(proof.summary),
-          integerOverrides = proof.values)
+          integerOverrides = proof.values, mip = finalMetadata)
       case None =>
         incumbent match {
           case Some(inc) =>
-            val status = if (searchComplete && exact) LpStatus.Optimal else LpStatus.IterationLimit
+            val status = if (searchComplete && exact) LpStatus.Optimal
+              else if (stopReason.nonEmpty) LpStatus.Stopped else LpStatus.IterationLimit
             compiler.buildSolution(
               compiled,
               x = inc.x,
@@ -351,23 +418,25 @@ private[dsl] final class BranchAndBound(
               objectiveValue = compiled.senseMult * inc.objMin + compiled.objConstant,
               iterations = totalIterations,
               residuals = residualsOf(inc.summary),
-              integerOverrides = inc.values)
+              integerOverrides = inc.values, mip = finalMetadata,
+              candidate = Some(CandidateInfo(true, true, Some(inc.summary.iterations))),
+              stopReason = if (status == LpStatus.Stopped) stopReason else None)
           case None =>
             val status =
               if (searchComplete && exact) {
                 if (sawUnboundedNode) LpStatus.InfeasibleOrUnbounded else LpStatus.Infeasible
-              } else {
-                LpStatus.IterationLimit
-              }
-            // no integer-feasible point exists to report; expose the root relaxation iterate
+              } else if (stopReason.nonEmpty) LpStatus.Stopped else LpStatus.IterationLimit
+            // A fractional root relaxation is not an integer-feasible incumbent.
             compiler.buildSolution(
               compiled,
               x = rootX,
               status = status,
               objectiveValue = Double.NaN,
               iterations = totalIterations,
-              residuals = residualsOf(rootSummary),
-              integerOverrides = Map.empty)
+              residuals = LpResiduals(Double.NaN, Double.NaN, Double.NaN),
+              integerOverrides = Map.empty, mip = finalMetadata,
+              candidate = Some(CandidateInfo.Unavailable),
+              stopReason = if (status == LpStatus.Stopped) stopReason else None)
         }
     }
   }

@@ -45,7 +45,8 @@ final class LpSolution private[dsl](
   val stopReason: Option[StopReason] = None,
   val evidence: Option[LpEvidence] = None,
   /** Status and candidate feasibility apply to the continuous relaxation when true. */
-  val isRelaxation: Boolean = false) extends AutoCloseable {
+  val isRelaxation: Boolean = false,
+  val mip: Option[MipSummary] = None) extends AutoCloseable {
 
   private var closed = false
 

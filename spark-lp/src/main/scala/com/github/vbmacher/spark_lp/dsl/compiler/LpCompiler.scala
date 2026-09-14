@@ -648,6 +648,9 @@ private[dsl] final class LpCompiler(problem: LpProblem, config: SolveConfig) ext
         val c = coeff
         plans(si).keys.map { case (enc, _) => ((si, enc, rid), c) }
 
+      case FilteredCoeffTerm(inner, excluded) =>
+        expandTerm(plans, inner, rowId, context).filter { case ((_, key, _), _) => !excluded(key) }
+
       case KeyCoeffTerm(handle, key, coeff) =>
         if (coeff.isNaN || coeff.isInfinite) fail(s"$context: non-finite coefficient for '${handle.name}'")
         val selected = plans(si).keys.filter(_._1 == key)

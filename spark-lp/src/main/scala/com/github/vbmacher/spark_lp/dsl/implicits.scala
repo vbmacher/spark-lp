@@ -16,6 +16,7 @@ object implicits {
 
   implicit final class VariableOps(private val x: LpVariable) extends AnyVal {
     def *(coefficient: Double): LpExpr = x.handle.toExpr(coefficient)
+    def /(divisor: Double): LpExpr = x.handle.toExpr(LpArithmetic.reciprocal(divisor))
     def unary_- : LpExpr = x.handle.toExpr(-1.0)
     def +(other: LpExpr): LpExpr = x.handle.toExpr(1.0).plus(other)
     def -(other: LpExpr): LpExpr = x.handle.toExpr(1.0).plus(other.scaledBy(-1.0))
@@ -61,6 +62,7 @@ object implicits {
     def +(constant: Double): LpExpr = expression.plusConstant(constant)
     def -(constant: Double): LpExpr = expression.plusConstant(-constant)
     def *(scale: Double): LpExpr = expression.scaledBy(scale)
+    def /(divisor: Double): LpExpr = expression.scaledBy(LpArithmetic.reciprocal(divisor))
     def unary_- : LpExpr = expression.scaledBy(-1.0)
     def <=(rhs: Double): LpConstraint = expression.compare(LpSense.Le, rhs)
     def >=(rhs: Double): LpConstraint = expression.compare(LpSense.Ge, rhs)

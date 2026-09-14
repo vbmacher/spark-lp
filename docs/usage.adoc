@@ -335,3 +335,18 @@ matrix or family. These uncached RDDs own no solver resources; callers own any p
 rows, constraint nonzeros and objective nonzeros. These are original-model sizes: fixed variables,
 redundant rows and contradictory rows remain visible, and solver slacks, shifts, splits and factor
 auxiliaries are excluded. Inspection does not optimize or mutate the model.
+
+=== Explicit algebra rendering
+
+`LpAlgebra.preview(model.inspect, maxLines = 80)` renders bounded human-readable original algebra,
+with an exact `TRUNCATED` line count when output is omitted. `LpAlgebra.write(model.inspect, writer)`
+streams complete output to a caller-owned writer. Expressions and pending constraints use
+`LpAlgebra.expression(expr, maxTerms)` and `.constraint(row, maxTerms)` with explicit term truncation.
+
+Rendering includes objective sense/constants, named rows, bounds, categories and quadratic factors.
+Repeated coefficients aggregate, numbers use full `Double.toString` precision, and names use escaped
+backtick delimiters. Ordering follows declaration indices and canonical keys. All methods explicitly
+perform Spark actions; full rendering sorts and transfers one partition at a time, so the largest
+partition bounds driver transfer memory. No implicit `toString` triggers model evaluation. Output is
+for human review and does not promise a machine-readable LP-file dialect. Models and caller writers
+remain unchanged/open apart from the requested text write.

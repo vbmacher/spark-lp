@@ -16,9 +16,9 @@ private[dsl] final class BoundPropagationResult(val variables: RDD[LpExpandedVar
 /** Exact binary-double products/sums, outward division, and category-aware interval propagation. */
 private[dsl] object LpBoundPropagation extends Serializable {
   private case class Interval(lower: Option[Decimal], upper: Option[Decimal])
-  private case class Totals(lower: Decimal, lowerInfinite: Long, upper: Decimal, upperInfinite: Long) {
+  private case class Totals(lower: Decimal, lowerInfinite: Long, upper: Decimal, upperInfinite: Long, nonzeros: Long) {
     def +(other: Totals): Totals = Totals(lower.add(other.lower), lowerInfinite + other.lowerInfinite,
-      upper.add(other.upper), upperInfinite + other.upperInfinite)
+      upper.add(other.upper), upperInfinite + other.upperInfinite, nonzeros + other.nonzeros)
     def without(own: Interval): Interval = Interval(
       if (lowerInfinite - (if (own.lower.isEmpty) 1 else 0) == 0) Some(lower.subtract(own.lower.getOrElse(Decimal.ZERO))) else None,
       if (upperInfinite - (if (own.upper.isEmpty) 1 else 0) == 0) Some(upper.subtract(own.upper.getOrElse(Decimal.ZERO))) else None)
@@ -72,9 +72,9 @@ private[dsl] object LpBoundPropagation extends Serializable {
         }.persist()
         try {
           val totals = entries.mapValues { case (_, _, _, i) => Totals(i.lower.getOrElse(Decimal.ZERO),
-            if (i.lower.isEmpty) 1 else 0, i.upper.getOrElse(Decimal.ZERO), if (i.upper.isEmpty) 1 else 0) }.reduceByKey(_ + _)
+            if (i.lower.isEmpty) 1 else 0, i.upper.getOrElse(Decimal.ZERO), if (i.upper.isEmpty) 1 else 0, 1L) }.reduceByKey(_ + _)
           val boundedRows = rows.leftOuterJoin(totals).mapValues { case (row, t) =>
-            (row, t.getOrElse(Totals(Decimal.ZERO, 0, Decimal.ZERO, 0)))
+            (row, t.getOrElse(Totals(Decimal.ZERO, 0, Decimal.ZERO, 0, 0L)))
           }.persist()
           try {
             val impossible = boundedRows.values.filter { case (row, total) =>
@@ -98,6 +98,15 @@ private[dsl] object LpBoundPropagation extends Serializable {
                 if (row.sense != "<=") other.upper.foreach { activity =>
                   if (a > 0) lower = rounded(rhs.subtract(allowance).subtract(activity), a, lower = true, category != Continuous)
                   else upper = rounded(rhs.subtract(allowance).subtract(activity), a, lower = false, category != Continuous)
+                }
+                if (row.sense == "==" && total.nonzeros == 1 && category == Continuous) {
+                  val exact = try Some(rhs.divide(decimal(a))) catch { case _: ArithmeticException => None }
+                  exact.foreach { value =>
+                    val asDouble = value.doubleValue()
+                    if (java.lang.Double.isFinite(asDouble) && decimal(asDouble).compareTo(value) == 0) {
+                      lower = asDouble; upper = asDouble
+                    }
+                  }
                 }
                 id -> LpBounds(lower, if (upper.isPosInfinity) None else Some(upper))
               }.reduceByKey((a, b) => LpBounds(math.max(a.lower, b.lower),

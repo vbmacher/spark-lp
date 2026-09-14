@@ -677,3 +677,13 @@ model += (amount <= 12.5)
 val result = model.solve()
 try println(result.value(amount)) finally result.close() // 12
 ----
+
+== Presolve controls and reconstruction
+
+`SolveConfig(presolve = PresolveConfig(enabled = true, effort = PresolveEffort.Full))` enables bound propagation, exactly representable singleton-equality fixes, and substitution of free continuous zero-cost columns that occur in only one equality. `Basic` is the default: fixed-variable and empty-row lowering, exact-coefficient duplicate-equality detection, and necessary missing-integer-bound inference. `enabled = false` disables optional duplicate detection, bound inference and substitutions; fixed bounds and empty rows still receive the structural lowering required by the solver format. Unbounded integer intervals that need disabled inference receive a capability error.
+
+`boundInference` controls propagation passes, local metadata limits and conservative row tolerance; `maxSubstitutions` bounds column elimination records. Constraint coefficients stay distributed. Substitution uses `x = (rhs - sum(other original terms)) / coefficient` and removes at most one eligible column per original equality, so reconstruction is acyclic. Integer/binary variables are never eliminated by the continuous free-column rule. No objective term is dropped: substituted columns have exactly zero linear cost and quadratic models do not use this substitution.
+
+`solution.presolve` reports original variable/row counts, remaining original variable/row counts, actual solver dimensions, fixed-variable counts, bound-change records and substitution records. Values and constraint activities are reconstructed in original units. Tightened-bound sensitivity and certificate artifacts are unavailable; removed/merged row sensitivity is explicitly nullable. Repeated solves rebuild reductions from the declared model. Fully reduced models return an analytical result. Continuous relaxation skips integer deductions from constraints. Adapter-specific presolve support is part of each adapter's declared capabilities.
+
+The reductions follow standard LP/MIP presolve methods surveyed in https://arxiv.org/abs/2206.10709[PaPILO: A Parallel Presolving Library for Integer and Linear Programming with Multiprecision Support]. Spark LP implements the documented subset; it does not embed PaPILO. The link:../benchmarks/presolve/README.md[presolve benchmark report] records equal-tolerance reduction and overhead measurements.

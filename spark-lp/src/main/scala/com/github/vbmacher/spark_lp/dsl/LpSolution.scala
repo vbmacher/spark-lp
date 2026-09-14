@@ -75,7 +75,9 @@ final class LpSolution private[dsl](
       throw new LpModelException(s"Variable '${handle.name}' belongs to a different problem")
     }
     val setIndex = handle.setIndex
-    val collected = userValues.filter(_._1._1 == setIndex).map(_._2).collect()
+    val key = variable.selectedKey.getOrElse("")
+    val collected = userValues.filter { case ((si, enc), _) => si == setIndex && enc == key }
+      .map(_._2).take(1)
     if (collected.isEmpty) {
       throw new LpModelException(s"No value available for variable '${handle.name}'")
     }

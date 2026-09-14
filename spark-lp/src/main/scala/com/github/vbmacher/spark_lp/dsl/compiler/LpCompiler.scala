@@ -648,6 +648,13 @@ private[dsl] final class LpCompiler(problem: LpProblem, config: SolveConfig) ext
         val c = coeff
         plans(si).keys.map { case (enc, _) => ((si, enc, rid), c) }
 
+      case KeyCoeffTerm(handle, key, coeff) =>
+        if (coeff.isNaN || coeff.isInfinite) fail(s"$context: non-finite coefficient for '${handle.name}'")
+        val selected = plans(si).keys.filter(_._1 == key)
+        if (selected.take(1).isEmpty)
+          fail(s"$context: missing or incompatible key '$key' in variable family '${handle.name}'")
+        selected.map { case (enc, _) => ((si, enc, rid), coeff) }
+
       case ColumnCoeffTerm(handle, column, scale) =>
         val pairs = handle.domain.columnPairs(column, s"$context, variable '${handle.name}'")
         val sc0 = scale

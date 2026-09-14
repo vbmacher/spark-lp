@@ -288,3 +288,13 @@ Copying performs no Spark actions. Immutable expressions and lazy DataFrame/Data
 sources share data plans, so a copy is not a durable source-data snapshot. Keep
 sources stable during each solve or materialize them explicitly. Closing a result
 from one model does not release another model's result or caller-owned input caches.
+
+=== Individual keyed members
+
+`val selected: LpVariable = family(key)` is a lazy symbolic member handle. It works in scalar
+expressions, comparisons and `solution.value(selected)` while family-wide sums remain available.
+Primitive keys, tuples matching struct keys, and custom `LpKeyEncoder` instances use the same
+canonical identity as the declared domain. Repeated lookups refer to the same variable. Looking up
+a key launches no Spark jobs and collects no domain data. Null/empty encoded keys are rejected
+immediately; absent or incompatible encoded keys are rejected during compilation (or result access).
+A model copy rebinds selected handles through `copy.variable(selected)`.

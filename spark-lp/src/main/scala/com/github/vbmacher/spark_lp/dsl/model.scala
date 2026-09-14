@@ -54,6 +54,11 @@ private[dsl] final case class ConstCoeffTerm(handle: VarSetHandle, coeff: Double
   override def scaledBy(factor: Double): LpTerm = copy(coeff = coeff * factor)
 }
 
+/** Coefficient of one selected family member. Membership is checked during evaluation/compilation. */
+private[dsl] final case class KeyCoeffTerm(handle: VarSetHandle, key: String, coeff: Double) extends LpTerm {
+  override def scaledBy(factor: Double): LpTerm = copy(coeff = coeff * factor)
+}
+
 /** A coefficient held in a Spark column, resolved against the set's own domain. */
 private[dsl] final case class ColumnCoeffTerm(handle: VarSetHandle, column: Column, scale: Double) extends LpTerm {
   override def scaledBy(factor: Double): LpTerm = copy(scale = scale * factor)
@@ -236,8 +241,14 @@ private[dsl] final class VarSetHandle(
 }
 
 /** One scalar decision variable. */
-final class LpVariable private[dsl](private[dsl] val handle: VarSetHandle) {
-  def name: String = handle.name
+final class LpVariable private[dsl](private[dsl] val handle: VarSetHandle,
+  private[dsl] val selectedKey: Option[String] = None,
+  private[dsl] val display: Seq[String] = Seq.empty) {
+  def name: String = KeyCodec.displayName(handle.name, display)
+  private[dsl] def toExpr(coeff: Double): LpExpr = selectedKey match {
+    case Some(key) => new LpExpr(Vector(KeyCoeffTerm(handle, key, coeff)), 0.0)
+    case None => handle.toExpr(coeff)
+  }
 }
 
 /**
@@ -250,6 +261,14 @@ final class LpVariableSet[K] private[dsl](
   private[dsl] val keyColumn: Option[Column]) {
 
   def name: String = handle.name
+
+  /** Lazy symbolic member lookup. Null keys fail now; missing/incompatible keys fail at solve time. */
+  def apply[Key: LpKeyEncoder](key: Key): LpVariable = {
+    val parts = if (key == null) Seq(null) else implicitly[LpKeyEncoder[Key]].parts(key)
+    val encoded = KeyCodec.encodeParts(parts)
+    if (encoded == null) throw new LpModelException(s"Variable family '$name': null or empty key")
+    new LpVariable(handle, Some(encoded), parts.flatMap(KeyCodec.flatParts).map(String.valueOf(_)))
+  }
 
   /** Sum all variables, with coefficient one. */
   def sum: LpExpr = handle.toExpr(1.0)

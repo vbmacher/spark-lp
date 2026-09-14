@@ -103,8 +103,8 @@ val solution = model.solve(SolveConfig(mip = MipConfig(maxNodes = 200)))
 try println(solution.status) finally solution.close()
 ----
 
-`Binary` means 0 or 1, intersected with declared bounds. `Integer` requires finite
-explicit bounds, for example `model.variable("units", upperBound = Some(10.0), category = Integer)`.
+`Binary` means 0 or 1, intersected with declared bounds. `Integer` uses finite
+declared or inferred search bounds, for example `model.variable("units", upperBound = Some(10.0), category = Integer)`.
 Bounds enclose whole integers; they are never widened by the rounding tolerance.
 Integer bounds must be within `+/- (2^53 - 1)` because values use `Double`.
 
@@ -632,4 +632,22 @@ val capacity = model.variable("capacity", upperBound = Some(100.0))
 capacity.setBounds(0.0, Some(80.0)).fix(40.0).rename("available_capacity")
 capacity.unfix() // restores [0,80]
 // A keyed family uses the same operations: allocation(("region", 1)).fix(5.0)
+----
+
+== Integer bounds inferred from constraints
+
+Integer variables accept omitted upper bounds (`None`) and free lower bounds (`Double.NegativeInfinity`). The built-in solver propagates original row intervals to infer finite integer search bounds when constrained integer domains lack them. This includes coupled rows and keyed families; declarations, expressions and subsequent solves retain their original domains. `SolveConfig(boundInference = BoundInferenceConfig(maxPasses = 8, maxLocalChanges = 100000, tolerance = 1e-10))` bounds propagation work and the local integer metadata retained for search. No arbitrary finite cap is substituted.
+
+Propagation distributes coefficient joins and row aggregates, using exact binary-double decimal products/sums and outward-rounded divisions. Row bounds have a conservative allowance `tolerance * (1 + abs(rhs))`; integer deductions round inward to enclosed integer values. Contradictions proven by these conservative bounds return `Infeasible` with no candidate and a diagnostic note. Finite integer endpoints remain limited to `+/- (2^53 - 1)` for exact double representation.
+
+Rowless and separable integer models (at most one nonzero per original row) use the analytical bound-only path, including a feasible integer point and the appropriate unbounded objective when an improving integer direction exists. A constrained domain whose finite interval cannot be inferred receives an explicit unsupported-model error; an unbounded LP relaxation alone does not establish integer unboundedness. Continuous-relaxation solves skip integer deductions from constraints and preserve their fractional feasible region. Explicitly bounded MIPs use their normal search path.
+
+[source,scala]
+----
+val model = LpProblem("integer capacity", Maximize)
+val amount = model.variable("amount", category = Integer)
+model += lpSum(amount)
+model += (amount <= 12.5)
+val result = model.solve()
+try println(result.value(amount)) finally result.close() // 12
 ----

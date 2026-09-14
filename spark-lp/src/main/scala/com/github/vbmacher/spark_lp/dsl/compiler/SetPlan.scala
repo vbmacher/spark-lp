@@ -1,6 +1,6 @@
 package com.github.vbmacher.spark_lp.dsl.compiler
 
-import com.github.vbmacher.spark_lp.dsl.VarSetHandle
+import com.github.vbmacher.spark_lp.dsl.{VarSetHandle, VariableMetadata}
 import org.apache.spark.rdd.RDD
 
 /** Compiled per-set layout: validated keys, transformation kind and the column offset. */
@@ -9,7 +9,8 @@ private[dsl] final class SetPlan(
   val keys: RDD[(String, Seq[String])],
   val count: Long,
   val kind: PlanKind,
-  val integral: Boolean) {
+  val integral: Boolean,
+  val metadata: VariableMetadata) {
 
   var offset: Long = 0L
 

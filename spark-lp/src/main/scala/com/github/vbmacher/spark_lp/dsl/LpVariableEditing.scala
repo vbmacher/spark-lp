@@ -5,8 +5,9 @@ private[dsl] final case class VariableMetadata(name: String, bounds: LpBounds,
   members: Map[String, LpBounds], names: Map[String, String]) {
   def at(key: String): LpBounds = members.getOrElse(key, bounds)
   def display(key: String, parts: Seq[String]): String = names.getOrElse(key, KeyCodec.displayName(name, parts))
-  def envelope: LpBounds = {
-    val all = bounds +: members.values.toVector
+  def envelope: LpBounds = envelopeFor(None)
+  def envelopeFor(count: Option[Long]): LpBounds = {
+    val all = if (members.nonEmpty && count.contains(members.size.toLong)) members.values.toVector else bounds +: members.values.toVector
     LpBounds(all.map(_.lower).min, if (all.exists(_.upper.isEmpty)) None else Some(all.flatMap(_.upper).max))
   }
 }
@@ -19,7 +20,7 @@ private[dsl] object LpVariableEditing {
     val lower = if (category == Binary) math.max(0.0, lo) else lo
     val upper = if (category == Binary) math.min(1.0, bounds.upper.getOrElse(1.0)) else bounds.upper.getOrElse(Double.PositiveInfinity)
     if (category != Continuous && math.ceil(lower) > math.floor(upper))
-      throw new LpModelException("Bounds contain no value in the variable's integer/binary domain")
+      throw new LpModelException("Bounds contain no integral values in the variable's integer/binary domain")
   }
 
   def bounds(h: VarSetHandle, key: Option[String], value: LpBounds): Unit = {

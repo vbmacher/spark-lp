@@ -30,7 +30,8 @@ final case class LpRounding(integerTolerance: Double = 1e-6, boundTolerance: Dou
 final class LpRoundedValues private[dsl](raw: LpSolution, val rounding: LpRounding) {
   def value(variable: LpVariable): Double = {
     val h = variable.handle
-    rounding(raw.value(variable), h.category, h.lowerBound, h.upperBound)
+    val bounds = raw.snapshot(h).at(variable.selectedKey.getOrElse(""))
+    rounding(raw.value(variable), h.category, bounds.lower, bounds.upper)
   }
 
   /** Distributed transformation followed by the ordinary domain join; no values are collected. */
@@ -40,11 +41,11 @@ final class LpRoundedValues private[dsl](raw: LpSolution, val rounding: LpRoundi
     raw.requireOwner(h)
     val si = h.setIndex
     val category = h.category
-    val lower = h.lowerBound
-    val upper = h.upperBound
+    val metadata = raw.snapshot(h)
     val rule = rounding
     h.domain.attachValues(raw.userValues.filter(_._1._1 == si).map { case ((_, key), v) =>
-      key -> rule(v, category, lower, upper)
-    }, h.name)
+      val bounds = metadata.at(key)
+      key -> rule(v, category, bounds.lower, bounds.upper)
+    }, metadata.name, metadata.names)
   }
 }

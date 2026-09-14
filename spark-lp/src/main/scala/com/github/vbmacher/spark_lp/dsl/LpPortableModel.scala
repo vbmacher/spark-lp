@@ -14,7 +14,7 @@ final case class LpPortableModel(schemaVersion: Int, name: String, sense: Object
   objective: LpAffineData, diagonal: RDD[LpCoefficient], factors: Vector[LpQuadraticFactor]) {
 
   /** Explicit import action: at most maxLocalRows row metadata is brought to the driver. */
-  def toProblem(maxLocalRows: Int = 10000)(implicit spark: SparkSession): LpImportedModel = {
+  def toProblem(maxLocalRows: Int = 10000, maxLocalOverrides: Int = 10000)(implicit spark: SparkSession): LpImportedModel = {
     require(schemaVersion == 1, s"Unsupported portable model schema $schemaVersion")
     require(maxLocalRows >= 0 && maxLocalRows < Int.MaxValue, "maxLocalRows must be nonnegative and below Int.MaxValue")
     require(declarations.map(_.id).distinct.size == declarations.size, "Duplicate variable declaration IDs")
@@ -24,10 +24,13 @@ final case class LpPortableModel(schemaVersion: Int, name: String, sense: Object
       if (d.lower.isNaN || d.lower.isPosInfinity || d.upper.exists(u => !LpExpressionData.finite(u) || u < d.lower))
         throw new LpModelException("Invalid portable variable bounds")
     }
+    require(maxLocalOverrides >= 0, "maxLocalOverrides must be nonnegative")
     val declarationMap = declarations.map(d => d.id -> d).toMap
     val invalid = variables.filter { v =>
       v.id == null || v.id.key == null || !declarationMap.contains(v.id.family) ||
-        declarationMap.get(v.id.family).exists(d => v.lower != d.lower || v.upper != d.upper || v.category != d.category)
+        v.name == null || v.name.trim.isEmpty || v.lower.isNaN || v.lower.isPosInfinity ||
+        v.upper.exists(u => !LpExpressionData.finite(u) || u < v.lower) ||
+        declarationMap.get(v.id.family).exists(d => v.category != d.category || d.domainKind == "scalar" && v.id.key != "")
     }.take(1)
     if (invalid.nonEmpty || variables.map(v => v.id -> 1).reduceByKey(_ + _).filter(_._2 > 1).take(1).nonEmpty)
       throw new LpModelException("Invalid or duplicate portable variable identity/metadata")
@@ -50,6 +53,16 @@ final case class LpPortableModel(schemaVersion: Int, name: String, sense: Object
       val keys = variables.filter(_.id.family == d.id).map(v => v.id.key -> v.keyParts)
       val domain: DomainAccess = new EncodedDomain(keys, spark)
       model.handles += new VarSetHandle(model, d.id, d.name, d.lower, d.upper, d.category, domain)
+    }
+    val changes = variables.filter { v =>
+      val d = declarationMap(v.id.family)
+      v.lower != d.lower || v.upper != d.upper || v.name != KeyCodec.displayName(d.name, v.keyParts)
+    }.take(maxLocalOverrides + 1)
+    if (changes.length > maxLocalOverrides) throw new LpModelException(s"Portable import exceeds $maxLocalOverrides local metadata overrides")
+    changes.foreach { v =>
+      val h = model.handles(v.id.family)
+      h.metadata = h.metadata.copy(members = h.metadata.members.updated(v.id.key, LpBounds(v.lower, v.upper)),
+        names = h.metadata.names.updated(v.id.key, v.name))
     }
     val imported = new LpImportedModel(model, variables,
       localRows.zipWithIndex.map { case (row, i) => row.id -> LpConstraintId(i, "") }.toMap)
@@ -80,7 +93,7 @@ object LpPortableModel {
   def variable(variable: LpVariable): LpExpandedVariable = {
     val h = variable.handle
     LpExpandedVariable(LpVariableId(h.setIndex, variable.selectedKey.getOrElse("")), variable.name,
-      h.lowerBound, h.upperBound, h.category, variable.display)
+      variable.lowerBound, variable.upperBound, h.category, variable.display)
   }
   def constraint(constraint: LpConstraint, id: LpConstraintId = LpConstraintId(0, ""))(
     implicit spark: SparkSession): LpConstraintData =

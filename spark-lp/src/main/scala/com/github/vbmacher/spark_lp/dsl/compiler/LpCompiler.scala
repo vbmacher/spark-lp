@@ -150,6 +150,14 @@ private[dsl] final class LpCompiler(problem: LpProblem, config: SolveConfig) ext
     if (!config.relaxIntegrality && problem.quadratic.nonEmpty && problem.handles.exists(_.category != Continuous))
       fail("Quadratic objectives support continuous variables only; integer and binary categories are unsupported")
     val plans: IndexedSeq[SetPlan] = (problem.handles.toVector ++ auxiliaryHandles).map(buildPlan).toIndexedSeq
+    if (problem.handles.exists(_.metadata.names.nonEmpty)) {
+      val names = sc.union(plans.take(problem.handles.size).map { p =>
+        val metadata = p.handle.metadata
+        p.keys.map { case (key, display) => metadata.display(key, display) -> 1 }
+      })
+      if (names.reduceByKey(_ + _).filter(_._2 > 1).take(1).nonEmpty)
+        fail("Duplicate expanded variable names after renaming")
+    }
     if (factors.nonEmpty && plans.exists(_.kind == SplitKind) && config.newtonSolver == NewtonSolver.Cholesky)
       fail("Coupled QP with free variables requires regularized ConjugateGradient; use Auto or ConjugateGradient")
     var colCursor = 0L
@@ -178,6 +186,27 @@ private[dsl] final class LpCompiler(problem: LpProblem, config: SolveConfig) ext
         val base = constraintSet.explicitName.getOrElse(s"_c$idx")
         expandBulk(constraintSet, base, plans, rowSpecs, termPieces)
     }
+
+    // Per-member bounds use a common family transformation plus explicit original-coordinate rows.
+    // Only declarations whose bounds differ from that envelope need extra rows.
+    val memberBoundTerms = mutable.ArrayBuffer.empty[((Int, String, Int), Double)]
+    plans.filter(_.handle.metadata.members.nonEmpty).foreach { plan =>
+      val metadata = plan.handle.metadata
+      val envelope = metadata.envelope
+      plan.keys.toLocalIterator.foreach { case (key, _) =>
+        val bounds = metadata.at(key)
+        Vector((bounds.lower > envelope.lower, LpSense.Ge, bounds.lower),
+          (bounds.upper.exists(u => envelope.upper.forall(_ > u)), LpSense.Le, bounds.upper.getOrElse(0.0)))
+          .filter(_._1).foreach { case (_, sense, rhs) =>
+            checkRowBudget(rowSpecs.size + 1L, "member variable bounds")
+            val id = rowSpecs.size
+            rowSpecs += new RowSpec(id, s"__member_bound_$id", None, sense, rhs, internalBound = true)
+            memberBoundTerms += (((plan.handle.setIndex, key, id), 1.0))
+          }
+      }
+    }
+
+    if (memberBoundTerms.nonEmpty) termPieces += sc.parallelize(memberBoundTerms.toVector)
 
     val dupNames = rowSpecs.groupBy(_.name).filter(_._2.size > 1).keys.take(5).toSeq
     if (dupNames.nonEmpty) {
@@ -584,19 +613,23 @@ private[dsl] final class LpCompiler(problem: LpProblem, config: SolveConfig) ext
     */
   private def buildPlan(handle: VarSetHandle): SetPlan = {
     val where = s"variable '${handle.name}'"
-    val declaredLb = handle.lowerBound
+    val metadata = handle.metadata
+    LpVariableEditing.validate(metadata.bounds, handle.category)
+    metadata.members.values.foreach(LpVariableEditing.validate(_, handle.category))
+    val envelope = metadata.envelope
+    val declaredLb = envelope.lower
     if (declaredLb.isNaN || declaredLb == Double.PositiveInfinity) {
       fail(s"$where: lower bound must not be NaN or +inf (got $declaredLb); Double.NegativeInfinity means a free variable")
     }
-    handle.upperBound.foreach { ub =>
+    envelope.upper.foreach { ub =>
       if (notFinite(ub)) {
         fail(s"$where: upper bound must be finite when defined (got $ub); unbounded is expressed as None")
       }
     }
 
     val (lb, upperOpt, integral) = handle.category match {
-      case Continuous => (declaredLb, handle.upperBound, false)
-      case category => integralBounds(handle, category, where)
+      case Continuous => (declaredLb, envelope.upper, false)
+      case category => integralBounds(new VarSetHandle(problem, handle.setIndex, handle.name, declaredLb, envelope.upper, category, handle.domain), category, where)
     }
 
     upperOpt.foreach { ub =>
@@ -622,6 +655,9 @@ private[dsl] final class LpCompiler(problem: LpProblem, config: SolveConfig) ext
       fail(s"$where: duplicate variable keys in the domain: ${displays.mkString(", ")}")
     }
 
+    val editedKeys = metadata.members.keySet ++ metadata.names.keySet
+    if (editedKeys.nonEmpty && sc.parallelize(editedKeys.toSeq).subtract(keys.keys).take(1).nonEmpty)
+      fail(s"$where: an edited member key is absent from the domain")
     val kind =
       if (upperOpt.contains(lb)) FixedKind(lb)
       else if (lb == Double.NegativeInfinity) upperOpt.map(ReflectedKind).getOrElse(SplitKind)
@@ -1017,6 +1053,7 @@ private[dsl] final class LpCompiler(problem: LpProblem, config: SolveConfig) ext
 
   private def buildEvidence(compiled: Compiled, summary: LP.SolveSummary,
     status: LpStatus): Option[LpEvidence] = {
+    if (compiled.rowSpecs.exists(_.internalBound)) return None
     if (summary.primalCertificate.isEmpty && summary.dualCertificate.isEmpty) return None
     def snapshot[A: scala.reflect.ClassTag](rdd: RDD[A]): RDD[A] = {
       val saved = caches.checkpoint(rdd)
@@ -1260,7 +1297,7 @@ private[dsl] final class LpCompiler(problem: LpProblem, config: SolveConfig) ext
       StructField("dual", DoubleType, nullable = true),
       StructField("note", StringType, nullable = true),
       StructField("dual_note", StringType, nullable = true)))
-    val rows = compiled.rowSpecs.map { rs =>
+    val rows = compiled.rowSpecs.filterNot(_.internalBound).map { rs =>
       val act = if (available) activity.getOrElse(rs.rowId, 0.0) else Double.NaN
       val slack = rs.sense match {
         case LpSense.Ge => act - rs.rhsUser
@@ -1276,7 +1313,7 @@ private[dsl] final class LpCompiler(problem: LpProblem, config: SolveConfig) ext
     }
     val constraintsDf = spark.createDataFrame(sc.parallelize(rows, 1), schema)
 
-    val reducedCosts = rowPrices.map { prices =>
+    val reducedCosts = rowPrices.filter(_ => !compiled.rowSpecs.exists(_.internalBound)).map { prices =>
       val originalRows = compiled.rowSpecs.map(_.rowId).toSet
       val unavailable = originalRows -- prices.keySet
       val effects = compiled.userTermsAgg.map { case ((si, key, row), coefficient) =>

@@ -19,7 +19,6 @@ This module measures Cholesky and CG on reproducible linear programs generated w
 | [support/JvmSampler.scala](src/main/scala/com/github/vbmacher/spark_lp/support/JvmSampler.scala), [Stopwatch.scala](src/main/scala/com/github/vbmacher/spark_lp/support/Stopwatch.scala), [SolveMeasurements.scala](src/main/scala/com/github/vbmacher/spark_lp/support/SolveMeasurements.scala), [RuntimeEnvironment.scala](src/main/scala/com/github/vbmacher/spark_lp/support/RuntimeEnvironment.scala) | JVM sampling, timing, progress phases, environment capture and watchdog |
 | `src/main/resources/*.csv` | Inputs for local and EMR runs, all with the same schema |
 | `src/results/data/*.bmf.json` | Bencher metrics, split by campaign and testbed, including failure and exclusion counts |
-| `src/results/manifest.json` | Captured attempts, exact configurations, outcomes and source provenance used to verify the BMF metrics |
 | `scripts/` | Campaign launch, artifact analysis, normalization and report generation |
 
 `Auto` is an algorithm-selection policy. Benchmarks explicitly select Cholesky or CG so comparisons identify the algorithm used. Adding an algorithm requires a `Benchmark` implementation and registry entry; campaigns and the generator stay shared.
@@ -137,7 +136,7 @@ python3 benchmarks/scripts/report.py render
 python3 benchmarks/scripts/report.py check
 ```
 
-The importer writes Bencher Metric Format files directly under `src/results/data/` and updates the sibling `manifest.json`. It refuses an existing campaign ID. The manifest retains every captured attempt's dimensions, algorithm/suite, configuration, environment, repetition, status, timing, accuracy, memory observations and relative source path/hash/line. These details allow the report to preserve partial batches and validate aggregate BMF metrics without a second CSV dataset. Published results omit infrastructure identifiers, provider metadata and storage locations; deployment details remain in private run manifests. Source configuration IDs keep recorded settings separate even when a setting is not a report column. Missing numeric observations remain unavailable. `check` verifies both BMF metrics against captured attempts and the Markdown report against the same bundle.
+The importer writes self-contained Bencher Metric Format files directly under `src/results/data/`. It refuses an existing campaign ID. Embedded evidence retains every captured attempt's dimensions, algorithm/suite, configuration, environment, repetition, status, timing, accuracy, memory observations and relative source path/hash/line. These details allow the report to preserve partial batches and validate aggregate BMF metrics without a second CSV dataset. Published results omit infrastructure identifiers, provider metadata and storage locations; deployment details remain in private run manifests. Source configuration IDs keep recorded settings separate even when a setting is not a report column. Missing numeric observations remain unavailable. `check` verifies both BMF metrics against captured attempts and the Markdown report against the same bundle.
 
 The report groups only homogeneous cases/configurations, excludes warmups, reports successful solve-time median/range, and shows failure duration where no attempt converged. No failure becomes a successful timing. Constant columns move above each table; ID and Env remain explicit references. The environment table describes the recorded machine/OS/Spark/Java/EMR environment, not the machine generating the Markdown.
 
@@ -145,9 +144,9 @@ The report contains imported measurements, including partial batches, with links
 
 ## Bencher data format
 
-The [Bencher JSON adapter](https://bencher.dev/docs/explanation/adapters/#-json) fits this custom Spark harness: it accepts [Bencher Metric Format (BMF)](https://bencher.dev/docs/reference/bencher-metric-format/) with multiple numeric measures per benchmark. The JMH adapter would require JMH output and would not preserve this harness's existing timing protocol. Bencher can improve exploration through selectable benchmarks, measures and testbeds, and later support historical comparisons. BMF is the public result format; the sibling manifest preserves per-attempt evidence and metadata that aggregate numeric measures cannot express. The Markdown report is generated from this bundle.
+The [Bencher JSON adapter](https://bencher.dev/docs/explanation/adapters/#-json) fits this custom Spark harness: it accepts [Bencher Metric Format (BMF)](https://bencher.dev/docs/reference/bencher-metric-format/) with multiple numeric measures per benchmark. The JMH adapter would require JMH output and would not preserve this harness's existing timing protocol. Bencher can improve exploration through selectable benchmarks, measures and testbeds, and later support historical comparisons. BMF is the public result format; embedded evidence preserves per-attempt details that aggregate numeric measures cannot express. The Markdown report is generated from this bundle.
 
-The single [data directory](src/results/data/) contains only BMF files. [manifest.json](src/results/manifest.json) sits beside it and maps each file to its testbed and every benchmark to its exact case/configuration. It also retains all original observed attempts, outcomes and raw-evidence checksums/line references. There is no separate CSV results dataset or `bencher/` directory.
+The single [data directory](src/results/data/) contains self-contained BMF files. Each benchmark's `measured-records-count` metric includes an `_evidence` extension containing its campaign, case, configuration, captured attempts and source provenance. Executor observations use the same extension on `executor-observations-count`. The extension is allowed by the BMF schema and ignored by Bencher's [numeric metric parser](https://github.com/bencherdev/bencher/blob/v0.6.12/lib/bencher_json/src/project/metric/mod.rs). Our reporting tools use it to verify the numeric measures. Keep these original files for audit details: Bencher stores the numeric metrics, not this local extension. No separate manifest or CSV results dataset is required.
 
 Check the bundle or regenerate its BMF files from the retained observations, without Spark, new Python dependencies, a Bencher account or uploads:
 
@@ -156,7 +155,7 @@ python3 benchmarks/scripts/bencher_export.py --check
 python3 benchmarks/scripts/bencher_export.py
 ```
 
-Use `--data DIRECTORY` to read another bundle's data directory, or `--output DIRECTORY` to write a bundle copy containing `data/` and `manifest.json`. `--check` detects missing/unexpected data files and verifies every BMF value against the captured evidence. File links are included in [REPORT.md](src/results/REPORT.md).
+Use `--data DIRECTORY` to read another bundle's data directory, or `--output DIRECTORY` to write a bundle copy containing `data/`. `--check` detects missing/unexpected data files and verifies every BMF value against the captured evidence. File links are included in [REPORT.md](src/results/REPORT.md).
 
 | Exported measures | Meaning |
 |---|---|
@@ -170,7 +169,7 @@ Use `--data DIRECTORY` to read another bundle's data directory, or `--output DIR
 
 Each BMF file belongs to one campaign and one testbed derived from the recorded environment, topology, partition count and driver heap. Benchmark names include the exact configuration ID; different configurations and retry campaigns are never pooled. Missing numeric observations are omitted, never zero-filled. Warmups and unsuccessful/unrun/excluded records never contribute latency. Partial successful batches retain their actual sample counts. Executor observations lack an exact configuration/testbed reference in the captured metadata, so they remain explicitly unmapped instead of being joined to solver measurements by case name.
 
-After [installing the optional Bencher CLI](https://bencher.dev/docs/how-to/install-cli/), preview a file using its testbed from the manifest:
+After [installing the optional Bencher CLI](https://bencher.dev/docs/how-to/install-cli/), preview a file using the testbed suffix after `--` in its filename (`executor-memory-unmapped` for the executor observation file):
 
 ```sh
 bencher run --adapter json --dry-run --project spark-lp-preview \

@@ -45,6 +45,328 @@
       "value": 0
     },
     "measured-records-count": {
+      "_evidence": {
+        "campaign": {
+          "campaign_id": "distributed-1-cholesky",
+          "notes": [],
+          "schedule": [],
+          "schema_version": 1,
+          "title": "Distributed 1 cholesky"
+        },
+        "case": {
+          "case_id": "distributed-rows-1000-vars-100000-width-32",
+          "fixture_hash": "2129f23972a5b740baab032728abe4213e4f1d27f48e384d00539f40ace0b812",
+          "m": 1000,
+          "n": 100000,
+          "nnz": 32000,
+          "nnz_basis": "see source provenance",
+          "shape": {
+            "family": "well",
+            "nonzeros_per_row": 32,
+            "seed": 11
+          }
+        },
+        "configuration": {
+          "algorithm": "Cholesky",
+          "cg_limit_per_rank": 1000,
+          "cg_tolerance": 1e-10,
+          "configuration_id": "cfg-ffb9cf08055ea8c9",
+          "control": "",
+          "dual_regularization": 0.0,
+          "environment": {
+            "blas": "com.github.fommil.netlib.F2jBLAS",
+            "computer": "distributed cluster",
+            "java_version": "11.0.32+9-LTS",
+            "master": "yarn",
+            "os": "Linux",
+            "spark_version": "3.5.3"
+          },
+          "environment_id": "env-fd9b0666003a",
+          "eta": null,
+          "heap_gib": 16,
+          "implementation": "cholesky",
+          "label": "cholesky",
+          "memory_topology": {
+            "concurrent_tasks_per_executor": 4,
+            "executors": 4
+          },
+          "outer_limit": 100,
+          "partitions": 64,
+          "preconditioner_memory_bytes": 268435456,
+          "primal_regularization": 0.0,
+          "scenario": "",
+          "source_configuration_id": "cfg-c2362ba8c39b9208",
+          "source_hash": "fa5cd2d1b4e97415bf30fe2642c32b7c061a0b274c991a752bc1002486eba122",
+          "suite": "com.github.vbmacher.spark_lp.CholeskyBenchmark",
+          "timing_scope": "core solve excluding independent validation",
+          "tolerance": 1e-08,
+          "warmup_case": null,
+          "warmups": 1
+        },
+        "records": [
+          {
+            "accuracy_basis": "independent-original-lp",
+            "algorithm": "Cholesky",
+            "application_id": null,
+            "attempt_id": "distributed-1-cholesky/distributed-rows-1000-vars-100000-width-32/cfg-ffb9cf08055ea8c9/rep-000/attempt-001",
+            "attempt_number": 1,
+            "campaign_id": "distributed-1-cholesky",
+            "case_id": "distributed-rows-1000-vars-100000-width-32",
+            "cg_restarts": 0,
+            "cg_steps": 0,
+            "configuration_id": "cfg-ffb9cf08055ea8c9",
+            "maximum_rank": 0,
+            "memory": {
+              "peak_heap_bytes": 2056623480,
+              "peak_rss_bytes": 2968104960,
+              "scope": "driver process; combined with executors in local mode; includes validation"
+            },
+            "outer_iterations": 9,
+            "provenance": {
+              "line": 1,
+              "source_path": "results/records.jsonl",
+              "source_sha256": "07960f3ccbe64ef43e52f9d57687b18a6dd4722ba5555b7c77b06662432489ca"
+            },
+            "rank_escalations": null,
+            "raw": {},
+            "repetition": 0,
+            "residuals": {
+              "dual": 6.092800382453196e-15,
+              "gap": 1.737312527636763e-11,
+              "min_s": 6.337597216176454e-16,
+              "min_x": 4.0951720660375534e-17,
+              "objective": 7.869552710985152,
+              "objective_error": 1.4790568726877463e-11,
+              "primal": 2.6109914554798735e-16
+            },
+            "run_id": "distributed-1-cholesky/distributed-rows-1000-vars-100000-width-32/cfg-ffb9cf08055ea8c9/rep-000",
+            "solve_seconds": 17.168479049000002,
+            "spark_jobs": null,
+            "status": "Success",
+            "stop_reason": null,
+            "warmup": true
+          },
+          {
+            "accuracy_basis": "independent-original-lp",
+            "algorithm": "Cholesky",
+            "application_id": null,
+            "attempt_id": "distributed-1-cholesky/distributed-rows-1000-vars-100000-width-32/cfg-ffb9cf08055ea8c9/rep-001/attempt-001",
+            "attempt_number": 1,
+            "campaign_id": "distributed-1-cholesky",
+            "case_id": "distributed-rows-1000-vars-100000-width-32",
+            "cg_restarts": 0,
+            "cg_steps": 0,
+            "configuration_id": "cfg-ffb9cf08055ea8c9",
+            "maximum_rank": 0,
+            "memory": {
+              "peak_heap_bytes": 2182872232,
+              "peak_rss_bytes": 3096702976,
+              "scope": "driver process; combined with executors in local mode; includes validation"
+            },
+            "outer_iterations": 9,
+            "provenance": {
+              "line": 2,
+              "source_path": "results/records.jsonl",
+              "source_sha256": "07960f3ccbe64ef43e52f9d57687b18a6dd4722ba5555b7c77b06662432489ca"
+            },
+            "rank_escalations": null,
+            "raw": {},
+            "repetition": 1,
+            "residuals": {
+              "dual": 6.09278773466368e-15,
+              "gap": 1.7372724724750804e-11,
+              "min_s": 6.337597216201229e-16,
+              "min_x": 4.095172066039658e-17,
+              "objective": 7.86955271098515,
+              "objective_error": 1.4790368451069053e-11,
+              "primal": 2.668334085180332e-16
+            },
+            "run_id": "distributed-1-cholesky/distributed-rows-1000-vars-100000-width-32/cfg-ffb9cf08055ea8c9/rep-001",
+            "solve_seconds": 12.125165441,
+            "spark_jobs": null,
+            "status": "Success",
+            "stop_reason": null,
+            "warmup": false
+          },
+          {
+            "accuracy_basis": "independent-original-lp",
+            "algorithm": "Cholesky",
+            "application_id": null,
+            "attempt_id": "distributed-1-cholesky/distributed-rows-1000-vars-100000-width-32/cfg-ffb9cf08055ea8c9/rep-002/attempt-001",
+            "attempt_number": 1,
+            "campaign_id": "distributed-1-cholesky",
+            "case_id": "distributed-rows-1000-vars-100000-width-32",
+            "cg_restarts": 0,
+            "cg_steps": 0,
+            "configuration_id": "cfg-ffb9cf08055ea8c9",
+            "maximum_rank": 0,
+            "memory": {
+              "peak_heap_bytes": 2293775872,
+              "peak_rss_bytes": 3195604992,
+              "scope": "driver process; combined with executors in local mode; includes validation"
+            },
+            "outer_iterations": 9,
+            "provenance": {
+              "line": 3,
+              "source_path": "results/records.jsonl",
+              "source_sha256": "07960f3ccbe64ef43e52f9d57687b18a6dd4722ba5555b7c77b06662432489ca"
+            },
+            "rank_escalations": null,
+            "raw": {},
+            "repetition": 2,
+            "residuals": {
+              "dual": 6.092785634372711e-15,
+              "gap": 1.7372724724750808e-11,
+              "min_s": 6.337597216179799e-16,
+              "min_x": 4.0951720660392057e-17,
+              "objective": 7.869552710985149,
+              "objective_error": 1.4790168175260642e-11,
+              "primal": 2.723690208490704e-16
+            },
+            "run_id": "distributed-1-cholesky/distributed-rows-1000-vars-100000-width-32/cfg-ffb9cf08055ea8c9/rep-002",
+            "solve_seconds": 11.799770809,
+            "spark_jobs": null,
+            "status": "Success",
+            "stop_reason": null,
+            "warmup": false
+          },
+          {
+            "accuracy_basis": "independent-original-lp",
+            "algorithm": "Cholesky",
+            "application_id": null,
+            "attempt_id": "distributed-1-cholesky/distributed-rows-1000-vars-100000-width-32/cfg-ffb9cf08055ea8c9/rep-003/attempt-001",
+            "attempt_number": 1,
+            "campaign_id": "distributed-1-cholesky",
+            "case_id": "distributed-rows-1000-vars-100000-width-32",
+            "cg_restarts": 0,
+            "cg_steps": 0,
+            "configuration_id": "cfg-ffb9cf08055ea8c9",
+            "maximum_rank": 0,
+            "memory": {
+              "peak_heap_bytes": 2414764168,
+              "peak_rss_bytes": 3325452288,
+              "scope": "driver process; combined with executors in local mode; includes validation"
+            },
+            "outer_iterations": 9,
+            "provenance": {
+              "line": 4,
+              "source_path": "results/records.jsonl",
+              "source_sha256": "07960f3ccbe64ef43e52f9d57687b18a6dd4722ba5555b7c77b06662432489ca"
+            },
+            "rank_escalations": null,
+            "raw": {},
+            "repetition": 3,
+            "residuals": {
+              "dual": 6.092785634372711e-15,
+              "gap": 1.7372324173133983e-11,
+              "min_s": 6.337597216167689e-16,
+              "min_x": 4.0951720660384766e-17,
+              "objective": 7.869552710985149,
+              "objective_error": 1.4790168175260642e-11,
+              "primal": 2.9339675783393945e-16
+            },
+            "run_id": "distributed-1-cholesky/distributed-rows-1000-vars-100000-width-32/cfg-ffb9cf08055ea8c9/rep-003",
+            "solve_seconds": 11.665137951,
+            "spark_jobs": null,
+            "status": "Success",
+            "stop_reason": null,
+            "warmup": false
+          },
+          {
+            "accuracy_basis": "independent-original-lp",
+            "algorithm": "Cholesky",
+            "application_id": null,
+            "attempt_id": "distributed-1-cholesky/distributed-rows-1000-vars-100000-width-32/cfg-ffb9cf08055ea8c9/rep-004/attempt-001",
+            "attempt_number": 1,
+            "campaign_id": "distributed-1-cholesky",
+            "case_id": "distributed-rows-1000-vars-100000-width-32",
+            "cg_restarts": 0,
+            "cg_steps": 0,
+            "configuration_id": "cfg-ffb9cf08055ea8c9",
+            "maximum_rank": 0,
+            "memory": {
+              "peak_heap_bytes": 2483767112,
+              "peak_rss_bytes": 3393724416,
+              "scope": "driver process; combined with executors in local mode; includes validation"
+            },
+            "outer_iterations": 9,
+            "provenance": {
+              "line": 5,
+              "source_path": "results/records.jsonl",
+              "source_sha256": "07960f3ccbe64ef43e52f9d57687b18a6dd4722ba5555b7c77b06662432489ca"
+            },
+            "rank_escalations": null,
+            "raw": {},
+            "repetition": 4,
+            "residuals": {
+              "dual": 6.092799841260993e-15,
+              "gap": 1.7372424311038187e-11,
+              "min_s": 6.337597216223683e-16,
+              "min_x": 4.095172066038747e-17,
+              "objective": 7.8695527109851495,
+              "objective_error": 1.479026831316485e-11,
+              "primal": 2.6010051892270846e-16
+            },
+            "run_id": "distributed-1-cholesky/distributed-rows-1000-vars-100000-width-32/cfg-ffb9cf08055ea8c9/rep-004",
+            "solve_seconds": 11.420789563,
+            "spark_jobs": null,
+            "status": "Success",
+            "stop_reason": null,
+            "warmup": false
+          },
+          {
+            "accuracy_basis": "independent-original-lp",
+            "algorithm": "Cholesky",
+            "application_id": null,
+            "attempt_id": "distributed-1-cholesky/distributed-rows-1000-vars-100000-width-32/cfg-ffb9cf08055ea8c9/rep-005/attempt-001",
+            "attempt_number": 1,
+            "campaign_id": "distributed-1-cholesky",
+            "case_id": "distributed-rows-1000-vars-100000-width-32",
+            "cg_restarts": 0,
+            "cg_steps": 0,
+            "configuration_id": "cfg-ffb9cf08055ea8c9",
+            "maximum_rank": 0,
+            "memory": {
+              "peak_heap_bytes": 2602750800,
+              "peak_rss_bytes": 3502239744,
+              "scope": "driver process; combined with executors in local mode; includes validation"
+            },
+            "outer_iterations": 9,
+            "provenance": {
+              "line": 6,
+              "source_path": "results/records.jsonl",
+              "source_sha256": "07960f3ccbe64ef43e52f9d57687b18a6dd4722ba5555b7c77b06662432489ca"
+            },
+            "rank_escalations": null,
+            "raw": {},
+            "repetition": 5,
+            "residuals": {
+              "dual": 6.092796181879255e-15,
+              "gap": 1.7373525827984457e-11,
+              "min_s": 6.337597216169647e-16,
+              "min_x": 4.09517206603913e-17,
+              "objective": 7.869552710985152,
+              "objective_error": 1.4790568726877463e-11,
+              "primal": 2.711769426419879e-16
+            },
+            "run_id": "distributed-1-cholesky/distributed-rows-1000-vars-100000-width-32/cfg-ffb9cf08055ea8c9/rep-005",
+            "solve_seconds": 11.643124621,
+            "spark_jobs": null,
+            "status": "Success",
+            "stop_reason": null,
+            "warmup": false
+          }
+        ],
+        "schema_version": 1,
+        "sources": [
+          {
+            "path": "results/records.jsonl",
+            "revision": null,
+            "sha256": "07960f3ccbe64ef43e52f9d57687b18a6dd4722ba5555b7c77b06662432489ca",
+            "uri": null
+          }
+        ]
+      },
       "value": 5
     },
     "measured-unknown-count": {

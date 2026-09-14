@@ -174,11 +174,11 @@ Shared values: **Case:** distributed-rows-1000-vars-100000-width-32; **Variant:*
 
 | Backend | Executor | Peak heap | Peak RSS | Peak JVM non-heap |
 |---|---|---|---|---|
-| cg | 2 | 1,411.96 MiB | 2,401.96 MiB | 207.99 MiB |
 | cg | 1 | 1,281.79 MiB | 2,270.12 MiB | 201.41 MiB |
-| cg | 4 | 1,458.85 MiB | 2,364.44 MiB | 206.50 MiB |
+| cg | 2 | 1,411.96 MiB | 2,401.96 MiB | 207.99 MiB |
 | cg | 3 | 1,414.65 MiB | 2,674.88 MiB | 201.03 MiB |
-| cholesky | 2 | 1,806.76 MiB | 3,131.76 MiB | 232.06 MiB |
+| cg | 4 | 1,458.85 MiB | 2,364.44 MiB | 206.50 MiB |
 | cholesky | 1 | 1,839.05 MiB | 2,979.02 MiB | 233.63 MiB |
-| cholesky | 4 | 1,378.74 MiB | 3,084.96 MiB | 230.74 MiB |
+| cholesky | 2 | 1,806.76 MiB | 3,131.76 MiB | 232.06 MiB |
 | cholesky | 3 | 1,470.47 MiB | 2,580.00 MiB | 231.93 MiB |
+| cholesky | 4 | 1,378.74 MiB | 3,084.96 MiB | 230.74 MiB |

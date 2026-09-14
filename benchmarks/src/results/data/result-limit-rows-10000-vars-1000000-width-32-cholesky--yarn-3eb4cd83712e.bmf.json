@@ -45,6 +45,328 @@
       "value": 0
     },
     "measured-records-count": {
+      "_evidence": {
+        "campaign": {
+          "campaign_id": "result-limit-rows-10000-vars-1000000-width-32-cholesky",
+          "notes": [],
+          "schedule": [],
+          "schema_version": 1,
+          "title": "Result limit rows 10000 vars 1000000 width 32 cholesky"
+        },
+        "case": {
+          "case_id": "distributed-rows-10000-vars-1000000-width-32",
+          "fixture_hash": "37c35d0cff8319912d57f80b6dbbd1d9b0436ecd19ca95e23265f81bdd93cf1f",
+          "m": 10000,
+          "n": 1000000,
+          "nnz": 320000,
+          "nnz_basis": "see source provenance",
+          "shape": {
+            "family": "well",
+            "nonzeros_per_row": 32,
+            "seed": 11
+          }
+        },
+        "configuration": {
+          "algorithm": "Cholesky",
+          "cg_limit_per_rank": 1000,
+          "cg_tolerance": 1e-10,
+          "configuration_id": "cfg-199c9add37306b1e",
+          "control": "",
+          "dual_regularization": 0.0,
+          "environment": {
+            "blas": "com.github.fommil.netlib.F2jBLAS",
+            "computer": "distributed cluster",
+            "java_version": "11.0.32+9-LTS",
+            "master": "yarn",
+            "os": "Linux",
+            "spark_version": "3.5.3"
+          },
+          "environment_id": "env-fd9b0666003a",
+          "eta": null,
+          "heap_gib": 16,
+          "implementation": "cholesky",
+          "label": "cholesky",
+          "memory_topology": {
+            "concurrent_tasks_per_executor": 4,
+            "executors": 4
+          },
+          "outer_limit": 100,
+          "partitions": 128,
+          "preconditioner_memory_bytes": 268435456,
+          "primal_regularization": 0.0,
+          "scenario": "",
+          "source_configuration_id": "cfg-66c3d44ebb00e9cb",
+          "source_hash": "fa5cd2d1b4e97415bf30fe2642c32b7c061a0b274c991a752bc1002486eba122",
+          "suite": "com.github.vbmacher.spark_lp.CholeskyBenchmark",
+          "timing_scope": "core solve excluding independent validation",
+          "tolerance": 1e-08,
+          "warmup_case": null,
+          "warmups": 1
+        },
+        "records": [
+          {
+            "accuracy_basis": "independent-original-lp",
+            "algorithm": "Cholesky",
+            "application_id": null,
+            "attempt_id": "result-limit-rows-10000-vars-1000000-width-32-cholesky/distributed-rows-10000-vars-1000000-width-32/cfg-199c9add37306b1e/rep-000/attempt-001",
+            "attempt_number": 1,
+            "campaign_id": "result-limit-rows-10000-vars-1000000-width-32-cholesky",
+            "case_id": "distributed-rows-10000-vars-1000000-width-32",
+            "cg_restarts": 0,
+            "cg_steps": 0,
+            "configuration_id": "cfg-199c9add37306b1e",
+            "maximum_rank": 0,
+            "memory": {
+              "peak_heap_bytes": 13582232208,
+              "peak_rss_bytes": 16711864320,
+              "scope": "driver process; combined with executors in local mode; includes validation"
+            },
+            "outer_iterations": 9,
+            "provenance": {
+              "line": 1,
+              "source_path": "results/records.jsonl",
+              "source_sha256": "d21007d279a12e04794f4683ffdb248fa43fb70288b6a38048838d0d516ef740"
+            },
+            "rank_escalations": null,
+            "raw": {},
+            "repetition": 0,
+            "residuals": {
+              "dual": 2.8004100430067473e-13,
+              "gap": 1.8993223447919405e-09,
+              "min_s": 6.502366031307324e-15,
+              "min_x": 1.2475531766821104e-14,
+              "objective": 54.20674042724636,
+              "objective_error": 1.3744193156441694e-09,
+              "primal": 2.5667549612264983e-16
+            },
+            "run_id": "result-limit-rows-10000-vars-1000000-width-32-cholesky/distributed-rows-10000-vars-1000000-width-32/cfg-199c9add37306b1e/rep-000",
+            "solve_seconds": 1500.014609681,
+            "spark_jobs": null,
+            "status": "Success",
+            "stop_reason": null,
+            "warmup": true
+          },
+          {
+            "accuracy_basis": "independent-original-lp",
+            "algorithm": "Cholesky",
+            "application_id": null,
+            "attempt_id": "result-limit-rows-10000-vars-1000000-width-32-cholesky/distributed-rows-10000-vars-1000000-width-32/cfg-199c9add37306b1e/rep-001/attempt-001",
+            "attempt_number": 1,
+            "campaign_id": "result-limit-rows-10000-vars-1000000-width-32-cholesky",
+            "case_id": "distributed-rows-10000-vars-1000000-width-32",
+            "cg_restarts": 0,
+            "cg_steps": 0,
+            "configuration_id": "cfg-199c9add37306b1e",
+            "maximum_rank": 0,
+            "memory": {
+              "peak_heap_bytes": 8064320104,
+              "peak_rss_bytes": 16713699328,
+              "scope": "driver process; combined with executors in local mode; includes validation"
+            },
+            "outer_iterations": 9,
+            "provenance": {
+              "line": 2,
+              "source_path": "results/records.jsonl",
+              "source_sha256": "d21007d279a12e04794f4683ffdb248fa43fb70288b6a38048838d0d516ef740"
+            },
+            "rank_escalations": null,
+            "raw": {},
+            "repetition": 1,
+            "residuals": {
+              "dual": 2.8004099815743924e-13,
+              "gap": 1.8993220873803505e-09,
+              "min_s": 6.502366031171993e-15,
+              "min_x": 1.2475531766822904e-14,
+              "objective": 54.2067404272464,
+              "objective_error": 1.374420087878934e-09,
+              "primal": 2.637809208551681e-16
+            },
+            "run_id": "result-limit-rows-10000-vars-1000000-width-32-cholesky/distributed-rows-10000-vars-1000000-width-32/cfg-199c9add37306b1e/rep-001",
+            "solve_seconds": 1502.264633651,
+            "spark_jobs": null,
+            "status": "Success",
+            "stop_reason": null,
+            "warmup": false
+          },
+          {
+            "accuracy_basis": "independent-original-lp",
+            "algorithm": "Cholesky",
+            "application_id": null,
+            "attempt_id": "result-limit-rows-10000-vars-1000000-width-32-cholesky/distributed-rows-10000-vars-1000000-width-32/cfg-199c9add37306b1e/rep-002/attempt-001",
+            "attempt_number": 1,
+            "campaign_id": "result-limit-rows-10000-vars-1000000-width-32-cholesky",
+            "case_id": "distributed-rows-10000-vars-1000000-width-32",
+            "cg_restarts": 0,
+            "cg_steps": 0,
+            "configuration_id": "cfg-199c9add37306b1e",
+            "maximum_rank": 0,
+            "memory": {
+              "peak_heap_bytes": 10410790328,
+              "peak_rss_bytes": 12521091072,
+              "scope": "driver process; combined with executors in local mode; includes validation"
+            },
+            "outer_iterations": 9,
+            "provenance": {
+              "line": 3,
+              "source_path": "results/records.jsonl",
+              "source_sha256": "d21007d279a12e04794f4683ffdb248fa43fb70288b6a38048838d0d516ef740"
+            },
+            "rank_escalations": null,
+            "raw": {},
+            "repetition": 2,
+            "residuals": {
+              "dual": 2.800410007410246e-13,
+              "gap": 1.8993224734977345e-09,
+              "min_s": 6.502366031321759e-15,
+              "min_x": 1.2475531766819998e-14,
+              "objective": 54.20674042724638,
+              "objective_error": 1.3744197017615516e-09,
+              "primal": 2.64591017201833e-16
+            },
+            "run_id": "result-limit-rows-10000-vars-1000000-width-32-cholesky/distributed-rows-10000-vars-1000000-width-32/cfg-199c9add37306b1e/rep-002",
+            "solve_seconds": 1502.0469925520001,
+            "spark_jobs": null,
+            "status": "Success",
+            "stop_reason": null,
+            "warmup": false
+          },
+          {
+            "accuracy_basis": "independent-original-lp",
+            "algorithm": "Cholesky",
+            "application_id": null,
+            "attempt_id": "result-limit-rows-10000-vars-1000000-width-32-cholesky/distributed-rows-10000-vars-1000000-width-32/cfg-199c9add37306b1e/rep-003/attempt-001",
+            "attempt_number": 1,
+            "campaign_id": "result-limit-rows-10000-vars-1000000-width-32-cholesky",
+            "case_id": "distributed-rows-10000-vars-1000000-width-32",
+            "cg_restarts": 0,
+            "cg_steps": 0,
+            "configuration_id": "cfg-199c9add37306b1e",
+            "maximum_rank": 0,
+            "memory": {
+              "peak_heap_bytes": 14675346920,
+              "peak_rss_bytes": 17298948096,
+              "scope": "driver process; combined with executors in local mode; includes validation"
+            },
+            "outer_iterations": 9,
+            "provenance": {
+              "line": 4,
+              "source_path": "results/records.jsonl",
+              "source_sha256": "d21007d279a12e04794f4683ffdb248fa43fb70288b6a38048838d0d516ef740"
+            },
+            "rank_escalations": null,
+            "raw": {},
+            "repetition": 3,
+            "residuals": {
+              "dual": 2.8004100169620736e-13,
+              "gap": 1.8993220873803513e-09,
+              "min_s": 6.502366031464026e-15,
+              "min_x": 1.2475531766822914e-14,
+              "objective": 54.20674042724637,
+              "objective_error": 1.3744195730557576e-09,
+              "primal": 2.6181408486501955e-16
+            },
+            "run_id": "result-limit-rows-10000-vars-1000000-width-32-cholesky/distributed-rows-10000-vars-1000000-width-32/cfg-199c9add37306b1e/rep-003",
+            "solve_seconds": 1492.767463291,
+            "spark_jobs": null,
+            "status": "Success",
+            "stop_reason": null,
+            "warmup": false
+          },
+          {
+            "accuracy_basis": "independent-original-lp",
+            "algorithm": "Cholesky",
+            "application_id": null,
+            "attempt_id": "result-limit-rows-10000-vars-1000000-width-32-cholesky/distributed-rows-10000-vars-1000000-width-32/cfg-199c9add37306b1e/rep-004/attempt-001",
+            "attempt_number": 1,
+            "campaign_id": "result-limit-rows-10000-vars-1000000-width-32-cholesky",
+            "case_id": "distributed-rows-10000-vars-1000000-width-32",
+            "cg_restarts": 0,
+            "cg_steps": 0,
+            "configuration_id": "cfg-199c9add37306b1e",
+            "maximum_rank": 0,
+            "memory": {
+              "peak_heap_bytes": 11499059208,
+              "peak_rss_bytes": 13689921536,
+              "scope": "driver process; combined with executors in local mode; includes validation"
+            },
+            "outer_iterations": 9,
+            "provenance": {
+              "line": 5,
+              "source_path": "results/records.jsonl",
+              "source_sha256": "d21007d279a12e04794f4683ffdb248fa43fb70288b6a38048838d0d516ef740"
+            },
+            "rank_escalations": null,
+            "raw": {},
+            "repetition": 4,
+            "residuals": {
+              "dual": 2.8004100028579964e-13,
+              "gap": 1.8993211864397912e-09,
+              "min_s": 6.5023660313505606e-15,
+              "min_x": 1.2475531766821234e-14,
+              "objective": 54.206740427246345,
+              "objective_error": 1.3744190582325812e-09,
+              "primal": 2.8558656702895404e-16
+            },
+            "run_id": "result-limit-rows-10000-vars-1000000-width-32-cholesky/distributed-rows-10000-vars-1000000-width-32/cfg-199c9add37306b1e/rep-004",
+            "solve_seconds": 1493.3009765000002,
+            "spark_jobs": null,
+            "status": "Success",
+            "stop_reason": null,
+            "warmup": false
+          },
+          {
+            "accuracy_basis": "independent-original-lp",
+            "algorithm": "Cholesky",
+            "application_id": null,
+            "attempt_id": "result-limit-rows-10000-vars-1000000-width-32-cholesky/distributed-rows-10000-vars-1000000-width-32/cfg-199c9add37306b1e/rep-005/attempt-001",
+            "attempt_number": 1,
+            "campaign_id": "result-limit-rows-10000-vars-1000000-width-32-cholesky",
+            "case_id": "distributed-rows-10000-vars-1000000-width-32",
+            "cg_restarts": 0,
+            "cg_steps": 0,
+            "configuration_id": "cfg-199c9add37306b1e",
+            "maximum_rank": 0,
+            "memory": {
+              "peak_heap_bytes": 12776343992,
+              "peak_rss_bytes": 14605484032,
+              "scope": "driver process; combined with executors in local mode; includes validation"
+            },
+            "outer_iterations": 9,
+            "provenance": {
+              "line": 6,
+              "source_path": "results/records.jsonl",
+              "source_sha256": "d21007d279a12e04794f4683ffdb248fa43fb70288b6a38048838d0d516ef740"
+            },
+            "rank_escalations": null,
+            "raw": {},
+            "repetition": 5,
+            "residuals": {
+              "dual": 2.8004100249536314e-13,
+              "gap": 1.8993228596151173e-09,
+              "min_s": 6.502366031481043e-15,
+              "min_x": 1.2475531766821126e-14,
+              "objective": 54.20674042724639,
+              "objective_error": 1.3744198304673458e-09,
+              "primal": 2.6284505423610026e-16
+            },
+            "run_id": "result-limit-rows-10000-vars-1000000-width-32-cholesky/distributed-rows-10000-vars-1000000-width-32/cfg-199c9add37306b1e/rep-005",
+            "solve_seconds": 1493.3869148800002,
+            "spark_jobs": null,
+            "status": "Success",
+            "stop_reason": null,
+            "warmup": false
+          }
+        ],
+        "schema_version": 1,
+        "sources": [
+          {
+            "path": "results/records.jsonl",
+            "revision": null,
+            "sha256": "d21007d279a12e04794f4683ffdb248fa43fb70288b6a38048838d0d516ef740",
+            "uri": null
+          }
+        ]
+      },
       "value": 5
     },
     "measured-unknown-count": {

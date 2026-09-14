@@ -542,7 +542,7 @@ def flat_rows(c):
 
 
 def public_campaign(c):
-    """Normalize and sanitize captured evidence before storing the Bencher metadata."""
+    """Normalize and sanitize captured evidence before embedding it in the Bencher files."""
     validate(c)
     rows = [{key: '' if value is None else str(value) for key, value in row.items()}
             for row in flat_rows(c)]
@@ -552,7 +552,7 @@ def public_campaign(c):
 def write_campaign(c, path):
     from bencher_export import read_bundle, write_bundle
     path = Path(path)
-    campaigns, memory = read_bundle(path / 'data') if (path / 'manifest.json').exists() else ([], [])
+    campaigns, memory = read_bundle(path / 'data') if (path / 'data').exists() else ([], [])
     c = public_campaign(c)
     if any(existing['campaign_id'] == c['campaign_id'] for existing in campaigns):
         raise ValueError('Campaign already exists; use a new campaign ID')

@@ -16,7 +16,7 @@ This module measures Cholesky and CG on reproducible linear programs generated w
 | [support/BenchmarkCase.scala](src/main/scala/support/BenchmarkCase.scala) | Shared CSV schema, parsing and case validation |
 | [support/DataGenerator.scala](src/main/scala/support/DataGenerator.scala) | Distributed coefficients, witnesses, input adapters and accuracy checks |
 | [support/Measurements.scala](src/main/scala/support/Measurements.scala) | JVM sampling, timing, progress phases, environment capture and watchdog |
-| `src/main/resources/*.csv` | Inputs for local, smoke and EMR runs, all with the same schema |
+| `src/main/resources/*.csv` | Inputs for local and EMR runs, all with the same schema |
 | `src/results/data/*.csv` | Results: one observed run per row, including failures and source provenance |
 | `scripts/` | Campaign launch, artifact analysis, normalization and report generation |
 
@@ -53,13 +53,12 @@ The generator builds a diagonal basis in the first `m` columns. Each sparse row 
 
 Known witnesses satisfy `x >= 0`, `s >= 0` and `x[j]*s[j]=0`. The generator sets `b=A*x` and `c=Aᵀ*y+s`, giving a feasible primal-dual pair and known optimum `bᵀ*y`. Validation independently evaluates the returned solution against these original equations.
 
-Generation uses `spark.range`, SQL expressions, joins and aggregations. Coefficients and `n`-length vectors stay distributed and cached with spill support. Only scalar statistics and the solver-required `m`-length RHS/dual vectors reach the driver. Sparse-vector conversion allocates one column at a time on executors; cost vectors are bounded by partition size. Choose enough partitions for the widest cases. The deterministic `dataframe-v1` fingerprint covers coefficients and witnesses using distributed integer summaries; it is a reproducibility fingerprint, not an exact cryptographic digest of every derived floating-point byte. Floating-point reduction order can affect the last bits of `b` and `c`.
+Generation uses `spark.range`, SQL expressions, joins and aggregations. Coefficients and `n`-length vectors stay distributed and cached with spill support. Only scalar statistics and the solver-required `m`-length RHS/dual vectors reach the driver. Sparse-vector conversion allocates one column at a time on executors; cost vectors are bounded by partition size. Choose enough partitions for the widest cases. The deterministic fingerprint covers coefficients and witnesses using distributed integer summaries; it is a reproducibility fingerprint, not an exact cryptographic digest of every derived floating-point byte. Floating-point reduction order can affect the last bits of `b` and `c`.
 
 | Inventory | Question |
 |---|---|
 | `solver-scaling.csv` | How do solve time and memory change as rows, variables and support grow? |
 | `sparsity-and-conditioning.csv` | How do density, scaling, near dependence and degeneracy affect convergence and cost? |
-| `smoke.csv` | Do generation, execution and independent validation work for small examples of each family? |
 | `emr-scaling.csv` | How do the algorithms behave on larger distributed problems? Runs are pending; see TODO. |
 
 ## Build and run
@@ -68,18 +67,17 @@ Run commands from the repository root, with Java 11 and sbt 1.10.7 available. Th
 
 ```sh
 sbt 'benchmarksSpark_3_52_12/Test/compile'
-mkdir -p /tmp/lp-smoke-cholesky
-sbt 'benchmarksSpark_3_52_12/Test/runMain com.github.vbmacher.spark_lp.BenchmarkRunner cholesky /tmp/lp-smoke-cholesky /absolute/path/to/spark-lp/benchmarks/src/main/resources/smoke.csv well-small 2 1 0'
-mkdir -p /tmp/lp-smoke-cg
-sbt 'benchmarksSpark_3_52_12/Test/runMain com.github.vbmacher.spark_lp.BenchmarkRunner cg /tmp/lp-smoke-cg /absolute/path/to/spark-lp/benchmarks/src/main/resources/smoke.csv well-small 2 1 0'
+mkdir -p /tmp/lp-scaling-cholesky
+sbt 'benchmarksSpark_3_52_12/Test/runMain com.github.vbmacher.spark_lp.BenchmarkRunner cholesky /tmp/lp-scaling-cholesky /absolute/path/to/spark-lp/benchmarks/src/main/resources/solver-scaling.csv rows-100-vars-1000-width-8 8 5 1'
+mkdir -p /tmp/lp-scaling-cg
+sbt 'benchmarksSpark_3_52_12/Test/runMain com.github.vbmacher.spark_lp.BenchmarkRunner cg /tmp/lp-scaling-cg /absolute/path/to/spark-lp/benchmarks/src/main/resources/solver-scaling.csv rows-100-vars-1000-width-8 8 5 1'
 ```
 
-Replace the absolute repository path. Arguments are `benchmark output-directory inventory.csv case-id partitions [repetitions=5] [warmups=1]`. Output must be a fresh, existing absolute directory. Warmups can be 0 or 1. The first two commands run one measured attempt with no warmup; they are pipeline checks, not a completed campaign.
+Replace the absolute repository path. Arguments are `benchmark output-directory inventory.csv case-id partitions [repetitions=5] [warmups=1]`. Output must be a fresh, existing absolute directory. Warmups can be 0 or 1. These commands run the first scaling case with one warmup and five measured attempts per algorithm.
 
 To run both algorithms sequentially, each in fresh JVMs:
 
 ```sh
-python3 benchmarks/scripts/run.py --campaign solver-scaling --smoke --output /absolute/artifacts/scaling-smoke
 python3 benchmarks/scripts/run.py --campaign solver-scaling --output /absolute/artifacts/scaling-run
 python3 benchmarks/scripts/run.py --campaign sparsity-and-conditioning --output /absolute/artifacts/conditioning-run
 ```

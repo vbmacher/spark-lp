@@ -142,7 +142,7 @@ def import_jsonl(root, cid, artifact_uri=None):
                 raise ValueError(f'Unknown JSONL backend: {backend}')
             algorithm = 'Cholesky' if backend.lower() == 'cholesky' else 'CG'
             settings = {k: clean(raw.get(k, environment.get(k))) for k in [
-                'implementation_sha', 'source_hash', 'generator_version', 'warmups', 'heap_gib', 'partitions', 'outer_limit', 'cg_tolerance',
+                'implementation_sha', 'source_hash', 'warmups', 'heap_gib', 'partitions', 'outer_limit', 'cg_tolerance',
                 'cg_limit_per_rank', 'primal_regularization', 'dual_regularization', 'preconditioner_memory_bytes']}
             # Keep full environment in identity. A changed host/SparkConf cannot be pooled silently.
             settings.update(algorithm=algorithm, implementation=backend, tolerance=raw.get('tolerance', 1e-8),

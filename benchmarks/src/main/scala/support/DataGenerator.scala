@@ -17,6 +17,9 @@ import org.apache.spark.storage.StorageLevel
   * The deterministic hash expressions are independent of Spark partition placement.
   */
 object DataGenerator {
+  /** Version tag mixed into [[Data.hash]] so fixtures produced by different
+    * generator logic never share a fingerprint even when dimensions and seed match.
+    */
   val GeneratorVersion = "dataframe-v1"
 
   /** Distributed input plus small diagnostics; callers must close cached DataFrames.
@@ -24,14 +27,24 @@ object DataGenerator {
     * Solver adapters allocate a sparse vector per column and a cost vector per Spark
     * partition, never an array for the complete matrix or all variables on the driver.
     */
-  final class Data(val spec: BenchmarkCase, val coefficients: DataFrame, val variables: DataFrame,
-                   val constraints: DataFrame) extends AutoCloseable {
+  final class Data(
+    val spec: BenchmarkCase, val coefficients: DataFrame, val variables: DataFrame,
+    val constraints: DataFrame
+  ) extends AutoCloseable {
     private val spark = coefficients.sparkSession
+
     import spark.implicits._
 
+    /** Number of stored coefficient nonzeros. */
     lazy val nnz: Long = coefficients.count()
+
+    /** Known optimal objective `bᵀy` computed from the planted dual witness. */
     lazy val objective: Double = constraints.agg(sum(col("b") * col("y"))).first().getDouble(0)
+
+    /** The m-length right-hand side ordered by row index, collected to the driver. */
     lazy val b: DenseVector = new DenseVector(constraints.orderBy("i").select("b").as[Double].collect())
+
+    /** Deterministic, partition-independent reproducibility fingerprint of coefficients and witnesses. */
     lazy val hash: String = {
       // Commutative integer summaries avoid ordering/partition-dependent float reductions.
       // This is a reproducibility fingerprint, not a cryptographic proof of all input bytes.
@@ -40,10 +53,15 @@ object DataGenerator {
         frame.agg(count(lit(1)), sum(h), min(h), max(h)).first().toSeq.mkString(":")
       }
       MessageDigest.getInstance("SHA-256").digest(
-        (GeneratorVersion + ":" + spec.toString + ":" + summaries.mkString(";")).getBytes(StandardCharsets.UTF_8))
+          (GeneratorVersion + ":" + spec.toString + ":" + summaries.mkString(";")).getBytes(StandardCharsets.UTF_8))
         .map(b => f"${b & 0xff}%02x").mkString
     }
 
+    /** Materializes the constraint matrix as an RDD of columns, repartitioned by column id.
+      *
+      * @param partitions number of output partitions; must be positive.
+      * @return one tuple per variable: `(j, cost c_j, column as a length-m sparse vector)`.
+      */
     def columns(partitions: Int): RDD[(Long, Double, SparseVector)] = {
       require(partitions > 0)
       val grouped = coefficients.groupBy("j").agg(sort_array(collect_list(struct(col("i"), col("value")))).as("entries"))
@@ -56,13 +74,21 @@ object DataGenerator {
         }
     }
 
+    /** @return `(min |value|, max |value|, max nonzeros in any single row)` across all coefficients. */
     def coefficientStats: (Double, Double, Long) = {
       val extremes = coefficients.agg(min(abs(col("value"))), max(abs(col("value")))).first()
       val largestRow = coefficients.groupBy("i").count().agg(max(col("count"))).first().getLong(0)
       (extremes.getDouble(0), extremes.getDouble(1), largestRow)
     }
 
-    /** Validate distributed original-LP equations; only scalar aggregates return to the driver. */
+    /** Validates the original LP optimality conditions against a candidate solution,
+      * computing every sum distributed so only scalar aggregates return to the driver.
+      *
+      * @param actual DataFrame of solved primal/slack values with columns `j`, `x`, `s`.
+      * @param dual   DataFrame of dual values with columns `i`, `y`.
+      * @return normalized `primal`, `dual` and `gap` residuals, primal/dual `objective`
+      *         values, `objective_error` against [[objective]] and `min_x`/`min_s` witnesses.
+      */
     def residuals(actual: DataFrame, dual: DataFrame): Map[String, Double] = {
       val ax = coefficients.join(actual.select("j", "x"), Seq("j"))
         .groupBy("i").agg(sum(col("value") * col("x")).as("ax"))
@@ -85,6 +111,14 @@ object DataGenerator {
         "min_x" -> dr.getDouble(3), "min_s" -> dr.getDouble(4))
     }
 
+    /** Adapts distributed solver output into DataFrames and delegates to the DataFrame `residuals` overload.
+      *
+      * @param ids variable ids aligned element-wise with the `x` and `s` blocks.
+      * @param x   distributed primal values.
+      * @param y   dense m-length dual vector required by the solver.
+      * @param s   distributed slack values.
+      * @return the residual map described on the DataFrame overload.
+      */
     def residuals(ids: RDD[Long], x: RDD[DenseVector], y: DenseVector, s: RDD[DenseVector]): Map[String, Double] = {
       val actual = ids.zip(x.flatMap(_.values)).zip(s.flatMap(_.values))
         .map { case ((j, xv), sv) => (j, xv, sv) }.toDF("j", "x", "s").persist(StorageLevel.MEMORY_AND_DISK)
@@ -93,6 +127,7 @@ object DataGenerator {
       try residuals(actual, dual) finally actual.unpersist(blocking = true)
     }
 
+    /** Unpersists the three cached fixture DataFrames. */
     override def close(): Unit = {
       variables.unpersist(blocking = true)
       constraints.unpersist(blocking = true)
@@ -100,15 +135,35 @@ object DataGenerator {
     }
   }
 
+  /** Decides whether a residual map indicates convergence within `tolerance`.
+    *
+    * @param r         residual map produced by [[Data.residuals]].
+    * @param tolerance strict upper bound for the normalized residuals.
+    * @return true iff every value is finite, `primal`/`dual`/`gap`/`objective_error`
+    *         lie in `[0, tolerance)` and `min_x`/`min_s` are at least `-tolerance`.
+    */
   def passes(r: Map[String, Double], tolerance: Double): Boolean =
     r.values.forall(v => !v.isNaN && !v.isInfinity) &&
       Seq("primal", "dual", "gap", "objective_error").forall(k => r.get(k).exists(v => v >= 0 && v < tolerance)) &&
       Seq("min_x", "min_s").forall(k => r.get(k).exists(_ >= -tolerance))
 
+  /** Builds a distributed LP fixture with a planted optimal primal-dual solution.
+    *
+    * Coefficients and the length-n witnesses are produced with Spark range, joins and
+    * aggregations and stay distributed; the right-hand side and costs are derived so the
+    * generated witness is exactly optimal for the requested case family.
+    *
+    * @param spec       case description controlling dimensions, support, family and seed.
+    * @param partitions number of partitions for the generated frames; must be positive.
+    * @param spark      implicit session used to build the frames.
+    * @return a cached [[Data]] fixture that the caller must [[Data.close]] when done.
+    */
   def generate(spec: BenchmarkCase, partitions: Int = 8)(implicit spark: SparkSession): Data = {
     require(partitions > 0)
+
     def uniform(salt: String, keys: Column*): Column =
       pmod(xxhash64((Seq(lit(spec.seed), lit(salt)) ++ keys): _*), lit(1000000007L)).cast("double") / lit(1000000007.0)
+
     val rowIds = spark.range(0, spec.m.toLong, 1, partitions).toDF("i")
     val variableIds = spark.range(0, spec.n.toLong, 1, partitions).toDF("j")
     val basis = rowIds.select(col("i"), col("i").as("j"), lit(1.0).as("value"))
@@ -143,7 +198,8 @@ object DataGenerator {
       .withColumn("c", coalesce(col("aty"), lit(0.0)) + col("s")).drop("aty").persist(StorageLevel.MEMORY_AND_DISK)
     val constraints = dual.join(rhs, Seq("i")).persist(StorageLevel.MEMORY_AND_DISK)
     val data = new Data(spec, coefficients, variables, constraints)
-    variables.count(); constraints.count()
+    variables.count();
+    constraints.count()
     data
   }
 }

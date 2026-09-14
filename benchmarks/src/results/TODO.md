@@ -2,7 +2,6 @@
 
 ## First: establish a new baseline
 
-- [ ] Run `smoke.csv` through both algorithms on the intended benchmark host; inspect every residual, exit and generated fingerprint.
 - [ ] Run `solver-scaling.csv`: one warmup and five measured repetitions per case/algorithm in fresh JVMs. Keep source/environment/configuration fixed and alternate algorithm order.
 - [ ] Run `sparsity-and-conditioning.csv` with the same protocol.
 - [ ] Repeat promising or unstable shapes with seeds 29 and 47 before drawing conclusions about crossover or defaults.

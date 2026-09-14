@@ -144,7 +144,7 @@ private[dsl] final class LpCompiler(problem: LpProblem, config: SolveConfig) ext
     }
 
     // --- variable set plans, ordered by set creation
-    if (problem.quadratic.nonEmpty && problem.handles.exists(_.category != Continuous))
+    if (!config.relaxIntegrality && problem.quadratic.nonEmpty && problem.handles.exists(_.category != Continuous))
       fail("Quadratic objectives support continuous variables only; integer and binary categories are unsupported")
     val plans: IndexedSeq[SetPlan] = (problem.handles.toVector ++ auxiliaryHandles).map(buildPlan).toIndexedSeq
     if (factors.nonEmpty && plans.exists(_.kind == SplitKind) && config.newtonSolver == NewtonSolver.Cholesky)
@@ -657,7 +657,7 @@ private[dsl] final class LpCompiler(problem: LpProblem, config: SolveConfig) ext
       val detail = if (category == Binary) " after intersecting the declared bounds with the Binary domain {0, 1}" else ""
       fail(s"$where: no integral values within bounds [$lo, $hi]$detail")
     }
-    (lower, Some(upper), true)
+    (lower, Some(upper), !config.relaxIntegrality)
   }
 
   // -------------------------------------------------------------------------------------------
@@ -1258,7 +1258,8 @@ private[dsl] final class LpCompiler(problem: LpProblem, config: SolveConfig) ext
       userValues = caches.keep(userValues),
       candidate = candidate.getOrElse(CandidateInfo(true, status == LpStatus.Optimal, Some(iterations))),
       stopReason = stopReason,
-      evidence = evidence)
+      evidence = evidence,
+      isRelaxation = config.relaxIntegrality)
   }
 }
 

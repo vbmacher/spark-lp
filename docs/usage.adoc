@@ -2,7 +2,8 @@
 :toc: left
 :source-highlighter: highlightjs
 
-Define variables over Spark data, add a linear objective and constraints, then solve.
+Define variables over Spark data, add a linear or continuous convex quadratic objective
+and linear constraints, then solve.
 Scala 2.12; Spark is supplied by your application. This checkout builds against Spark
 2.4.8 and 3.0.2–3.5.3; run the tests on the version you deploy.
 
@@ -20,7 +21,7 @@ For a Spark 3.5.3 application using that local build:
 
 [source,scala]
 ----
-libraryDependencies += "com.github.vbmacher" %% "spark-lp" % "3.5.3_1.2.0-SNAPSHOT"
+libraryDependencies += "com.github.vbmacher" %% "spark-lp" % "3.5.3_1.5.0"
 ----
 
 Remote releases use the same `<spark-version>_<library-version>` scheme; choose an
@@ -94,7 +95,8 @@ Continuous variables accept `lowerBound` and `upperBound = Some(value)`.
 Equal bounds fix a variable exactly. Fully fixed and finite-bound-only models need no
 artificial constraint. For a free variable use `lowerBound = Double.NegativeInfinity`;
 express any finite upper limit as a separate `x <= limit` constraint.
-Other models need at least one nontrivial constraint or finite upper bound.
+Other linear models need at least one nontrivial constraint or finite upper bound.
+Nonzero-curvature QP models also support unconstrained objectives.
 
 For `Dataset[Offer]`, declare
 `model.variablesOf("amount", offersDs, (o: Offer) => o.id)` and use
@@ -107,6 +109,17 @@ For coefficients from another DataFrame, use
 That frame must contain the variable key and grouping columns.
 Repeated `(group, variable)` rows add their coefficients. Filter or join with ordinary
 Spark operations before building these terms; use `when(...).otherwise(0.0)` for conditional weights.
+
+== Convex quadratic objectives
+
+Use `QpObjective.squaredDeviation(x, target, weight)` for scalar weighted deviations,
+`QpObjective.separable(diagonal, linear)` for scalar/keyed diagonal curvature, and
+`QpObjective.squared(expression, weight)` or `sumSquares` for sparse coupled factors.
+The convention is `0.5*x^T Q*x + c^T*x + k`. Minimize requires convex curvature;
+Maximize requires concave curvature. Integer/binary categories and quadratic
+constraints are unsupported. Separable QP rejects curved free variables; coupled
+factor models with free variables require regularized CG (`Auto` selects it).
+See link:quadratic-programming.md[the QP guide] for construction, examples and limits.
 
 == Read and release the result
 
@@ -128,6 +141,13 @@ Slack is `rhs - activity` for `<=` and equality, and `activity - rhs` for `>=`.
 Equality slack should be near zero; negative inequality slack indicates violation.
 `dual` is currently null. Presolve notes explain removed rows.
 
+`solution.evidence` optionally exposes typed infeasibility certificates and unbounded
+directions, including a feasible point when available. `proof.verify(tolerance)`
+checks an independent coefficient/bound snapshot, including zero curvature for QP
+rays. Missing or tolerance-sensitive evidence is explicit. Coupled objectives expose
+the equivalent factor-expanded model in the evidence snapshot. See
+link:certificates.md[certificate verification] for signs, normalization and ownership.
+
 `Infeasible` objectives are `NaN`. At a MIP limit, a finite objective identifies a retained
 integer-feasible incumbent; otherwise the objective is `NaN` and values show the root relaxation.
 Residuals describe the retained LP relaxation, not a global MIP optimality gap.
@@ -137,7 +157,7 @@ Residuals describe the retained LP relaxation, not a global MIP optimality gap.
 Invalid solver settings throw `IllegalArgumentException` before computation.
 
 Finish Spark actions on returned values before calling `solution.close()`.
-The solver releases temporary caches automatically; closing releases the materialised result.
+The solver releases temporary caches automatically; closing releases the materialised result and evidence.
 Iterates and results use Spark local checkpoints: write important outputs to durable storage.
 Keep sources stable during solving and when joining results to domain columns; a later `solve()`
 reads the sources again. Cache or snapshot input data yourself when consistent source contents matter.

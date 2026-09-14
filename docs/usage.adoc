@@ -388,3 +388,12 @@ or unbounded relaxation does not establish MIP optimality or unboundedness. A va
 bounds the original optimum; proved relaxation infeasibility implies original infeasibility. Normal
 continuous stopping controls apply. Discrete structures beyond integer/binary categories require
 explicitly supported relaxation semantics.
+=== Individual keyed members
+
+`val selected: LpVariable = family(key)` is a lazy symbolic member handle. It works in scalar
+expressions, comparisons and `solution.value(selected)` while family-wide sums remain available.
+Primitive keys, tuples matching struct keys, and custom `LpKeyEncoder` instances use the same
+canonical identity as the declared domain. Repeated lookups refer to the same variable. Looking up
+a key launches no Spark jobs and collects no domain data. Null/empty encoded keys are rejected
+immediately; absent or incompatible encoded keys are rejected during compilation (or result access).
+A model copy rebinds selected handles through `copy.variable(selected)`.

@@ -27,7 +27,7 @@ package object dsl {
   }
 
   /** Sums a scalar variable into an expression, PuLP-style. */
-  def lpSum(variable: LpVariable): LpExpr = variable.handle.toExpr(1.0)
+  def lpSum(variable: LpVariable): LpExpr = variable.toExpr(1.0)
 
   /** Sums every variable of a set with coefficient 1. */
   def lpSum[K](variables: LpVariableSet[K]): LpExpr = variables.handle.toExpr(1.0)

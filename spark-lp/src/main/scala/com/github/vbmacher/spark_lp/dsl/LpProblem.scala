@@ -29,6 +29,11 @@ final class LpProblem private[dsl](
   val sense: ObjectiveSense,
   private[dsl] val spark: SparkSession) {
 
+  private var activeSolves = 0
+  private[dsl] def requireEditable(): Unit = synchronized {
+    if (activeSolves != 0) throw new LpModelException("Model edits are unsupported during an active solve")
+  }
+
   private[dsl] val handles = mutable.ArrayBuffer.empty[VarSetHandle]
   private[dsl] var quadratic: Option[QpObjective] = None
   private[dsl] var objective: Option[LpExpr] = None
@@ -40,6 +45,7 @@ final class LpProblem private[dsl](
     upperBound: Option[Double],
     category: VariableCategory,
     domain: DomainAccess): VarSetHandle = {
+    requireEditable()
     val handle = new VarSetHandle(this, handles.size, name, lowerBound, upperBound, category, domain)
     handles += handle
     handle
@@ -146,6 +152,7 @@ final class LpProblem private[dsl](
 
   /** Sets the objective. Throws if one is already set; use `setObjective` to replace deliberately. */
   def +=(objective: LpExpr): this.type = {
+    requireEditable()
     if (this.objective.isDefined) {
       throw new LpModelException(
         s"Problem '$name' already has an objective; use setObjective to replace it deliberately")
@@ -155,11 +162,13 @@ final class LpProblem private[dsl](
   }
 
   def +=(objective: QpObjective): this.type = {
+    requireEditable()
     if (this.objective.isDefined) throw new LpModelException("Problem already has an objective; use setObjective")
     setObjective(objective)
   }
 
   def setObjective(objective: QpObjective): this.type = {
+    requireEditable()
     this.objective = Some(objective.linear)
     this.quadratic = Some(objective)
     this
@@ -167,17 +176,20 @@ final class LpProblem private[dsl](
 
   /** Replaces the objective. */
   def setObjective(objective: LpExpr): this.type = {
+    requireEditable()
     this.quadratic = None
     this.objective = Some(objective)
     this
   }
 
   def +=(constraint: LpConstraint): this.type = {
+    requireEditable()
     constraints += Left(constraint)
     this
   }
 
   def +=(constraints: LpConstraintSet): this.type = {
+    requireEditable()
     this.constraints += Right(constraints)
     this
   }
@@ -187,6 +199,9 @@ final class LpProblem private[dsl](
     * repeatedly. Validation failures raise [[LpModelException]]; solver-side numerical failures
     * raise [[LpNumericalException]].
     */
-  def solve(config: SolveConfig = SolveConfig()): LpSolution =
-    new LpCompiler(this, config).solve()
+  def solve(config: SolveConfig = SolveConfig()): LpSolution = {
+    synchronized { activeSolves += 1 }
+    try new LpCompiler(this, config).solve()
+    finally synchronized { activeSolves -= 1 }
+  }
 }

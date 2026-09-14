@@ -8,7 +8,8 @@ private[dsl] final class RowSpec(
   val name: String,
   val group: Option[String],
   val sense: LpSense,
-  val rhsUser: Double) {
+  val rhsUser: Double,
+  val internalBound: Boolean = false) {
 
   /** RHS after fixed-variable and bound-shift folding. */
   var b0: Double = rhsUser

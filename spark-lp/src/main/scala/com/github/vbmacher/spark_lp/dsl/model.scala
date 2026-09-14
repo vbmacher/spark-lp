@@ -163,7 +163,7 @@ private[dsl] sealed trait DomainAccess {
   def columnPairs(column: Column, context: String): RDD[(String, Double)]
 
   /** Original domain plus `lp_variable` and `lp_value` columns, joined by encoded key. */
-  def attachValues(values: RDD[(String, Double)], setName: String): DataFrame
+  def attachValues(values: RDD[(String, Double)], setName: String, names: Map[String, String] = Map.empty): DataFrame
 }
 
 private[dsl] final class ScalarDomain(spark: SparkSession) extends DomainAccess {
@@ -174,7 +174,7 @@ private[dsl] final class ScalarDomain(spark: SparkSession) extends DomainAccess 
   override def columnPairs(column: Column, context: String): RDD[(String, Double)] =
     throw new LpModelException(s"$context: a scalar variable does not support column coefficients")
 
-  override def attachValues(values: RDD[(String, Double)], setName: String): DataFrame = {
+  override def attachValues(values: RDD[(String, Double)], setName: String, names: Map[String, String]): DataFrame = {
     val schema = StructType(Seq(StructField("lp_variable", StringType), StructField("lp_value", DoubleType)))
     val rows = values.map { case (_, value) => Row(setName, value) }
     spark.createDataFrame(rows, schema)
@@ -204,7 +204,7 @@ private[dsl] final class ColumnDomain(val df: DataFrame, key: Column) extends Do
     }
   }
 
-  override def attachValues(values: RDD[(String, Double)], setName: String): DataFrame = {
+  override def attachValues(values: RDD[(String, Double)], setName: String, names: Map[String, String]): DataFrame = {
     val spark = df.sparkSession
     val schema = StructType(df.schema.fields ++
       Seq(StructField("lp_variable", StringType), StructField("lp_value", DoubleType)))
@@ -213,8 +213,8 @@ private[dsl] final class ColumnDomain(val df: DataFrame, key: Column) extends Do
       val value = row.get(0)
       (KeyCodec.encodeValue(value), (KeyCodec.displayParts(value), row.getStruct(1)))
     }
-    val rows = keyed.join(values).map { case (_, ((display, original), value)) =>
-      Row.fromSeq(original.toSeq :+ KeyCodec.displayName(setName, display) :+ value)
+    val rows = keyed.join(values).map { case (encoded, ((display, original), value)) =>
+      Row.fromSeq(original.toSeq :+ names.getOrElse(encoded, KeyCodec.displayName(setName, display)) :+ value)
     }
     spark.createDataFrame(rows, schema)
   }
@@ -244,7 +244,7 @@ private[dsl] final class TypedDomain[K, Key](
       s"$context: column coefficients require a variable set declared over a DataFrame domain " +
         "(LpProblem.variables); for a typed variable set use weightedBy")
 
-  override def attachValues(values: RDD[(String, Double)], setName: String): DataFrame = {
+  override def attachValues(values: RDD[(String, Double)], setName: String, names: Map[String, String]): DataFrame = {
     val spark = ds.sparkSession
     val fn = keyFn
     val enc = keyEncoder
@@ -255,8 +255,8 @@ private[dsl] final class TypedDomain[K, Key](
       (KeyCodec.encodeParts(parts), (display, k))
     }
     val setNameLocal = setName
-    val joined = keyed.join(values).map { case (_, ((display, k), value)) =>
-      (k, KeyCodec.displayName(setNameLocal, display), value)
+    val joined = keyed.join(values).map { case (encoded, ((display, k), value)) =>
+      (k, names.getOrElse(encoded, KeyCodec.displayName(setNameLocal, display)), value)
     }
     implicit val tupleEncoder: Encoder[(K, String, Double)] =
       Encoders.tuple(kEncoder, Encoders.STRING, Encoders.scalaDouble)
@@ -276,9 +276,9 @@ private[dsl] final class EncodedDomain(data: RDD[(String, Seq[String])], spark: 
   override def keyPairs(): RDD[(String, Seq[String])] = data
   override def columnPairs(column: Column, context: String): RDD[(String, Double)] =
     throw new LpModelException(s"$context: imported domains have no source coefficient columns")
-  override def attachValues(values: RDD[(String, Double)], setName: String): DataFrame = {
+  override def attachValues(values: RDD[(String, Double)], setName: String, names: Map[String, String]): DataFrame = {
     val rows = data.join(values).map { case (key, (display, value)) =>
-      Row(key, KeyCodec.displayName(setName, display), value)
+      Row(key, names.getOrElse(key, KeyCodec.displayName(setName, display)), value)
     }
     spark.createDataFrame(rows, StructType(Seq(StructField("lp_key", StringType, false),
       StructField("lp_variable", StringType, false), StructField("lp_value", DoubleType, false))))
@@ -289,11 +289,18 @@ private[dsl] final class EncodedDomain(data: RDD[(String, Seq[String])], spark: 
 private[dsl] final class VarSetHandle(
   val problem: LpProblem,
   val setIndex: Int,
-  val name: String,
-  val lowerBound: Double,
-  val upperBound: Option[Double],
+  initialName: String,
+  initialLower: Double,
+  initialUpper: Option[Double],
   val category: VariableCategory,
   val domain: DomainAccess) {
+
+  private[dsl] var metadata = VariableMetadata(initialName, LpBounds(initialLower, initialUpper), Map.empty, Map.empty)
+  private[dsl] var fixedMembers = Map.empty[String, Option[LpBounds]]
+  private[dsl] var fixedFamily: Option[(LpBounds, Map[String, LpBounds], Map[String, Option[LpBounds]])] = None
+  def name: String = metadata.name
+  def lowerBound: Double = metadata.bounds.lower
+  def upperBound: Option[Double] = metadata.bounds.upper
 
   private[dsl] def toExpr(coeff: Double): LpExpr = new LpExpr(Vector(ConstCoeffTerm(this, coeff)), 0.0)
 }
@@ -302,7 +309,15 @@ private[dsl] final class VarSetHandle(
 final class LpVariable private[dsl](private[dsl] val handle: VarSetHandle,
   private[dsl] val selectedKey: Option[String] = None,
   private[dsl] val display: Seq[String] = Seq.empty) {
-  def name: String = KeyCodec.displayName(handle.name, display)
+  def name: String = handle.metadata.display(selectedKey.getOrElse(""), display)
+  def lowerBound: Double = handle.metadata.at(selectedKey.getOrElse("")).lower
+  def upperBound: Option[Double] = handle.metadata.at(selectedKey.getOrElse("")).upper
+  def setBounds(lowerBound: Double, upperBound: Option[Double]): this.type = {
+    LpVariableEditing.bounds(handle, selectedKey, LpBounds(lowerBound, upperBound)); this
+  }
+  def fix(value: Double): this.type = { LpVariableEditing.fix(handle, selectedKey, value); this }
+  def unfix(): this.type = { LpVariableEditing.unfix(handle, selectedKey); this }
+  def rename(name: String): this.type = { LpVariableEditing.rename(handle, selectedKey, name); this }
   private[dsl] def toExpr(coeff: Double): LpExpr = selectedKey match {
     case Some(key) => new LpExpr(Vector(KeyCoeffTerm(handle, key, coeff)), 0.0)
     case None => handle.toExpr(coeff)
@@ -319,6 +334,14 @@ final class LpVariableSet[K] private[dsl](
   private[dsl] val keyColumn: Option[Column]) {
 
   def name: String = handle.name
+  def lowerBound: Double = handle.lowerBound
+  def upperBound: Option[Double] = handle.upperBound
+  def setBounds(lowerBound: Double, upperBound: Option[Double]): this.type = {
+    LpVariableEditing.bounds(handle, None, LpBounds(lowerBound, upperBound)); this
+  }
+  def fix(value: Double): this.type = { LpVariableEditing.fix(handle, None, value); this }
+  def unfix(): this.type = { LpVariableEditing.unfix(handle, None); this }
+  def rename(name: String): this.type = { LpVariableEditing.rename(handle, None, name); this }
 
   /** Lazy symbolic member lookup. Null keys fail now; missing/incompatible keys fail at solve time. */
   def apply[Key: LpKeyEncoder](key: Key): LpVariable = {

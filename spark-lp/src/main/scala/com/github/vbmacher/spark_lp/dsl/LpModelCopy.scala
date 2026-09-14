@@ -5,6 +5,9 @@ final class LpModelCopy private[dsl](source: LpProblem, val model: LpProblem) {
   private val mapping: Map[VarSetHandle, VarSetHandle] = source.handles.iterator.map { handle =>
     val copied = new VarSetHandle(model, handle.setIndex, handle.name, handle.lowerBound,
       handle.upperBound, handle.category, handle.domain)
+    copied.metadata = handle.metadata
+    copied.fixedMembers = handle.fixedMembers
+    copied.fixedFamily = handle.fixedFamily
     model.handles += copied
     handle -> copied
   }.toMap

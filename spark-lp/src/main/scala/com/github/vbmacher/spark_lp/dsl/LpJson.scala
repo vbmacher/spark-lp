@@ -133,9 +133,10 @@ object LpJson {
   def read(source: String)(implicit spark: SparkSession): LpJsonDocument = {
     def records(name: String): RDD[JsonNode] =
       spark.read.textFile(new Path(source, name).toString).rdd.map(line => mapper.readTree(line))
-    val headers = records("header").take(2)
+    // Parse the bounded header on the driver; older Jackson nodes are not serializable.
+    val headers = spark.read.textFile(new Path(source, "header").toString).take(2)
     if (headers.length != 1) throw new LpModelException("JSON requires exactly one header record")
-    val h = headers.head
+    val h = mapper.readTree(headers.head)
     if (integer(field(h, "schemaVersion")) != 1) throw new LpModelException("Unsupported JSON model schema")
     val sense = text(field(h, "sense")) match {
       case "Minimize" => Minimize

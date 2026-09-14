@@ -99,13 +99,17 @@ class LpDslValidationSuite extends AnyFunSuite with DataFrameSuiteBase {
     assert(math.abs(solution.objectiveValue - 6.0) < 1e-5)
   }
 
-  test("a model without an objective is rejected") {
+  test("a model without an objective solves feasibility") {
     implicit val ss: SparkSession = spark
     val model = LpProblem("noObj", Minimize)
     val x = model.variable("x")
     model += (x >= 2.0).named("floor")
-    val e = intercept[LpModelException](model.solve())
-    assert(e.getMessage.contains("objective"))
+    val result = model.solve()
+    try {
+      assert(result.status == LpStatus.Optimal)
+      assert(result.objectiveValue == 0.0)
+      assert(result.value(x) >= 2.0 - 1e-8)
+    } finally result.close()
   }
 
   test("a model without constraints is rejected as empty") {

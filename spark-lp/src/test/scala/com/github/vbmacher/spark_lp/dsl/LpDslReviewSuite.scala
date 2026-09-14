@@ -153,7 +153,8 @@ class LpDslReviewSuite extends AnyFunSuite with DataFrameSuiteBase {
     try {
       assert(solution.status == LpStatus.IterationLimit)
       assert(solution.objectiveValue.isNaN)
-      assert(math.abs(solution.value(x) - 1.5) < 1e-6)
+      assert(!solution.candidate.available)
+      intercept[LpModelException](solution.value(x))
     } finally solution.close()
     assert(sc.getPersistentRDDs.keySet == before)
   }

@@ -218,4 +218,14 @@ final class LpProblem private[dsl](
     try LpAdapterSolve.run(this, adapter, options)
     finally synchronized { activeSolves -= 1 }
   }
+
+  def prepareNative(adapter: LpSolverAdapter, options: LpAdapterOptions = LpAdapterOptions()): Either[LpUnsupported, LpNativeSession] = {
+    if (!adapter.capabilities.nativeSession) Left(LpUnsupported("nativeSession", s"${adapter.name} does not expose native sessions"))
+    else {
+      synchronized { activeSolves += 1 }
+      var released = false
+      val release = () => synchronized { if (!released) { released = true; activeSolves -= 1 } }
+      LpNativeSession.open(this, adapter, options, release)
+    }
+  }
 }

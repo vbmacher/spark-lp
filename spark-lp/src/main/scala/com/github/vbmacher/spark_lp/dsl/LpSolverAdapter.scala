@@ -40,6 +40,7 @@ trait LpSolverAdapter {
 /** Close must be idempotent and release only session-owned resources, even after solve failure. */
 trait LpAdapterSession extends AutoCloseable {
   def solve(): LpAdapterResult
+  def nativeAccess: Option[LpNativeAccess] = None
 }
 
 private[dsl] object LpAdapterSolve {

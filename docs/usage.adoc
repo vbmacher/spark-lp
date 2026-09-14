@@ -711,3 +711,35 @@ The built-in solver uses binary selectors and exact finite-bound linking constra
 `MipConfig.sosZeroTolerance` controls incumbent nonzero checks, independently of integrality tolerance. `CandidateValidationConfig.sosZeroTolerance` controls original-model candidate checks. Both default to `1e-6`; zero requests exact zero tests. `relaxIntegrality = true` relaxes the selectors along with integer variables and labels the result as a relaxation. Selector variables and internal linking rows are excluded from public results.
 
 Model copies, inspection, algebra rendering and JSON preserve SOS groups and weight order. LP and MPS export reject SOS models because the implemented dialects cannot preserve their semantics; use JSON for complete interchange.
+
+== Native solver sessions
+
+`model.prepareNative(adapter, options)` returns `Either[LpUnsupported, LpNativeSession]`. Unsupported adapters return a reason without preparing a native model. A supported session fixes the model snapshot and prevents DSL edits until close. Use its creating driver thread for every operation, including close; the handle is not serializable and must never be captured in executor closures. Finish actions on its mapping and results before closing it. The session owns its backend process/resources and all normalized solutions it returns; close is idempotent.
+
+The lifecycle is preparation, parameter/callback configuration, solve, then inspection or solution-file export. `setParameter(name, value)`, `parameter(name)`, `information(name)`, `callback(handler)`, `readSolution(path)` and `writeSolution(path)` return explicit unsupported-operation results when an operation or parameter is unavailable. Parameter values are backend-specific strings. `mapping` exposes original identities and native names. Backend information and callback messages are diagnostics; they do not independently establish generic feasibility, optimality or certificates.
+
+Parameter changes, callback changes and solution-file imports invalidate `latestSolution` and advance `modelRevision`. `isCurrent(result)` tells whether a result represents the current session. Retained result objects are immutable solve snapshots; invalidation does not rewrite their values. A new solve refreshes the current result through independent original-model candidate validation. Structural native edits are not exposed: bounds, objective and rows must be edited through the DSL after closing and preparing a new session. Callbacks cannot reenter session operations. A solve or callback exception closes the session and releases its edit lock and resources.
+
+`HighsPythonAdapter` supplies optional native LP/MIP access without a JVM binding. It uses an existing Python `highspy` installation, or the HiGHS module in SciPy when standalone `highspy` is unavailable. No package is installed automatically. The conformance environment uses SciPy 1.16.3 with HiGHS 1.8.0; standalone package versions can expose different parameters. Missing executables/imports fail with backend startup diagnostics and cleanup. The regular built-in solve requires neither Python nor HiGHS.
+
+HiGHS receives an LP export with exact original coefficients, sense, constant and normalized names; its public solution arrays map back to these names after native presolve. It supports native parameters, logging and improving-MIP-solution callbacks, original-coordinate LP duals/reduced costs, backend information queries, and HiGHS solution/start files. Solution-file reads are native hints and are not declared feasible incumbents without validation. File writes require a fresh solve and reject an existing destination. SOS and quadratic models are explicitly unsupported by this LP exchange adapter. Console/log/implicit solution-file parameters are managed by the bridge to preserve its protocol and explicit file ownership.
+
+The bridge is a bounded driver process. Generic transfer limits apply before export; the backend stores the model locally, and the JSON response is collected on the driver with a configurable character cap. Startup/operation timeout defaults to 60 seconds, log limit to 10 MiB and response limit to 32 Mi characters. `LpAdapterOptions.timeLimit` and `shouldStop` bound solve execution. Forced interruption terminates the process and returns a stopped result with no invented incumbent; prepare a fresh session to continue. Temporary resources are removed on close unless artifact retention is explicit. Any commercial adapter remains responsible for its own license and backend resource ownership.
+
+[source,scala]
+----
+val adapter = new HighsPythonAdapter()
+val session = model.prepareNative(adapter).fold(
+  unsupported => throw new IllegalArgumentException(unsupported.detail), identity)
+try {
+  session.setParameter("presolve", "on").fold(
+    unsupported => throw new IllegalArgumentException(unsupported.detail), identity)
+  session.callback(event => println(event.message))
+  val result = session.solve()
+  println(result.objectiveValue)
+  println(session.information("simplex_iteration_count"))
+  session.writeSolution(java.nio.file.Paths.get("solution.txt"))
+} finally session.close()
+----
+
+The public-API conformance suite is `spark-lp/src/test/scala/example/adapters/NativeSessionSuite.scala`. Backend API details and callback semantics are defined by the https://ergo-code.github.io/HiGHS/stable/interfaces/python/[HiGHS Python documentation] and https://github.com/ERGO-Code/HiGHS/blob/master/examples/call_highs_from_python.py[HiGHS callback examples].

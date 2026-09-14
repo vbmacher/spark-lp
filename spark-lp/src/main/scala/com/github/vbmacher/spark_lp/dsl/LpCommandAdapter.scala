@@ -40,7 +40,7 @@ object LpCommandRunner {
     } finally if (process.isAlive) terminate(process)
   }
 
-  private def terminate(process: Process): Unit = {
+  private[dsl] def terminate(process: Process): Unit = {
     // Java 11 is the supported runtime. Stop descendants before the parent to avoid orphaned workers.
     val descendants = process.descendants()
     val children = try descendants.iterator().asScala.toVector finally descendants.close()

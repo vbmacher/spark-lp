@@ -2,7 +2,7 @@
 
 Continuous models support `0.5 * sum(q_i * x_i^2) + c^T x + k`.
 For minimization, each aggregated `q_i` must be nonnegative; maximization requires
-nonpositive curvature (a concave objective). No new runtime dependency is needed.
+nonpositive curvature (a concave objective). QP uses the core runtime dependencies.
 
 ```scala
 import com.github.vbmacher.spark_lp.dsl._
@@ -14,10 +14,10 @@ val result = model.solve()
 try println(result.value(x)) finally result.close()
 ```
 
-`QpObjective.separable(diagonal, linear)` accepts existing scalar and keyed
+`QpObjective.separable(diagonal, linear)` accepts scalar and keyed
 expressions. Coefficients in `diagonal` specify curvature, not linear cost:
 `QpObjective.separable(vars.sum(col("q")), vars.sum(col("c")))`.
-The existing `weightedBy` API can supply typed keyed coefficients. Repeated terms
+The `weightedBy` API can supply typed keyed coefficients. Repeated terms
 sum; missing keys contribute zero; invalid or duplicate source keys are rejected.
 A curvature expression cannot carry a constant. Objectives can be added, combined
 with linear expressions, and scaled; negate a convex objective for maximization.
@@ -26,25 +26,24 @@ Replacing it with `setObjective(linearExpression)` restores the linear path.
 Bound shifts preserve `c' = c + Q*l` and
 `k' = k + c^T*l + 0.5*l^T Q*l`. Fixed variables fold into the constant.
 All-fixed objectives are evaluated directly. Curved free variables are rejected:
-splitting them introduces coupled curvature. Zero-curvature free variables retain
+splitting them introduces coupled curvature. Zero-curvature free variables use
 the LP behavior. Integer/binary categories and quadratic constraints are unsupported
 (the latter have no DSL comparison operators). Invalid curvature and nonfinite
-coefficients raise `LpModelException`. All-zero curvature uses the existing LP path,
+coefficients raise `LpModelException`. All-zero curvature uses the LP path,
 including its validation restrictions. Unconstrained nonzero-curvature objectives
-use an independent dummy equality, preserving the existing initialization contract.
+use an independent dummy equality, satisfying the initialization contract.
 
-Both Cholesky and CG solve the weighted normal system, now using
-`W = (S/X + Q + Rp)^(-1)`. Direction recovery includes `Q*dx`. Driver memory remains
+Both Cholesky and CG solve the weighted normal system using
+`W = (S/X + Q + Rp)^(-1)`. Direction recovery includes `Q*dx`. Driver memory is
 quadratic in the constraint count for Cholesky; CG keeps the operator distributed.
-The diagonal remains partitioned with the existing sparse columns.
+The diagonal is partitioned with the sparse columns.
 
 The stationarity residual is `A^T*lambda + s - c - Q*x`. The primal objective is
 `0.5*x^T Q*x + c^T*x`; the dual expression is `b^T*lambda - 0.5*x^T Q*x`.
-Convergence requires the existing primal, stationarity and relative gap tolerances;
-this is not an LP objective gap reused unchanged. See the
-[QP optimality and certificate conditions](https://osqp.org/docs/solver/).
+Convergence requires the primal, stationarity and quadratic objective-gap tolerances.
+See the [QP optimality and certificate conditions](https://osqp.org/docs/solver/).
 A candidate unbounded direction must also satisfy `Q*d = 0` within certificate
-tolerance. A feasible point is still required to classify unboundedness.
+tolerance. A feasible point is required to classify unboundedness.
 
 Default convergence tolerance is `1e-8`, CG inner tolerance `1e-10`.
 At degenerate bounds, a small objective gap can coexist with larger variable error;
@@ -53,7 +52,7 @@ requiring identical raw gradients. `QpSuite` independently checks analytic optim
 KKT witnesses, objective constants, both backends, keyed inputs and rejection paths.
 
 
-## Coupled convex objectives: sparse factors (#70)
+## Coupled convex objectives: sparse factors
 
 Use `QpObjective.squared(expression, weight)` or
 `QpObjective.sumSquares(Seq(expression -> weight, ...))` for sparse cross-variable
@@ -76,8 +75,8 @@ Negative weights in a minimization objective are rejected; negate the entire
 objective for concave maximization. Arbitrary raw Hessian entries are deliberately
 not accepted: the caller must supply a PSD factorization, rather than rely on
 nonnegative diagonal checks or random probes. The representation supports any
-provided sparse PSD factorization; dense factors can still be expensive.
-Integer/binary variables and quadratic constraints remain unsupported.
+provided sparse PSD factorization; dense factors can be expensive.
+Integer/binary variables and quadratic constraints are unsupported.
 
 For each factor, compilation introduces `u,v >= 0`, the linear equality
 `a^T*x+t = u-v`, and diagonal objective `w*(u^2+v^2)`.
@@ -88,16 +87,16 @@ multipliers. The diagonal-QP solver checks primal/dual residuals and complementa
 and its recession test requires zero quadratic curvature. A nonzero-curvature
 auxiliary direction cannot pass that condition.
 
-The reduction adds two columns and one row per factor and uses the existing
+The reduction adds two columns and one row per factor and uses the
 weighted normal operator on the enlarged sparse matrix. CG applies a positive
 definite regularized normal system; it is never applied directly to an indefinite
-KKT matrix. Cholesky still has quadratic driver storage in the enlarged row count;
+KKT matrix. Cholesky has quadratic driver storage in the enlarged row count;
 CG retains distributed sparse columns and bounded preconditioning storage.
 Near-zero residuals and free-variable splits can cause poor conditioning.
 **Coupled models containing free variables use regularized CG with Auto; explicit
-Cholesky is rejected.** An actual transformed free-variable experiment lost
-Cholesky positive definiteness at iteration 62, whereas CG converged in 11
-iterations. That failed run is retained in the benchmark folder.
+Cholesky is rejected.** Free-variable splitting can make the coupled Cholesky
+system numerically singular near convergence; see the
+[conditioning evidence](../benchmarks/quadratic/failed-cholesky-free.txt).
 
 Factor lifting supports free, shifted and fixed original variables: all cross terms
 are preserved by transforming the complete factor equality. Auxiliary variables
@@ -107,8 +106,8 @@ columns; `value`/`values` for the user's variables reconstruct their original un
 Reserve the `__qp_factor_` prefix for compiler-generated names. Replacing an
 objective or solving repeatedly does not accumulate variables or constraints.
 
-The supplied [comparison](../benchmarks/quadratic/README.md) includes a preimplementation
-linear-system experiment, complete end-to-end runs against analytic solutions,
+The [QP validation report](../benchmarks/quadratic/README.md) covers lifted
+linear-system validation, end-to-end solves against analytic solutions,
 accuracy and memory records. Use separable objectives for diagonal Hessians;
 this representation offers cross terms and a structural convexity contract, not a
 performance advantage over the specialized diagonal path.

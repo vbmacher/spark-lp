@@ -1,13 +1,13 @@
 # Remaining benchmark runs
 
-## First: establish a new baseline
+## Local campaign
 
 - [ ] Run `solver-scaling.csv`: one warmup and five measured repetitions per case/algorithm in fresh JVMs. Keep source/environment/configuration fixed and alternate algorithm order.
 - [ ] Run `sparsity-and-conditioning.csv` with the same protocol.
 - [ ] Repeat promising or unstable shapes with seeds 29 and 47 before drawing conclusions about crossover or defaults.
 - [ ] Import the artifacts into flat campaign result CSVs and regenerate the report. Group measurements by configuration and case identity.
 
-Commands and case construction are in [README](../../README.md). No campaign results are currently recorded. All full local campaigns and cluster runs remain to be executed.
+Commands and case construction are in [README](../../README.md). Campaign status: no measurements in the campaign report; full local and cluster runs are pending.
 
 ## EMR campaign
 
@@ -25,10 +25,10 @@ Use [emr-scaling.csv](../main/resources/emr-scaling.csv). Both algorithms use th
 All sizes are plans. Executor counts are Spark resources, not assumed EC2 node counts. Select sufficient EC2 instances to fit heap, at least 4 GiB executor overhead, YARN/OS services and disk spill. Use one architecture/instance family throughout a comparison; record actual instance types and cluster name in the environment table. Keep dynamic allocation, speculation and autoscaling off during measured batches. Pin BLAS threads to one and avoid overlapping applications.
 
 - [ ] Confirm an available EMR release and JDK combination matching Spark 3.5.3 / Scala 2.12. EMR 7.6.0 provides Spark 3.5.3; verify its availability and support at execution time. [AWS release documentation](https://docs.aws.amazon.com/emr/latest/ReleaseGuide/emr-760-release.html).
-- [ ] Choose region, cluster/instance types, S3 artifact/event-log location and an explicit runtime/cost budget before provisioning. No cluster has been provisioned or selected by this task.
+- [ ] Choose region, cluster/instance types, S3 artifact/event-log location and an explicit runtime/cost budget before provisioning. Cluster selection and provisioning are pending.
 - [ ] Create or select an idle cluster using AWS CLI. Submit the first case with `bash benchmarks/scripts/cluster.sh --cluster-id ... --region ... --s3-prefix ... --benchmark cg --case emr-rows-1000-vars-100000-width-32`; follow the [AWS CLI instructions](../../README.md#emr-through-aws-cli). The launcher builds/uploads inputs and submits an EMR step. Validate its `--dry-run` output before the first execution.
 - [ ] Record exact SparkConf, JDK, BLAS, release label, cluster ID/name, EC2 types, executor topology, heap/overhead, partitions, source archive/digest and case fingerprint.
-- [ ] Add per-executor JVM heap/RSS/native-memory sampling, keyed by application/container/executor ID, alongside driver sampling. Keep task concurrency and sampling intervals recorded. Current runner samples the driver only.
+- [ ] Add per-executor JVM heap/RSS/native-memory sampling, keyed by application/container/executor ID, alongside driver sampling. Keep task concurrency and sampling intervals recorded. The runner samples the driver only.
 - [ ] Verify that generation, materialization and validation remain distributed at the widest size; track spill, shuffle, skew and executor peak input load. Test counts and hashes before timing.
 - [ ] Use one warmup and five measured attempts per eligible algorithm/case. Cap each solve at 30 minutes and retain timeouts/OOM/accuracy failures and subsequent unrun slots.
 - [ ] Repeat the wide case with 4/8/16 executors at fixed input size for strong scaling. Repeat proportionally larger `n` and support for weak scaling; add these cases using the shared CSV schema and unique IDs.

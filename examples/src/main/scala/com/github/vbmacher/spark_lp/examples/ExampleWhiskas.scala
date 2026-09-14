@@ -1,137 +1,82 @@
 package com.github.vbmacher.spark_lp.examples
 
-import com.github.vbmacher.spark_lp.LP
-import com.github.vbmacher.spark_lp.vectors.DVector
-import org.apache.spark.mllib.linalg.{DenseVector, Vectors}
+import com.github.vbmacher.spark_lp.dsl._
+import com.github.vbmacher.spark_lp.dsl.implicits._
 import org.apache.spark.sql.SparkSession
 
-/** Solves a two-ingredient minimum-cost blend through the standard-form core API.
-  * Nutrition inequalities are converted to equalities with explicit slack variables.
-  * Compare with [[ExampleWhiskasDsl]] for the same model expressed in the DSL.
+/** Finds the cheapest nutritionally acceptable recipe for a 100-gram can of Whiskas cat food.
+  *
+  * Choose a nonnegative, continuous number of grams of chicken, beef, mutton, rice, wheat,
+  * and gel. Ingredients have the following cost per gram and grams of each nutrient per
+  * gram of ingredient:
+  * {{{
+  * Ingredient  Cost ($/g)  Protein  Fat    Fibre  Salt
+  * chicken     0.013       0.100    0.080  0.001  0.002
+  * beef        0.008       0.200    0.100  0.005  0.005
+  * mutton      0.010       0.150    0.110  0.003  0.007
+  * rice        0.002       0.000    0.010  0.100  0.002
+  * wheat       0.005       0.040    0.010  0.150  0.008
+  * gel         0.001       0.000    0.000  0.000  0.000
+  * }}}
+  *
+  * The ingredients must total exactly 100 grams. Each can must contain at least 8 grams
+  * of protein and 6 grams of fat, at most 2 grams of fibre, and at most 0.4 grams of salt.
+  * Minimize the sum of each ingredient's amount times its cost. There are no additional
+  * ingredient availability limits.
+  *
+  * The optimum uses 60 grams of beef and 40 grams of gel, with all other amounts zero,
+  * costing USD 0.52 per can. The example prints ingredient amounts and constraint activities
+  * and slacks. It demonstrates weighted sums over a Spark ingredient table in the DSL.
+  *
+  * Source: [[https://coin-or.github.io/pulp/CaseStudies/a_blending_problem.html PuLP blending case study]].
   */
 object ExampleWhiskas extends App {
 
-  // This example is taken from PuLP
-  // https://coin-or.github.io/pulp/CaseStudies/a_blending_problem.html
-
-  // Whiskas cat food, shown above, is manufactured by Uncle Ben’s. Uncle Ben’s want to produce their cat food products
-  // as cheaply as possible while ensuring they meet the stated nutritional analysis requirements shown on the cans.
-  // Thus they want to vary the quantities of each ingredient used (the main ingredients being chicken, beef, mutton,
-  // rice, wheat and gel) while still meeting their nutritional standards.
-
-  // The costs of the chicken, beef, and mutton are $0.013, $0.008 and $0.010 respectively, while the costs of the rice,
-  // wheat and gel are $0.002, $0.005 and $0.001 respectively. (All costs are per gram.) For this exercise we will ignore
-  // the vitamin and mineral ingredients. (Any costs for these are likely to be very small anyway.)
-
-  // Each ingredient contributes to the total weight of protein, fat, fibre and salt in the final product.
-  // The contributions (in grams) per gram of ingredient are given in the table below.
-
-  // Ingredient   Protein   Fat   Fibre   Salt
-  // Chicken        0.100   0.080  0.001  0.002
-  // Beef           0.200   0.100  0.005  0.005
-  // Mutton         0.150   0.110  0.003  0.007
-  // Rice           0.000   0.010  0.100  0.002
-  // Wheat          0.040   0.010  0.150  0.008
-  // Gel            0.000   0.000  0.000  0.000
-
-  // # Identify the Decision Variables
-  // Assume Whiskas want to make their cat food out of just two ingredients: Chicken and Beef. We will first define our
-  // decision variables:
-  //    x1 - percentage of Chicken in the cat food
-  //    x2 - percentage of Beef in the cat food
-  //
-  // The limitations on these variables (greater than zero) must be noted but for the Python implementation, they are
-  // not entered or listed separately or with the other constraints.
-
-  // The objective function becomes:
-  //   min 0.013*x1 + 0.008*x2
-
-  // The constraints on the variables are that they must sum to 100 and that the nutritional requirements are met:
-  //
-  //   1.000*x1 + 1.000*x2 = 100.0  (sum of percentages)
-  //   0.100*x1 + 0.200*x2 >= 8.0   (protein)
-  //   0.080*x1 + 0.100*x2 >= 6.0   (fat)
-  //   0.001*x1 + 0.005*x2 <= 2.0   (fibre)
-  //   0.002*x1 + 0.005*x2 <= 0.4   (salt)
-
-  // spark-lp is able to solve only linear programs in standard form:
-  //    minimize c^T x
-  //    subject to Ax=b and x >= 0
-  //
-  // Therefore, we need to introduce slack variables to support inequalities - replace the nutrition conditions with slacks:
-  //
-  //   0.100*x1 + 0.200*x2 - s1 = 8.0
-  //   0.080*x1 + 0.100*x2 - s2 = 6.0
-  //   0.001*x1 + 0.005*x2 + s3 = 2.0
-  //   0.002*x1 + 0.005*x2 + s4 = 0.4
-
-  // Now we will have 6 decision variables: x1, x2, s1, s2, s3, s4
-
-  // Our matrix A will be:
-  //   1.000  1.000  0.000  0.000  0.000  0.000
-  //   0.100  0.200 -1.000  0.000  0.000  0.000
-  //   0.080  0.100  0.000 -1.000  0.000  0.000
-  //   0.001  0.005  0.000  0.000  1.000  0.000
-  //   0.002  0.005  0.000  0.000  0.000  1.000
-
-  // Our vector b will be: 100.0, 8.0, 6.0, 2.0, 0.4
-
-  // Final version of the problem will be:
-
-  // Minimize c^T x = [0.013, 0.008, 0.0, 0.0, 0.0, 0.0] dot x
-  // Subject to:
-  // [                                                  [           [
-  //   1.000  1.000  0.000  0.000  0.000  0.000           x1          100.0
-  //   0.100  0.200 -1.000  0.000  0.000  0.000           x2          8.0
-  //   0.080  0.100  0.000 -1.000  0.000  0.000   dot     s1    =     6.0        , x >= 0
-  //   0.001  0.005  0.000  0.000  1.000  0.000           s2          2.0
-  //   0.002  0.005  0.000  0.000  0.000  1.000           s3          0.4
-  // ]                                                    s4 ]      ]
-
-  implicit val spark: SparkSession = SparkSession.builder
+  implicit val spark: SparkSession = SparkSession.builder()
     .appName("ExampleWhiskas")
     .master("local[2]")
+    .config("spark.sql.shuffle.partitions", "2")
     .getOrCreate()
 
+  import spark.implicits._
 
-  // Ingredient   Protein   Fat   Fibre   Salt
-  // Chicken        0.100   0.080  0.001  0.002
-  // Beef           0.200   0.100  0.005  0.005
-  // Mutton         0.150   0.110  0.003  0.007
-  // Rice           0.000   0.010  0.100  0.002
-  // Wheat          0.040   0.010  0.150  0.008
-  // Gel            0.000   0.000  0.000  0.000
-  val numPartitions = 2
-  val cArray = Array(0.013, 0.008, 0.0, 0.0, 0.0, 0.0) // 0.013*x1 + 0.008*x2
-  val ATArray = Array(
-    Array(1.000, 0.100, 0.080, 0.001, 0.002), // chicken
-    Array(1.000, 0.200, 0.100, 0.005, 0.005), // beef
-    Array(0.000, -1.000, 0.000, 0.000, 0.000),
-    Array(0.000, 0.000, -1.000, 0.000, 0.000),
-    Array(0.000, 0.000, 0.000, 1.000, 0.000),
-    Array(0.000, 0.000, 0.000, 0.000, 1.000)
-  )
-  val bArray = Array(100.0, 8.0, 6.0, 2.0, 0.4)
+  try {
+    spark.sparkContext.setLogLevel("ERROR")
 
-  val c = spark.sparkContext.parallelize(cArray, numPartitions).glom.map(new DenseVector(_))
-  val rows = spark.sparkContext.parallelize(ATArray, numPartitions).map(Vectors.dense)
-  val b = new DenseVector(bArray)
+    // ingredient nutrition data owned by Spark, exactly as it would arrive from a real table
+    val ingredients = Seq(
+      ("chicken", 0.013, 0.100, 0.080, 0.001, 0.002),
+      ("beef", 0.008, 0.200, 0.100, 0.005, 0.005),
+      ("mutton", 0.010, 0.150, 0.110, 0.003, 0.007),
+      ("rice", 0.002, 0.000, 0.010, 0.100, 0.002),
+      ("wheat", 0.005, 0.040, 0.010, 0.150, 0.008),
+      ("gel", 0.001, 0.000, 0.000, 0.000, 0.000)
+    ).toDF("ingredient", "cost", "protein", "fat", "fibre", "salt")
 
-  val (v, x): (Double, DVector) = LP.solve(c, rows, b)
-  val xx = Vectors.dense(x.flatMap(_.toArray).collect())
+    val model = LpProblem("Whiskas", Minimize)
+    val amount = model.variables("amount", domain = ingredients, key = $"ingredient")
 
-  // Results from PuLP:
-  //   Status: Optimal
-  //   BeefPercent = 66.0
-  //   ChickenPercent = 34.0
-  //   Total Cost of Ingredients per can =  0.97
+    model += amount.sum($"cost")
+    model += (amount.sum === 100.0).named("total_weight")
+    model += (amount.sum($"protein") >= 8.0).named("protein_min")
+    model += (amount.sum($"fat") >= 6.0).named("fat_min")
+    model += (amount.sum($"fibre") <= 2.0).named("fibre_max")
+    model += (amount.sum($"salt") <= 0.4).named("salt_max")
 
-  val beefPercent = xx(1)
-  val chickenPercent = xx(0)
+    val solution = model.solve()
+    try {
+      require(solution.status == LpStatus.Optimal, s"unexpected status: ${solution.status}")
 
-  println(s"Beef percent: $beefPercent")
-  println(s"Chicken percent: $chickenPercent")
-  println(s"Total Cost: $v")
-  x.unpersist()
-  spark.stop()
+      // an interior-point method returns values like 33.999999999; round at the point of use
+      println(f"Optimal cost: ${solution.objectiveValue}%.4f (expected 0.5200)")
+      solution.values(amount)
+        .select("ingredient", "lp_variable", "lp_value")
+        .orderBy("ingredient")
+        .show()
+
+      solution.constraints
+        .select("name", "activity", "sense", "rhs", "slack")
+        .show()
+    } finally solution.close()
+  } finally spark.stop()
 }

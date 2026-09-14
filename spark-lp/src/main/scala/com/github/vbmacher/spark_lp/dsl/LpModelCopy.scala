@@ -13,12 +13,13 @@ final class LpModelCopy private[dsl](source: LpProblem, val model: LpProblem) {
     throw new LpModelException("Variable is not part of the copied source model"))
 
   private def term(original: LpTerm): LpTerm = original match {
+    case t: KeyCoeffTerm => t.copy(handle = handle(t.handle))
     case t: ConstCoeffTerm => t.copy(handle = handle(t.handle))
     case t: ColumnCoeffTerm => t.copy(handle = handle(t.handle))
     case t: WeightedCoeffTerm => t.copy(handle = handle(t.handle))
   }
 
-  def variable(original: LpVariable): LpVariable = new LpVariable(handle(original.handle))
+  def variable(original: LpVariable): LpVariable = new LpVariable(handle(original.handle), original.selectedKey, original.display)
 
   def variables[K](original: LpVariableSet[K]): LpVariableSet[K] =
     new LpVariableSet[K](handle(original.handle), original.weightsBuilder, original.keyColumn)

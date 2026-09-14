@@ -149,8 +149,11 @@ private[dsl] final class BranchAndBound(
 
   private def parallelSearch(open: mutable.PriorityQueue[Node]): Unit = {
     val worstRows = compiled.numRows.toLong + (if (search.cuts.enabled) search.cuts.maxCutsPerNode else 0)
-    if (worstRows > Int.MaxValue || BigInt(estimatedLocalBytes(worstRows.toInt, search.cuts.enabled)) * search.parallelNodes >
-      BigInt(search.maxConcurrentLocalBytes)) throw new LpModelException("Parallel MIP Newton memory estimate exceeds maxConcurrentLocalBytes")
+    if (worstRows > Int.MaxValue) throw new LpModelException("Parallel MIP cut rows exceed the supported dimension")
+    val perNodeBytes = math.max(estimatedLocalBytes(compiled.numRows, hasCuts = false),
+      estimatedLocalBytes(worstRows.toInt, search.cuts.enabled))
+    if (BigInt(perNodeBytes) * search.parallelNodes > BigInt(search.maxConcurrentLocalBytes))
+      throw new LpModelException("Parallel MIP Newton memory estimate exceeds maxConcurrentLocalBytes")
     val workerIds = new AtomicInteger(0)
     val executor = Executors.newFixedThreadPool(search.parallelNodes, new ThreadFactory {
       override def newThread(task: Runnable): Thread = new Thread(task, s"spark-lp-mip-${workerIds.incrementAndGet()}")

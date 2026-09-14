@@ -134,11 +134,12 @@ final class LpImportedModel private[dsl](val model: LpProblem, val variables: RD
 
 /** Optional result data is informational and separate from the mathematical model. */
 final case class LpSolutionData(status: LpStatus, objective: Option[Double],
-  candidate: com.github.vbmacher.spark_lp.CandidateInfo, values: Option[RDD[LpCandidateValue]])
+  candidate: com.github.vbmacher.spark_lp.CandidateInfo, values: Option[RDD[LpCandidateValue]],
+  residuals: Option[LpResiduals] = None)
 object LpSolutionData {
   def fromSolution(solution: LpSolution): LpSolutionData =
     LpSolutionData(solution.status, if (solution.objectiveValue.isNaN) None else Some(solution.objectiveValue),
       solution.candidate, if (!solution.candidate.available) None else Some(solution.userValues.map {
         case ((family, key), value) => LpCandidateValue(LpVariableId(family, key), value)
-      }))
+      }), Some(solution.residuals))
 }

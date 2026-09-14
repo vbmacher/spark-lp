@@ -1,0 +1,411 @@
+{
+  "distributed-rows-50000-vars-10000000-width-64 / CG / cfg-8f5b750c2b495ec4": {
+    "cg-restarts": {
+      "lower_value": 0,
+      "upper_value": 0,
+      "value": 0
+    },
+    "cg-steps": {
+      "lower_value": 440,
+      "upper_value": 440,
+      "value": 440
+    },
+    "driver-heap-bytes-max": {
+      "value": 1999349760
+    },
+    "driver-rss-bytes-max": {
+      "value": 3011358720
+    },
+    "dual-max": {
+      "value": 8.511239802248092e-15
+    },
+    "gap-max": {
+      "value": 7.460453286547091e-10
+    },
+    "latency": {
+      "lower_value": 153389244310.0,
+      "upper_value": 154589009580.0,
+      "value": 154301158825.99997
+    },
+    "maximum-rank": {
+      "lower_value": 0,
+      "upper_value": 0,
+      "value": 0
+    },
+    "measured-attempted-count": {
+      "value": 5
+    },
+    "measured-converged-count": {
+      "value": 5
+    },
+    "measured-excluded-count": {
+      "value": 0
+    },
+    "measured-failed-count": {
+      "value": 0
+    },
+    "measured-records-count": {
+      "_evidence": {
+        "campaign": {
+          "campaign_id": "distributed-5-cg",
+          "notes": [],
+          "schedule": [],
+          "schema_version": 1,
+          "title": "Distributed 5 cg"
+        },
+        "case": {
+          "case_id": "distributed-rows-50000-vars-10000000-width-64",
+          "fixture_hash": "cf9268c57ff3e68e3ca0c70c4ece0ebf21c58006a01abfea89a8adb1d208fce9",
+          "m": 50000,
+          "n": 10000000,
+          "nnz": 3200000,
+          "nnz_basis": "see source provenance",
+          "shape": {
+            "family": "well",
+            "nonzeros_per_row": 64,
+            "seed": 11
+          }
+        },
+        "configuration": {
+          "algorithm": "CG",
+          "cg_limit_per_rank": 1000,
+          "cg_tolerance": 1e-10,
+          "configuration_id": "cfg-8f5b750c2b495ec4",
+          "control": "",
+          "dual_regularization": 1e-08,
+          "environment": {
+            "blas": "com.github.fommil.netlib.F2jBLAS",
+            "computer": "distributed cluster",
+            "java_version": "11.0.32+9-LTS",
+            "master": "yarn",
+            "os": "Linux",
+            "spark_version": "3.5.3"
+          },
+          "environment_id": "env-fd9b0666003a",
+          "eta": null,
+          "heap_gib": 16,
+          "implementation": "cg",
+          "label": "cg",
+          "memory_topology": {
+            "concurrent_tasks_per_executor": 4,
+            "executors": 8
+          },
+          "outer_limit": 100,
+          "partitions": 512,
+          "preconditioner_memory_bytes": 268435456,
+          "primal_regularization": 1e-08,
+          "scenario": "",
+          "source_configuration_id": "cfg-df51dbb3654a4b14",
+          "source_hash": "fa5cd2d1b4e97415bf30fe2642c32b7c061a0b274c991a752bc1002486eba122",
+          "suite": "com.github.vbmacher.spark_lp.CGBenchmark",
+          "timing_scope": "core solve excluding independent validation",
+          "tolerance": 1e-08,
+          "warmup_case": null,
+          "warmups": 1
+        },
+        "records": [
+          {
+            "accuracy_basis": "independent-original-lp",
+            "algorithm": "CG",
+            "application_id": null,
+            "attempt_id": "distributed-5-cg/distributed-rows-50000-vars-10000000-width-64/cfg-8f5b750c2b495ec4/rep-000/attempt-001",
+            "attempt_number": 1,
+            "campaign_id": "distributed-5-cg",
+            "case_id": "distributed-rows-50000-vars-10000000-width-64",
+            "cg_restarts": 0,
+            "cg_steps": 440,
+            "configuration_id": "cfg-8f5b750c2b495ec4",
+            "maximum_rank": 0,
+            "memory": {
+              "peak_heap_bytes": 1892533648,
+              "peak_rss_bytes": 2980638720,
+              "scope": "driver process; combined with executors in local mode; includes validation"
+            },
+            "outer_iterations": 12,
+            "provenance": {
+              "line": 1,
+              "source_path": "results/records.jsonl",
+              "source_sha256": "ab72db176712dd2d1b7fda4e26483c9349a8f676ae388d676349dc528f656614"
+            },
+            "rank_escalations": null,
+            "raw": {},
+            "repetition": 0,
+            "residuals": {
+              "dual": 8.511240061901761e-15,
+              "gap": 7.460429559325272e-10,
+              "min_s": 3.5188596832942834e-16,
+              "min_x": 3.9716676440809813e-16,
+              "objective": 130.76376337868768,
+              "objective_error": 5.75902597834431e-10,
+              "primal": 2.260154485810734e-11
+            },
+            "run_id": "distributed-5-cg/distributed-rows-50000-vars-10000000-width-64/cfg-8f5b750c2b495ec4/rep-000",
+            "solve_seconds": 160.22691422,
+            "spark_jobs": null,
+            "status": "Success",
+            "stop_reason": null,
+            "warmup": true
+          },
+          {
+            "accuracy_basis": "independent-original-lp",
+            "algorithm": "CG",
+            "application_id": null,
+            "attempt_id": "distributed-5-cg/distributed-rows-50000-vars-10000000-width-64/cfg-8f5b750c2b495ec4/rep-001/attempt-001",
+            "attempt_number": 1,
+            "campaign_id": "distributed-5-cg",
+            "case_id": "distributed-rows-50000-vars-10000000-width-64",
+            "cg_restarts": 0,
+            "cg_steps": 440,
+            "configuration_id": "cfg-8f5b750c2b495ec4",
+            "maximum_rank": 0,
+            "memory": {
+              "peak_heap_bytes": 1994023648,
+              "peak_rss_bytes": 2988613632,
+              "scope": "driver process; combined with executors in local mode; includes validation"
+            },
+            "outer_iterations": 12,
+            "provenance": {
+              "line": 2,
+              "source_path": "results/records.jsonl",
+              "source_sha256": "ab72db176712dd2d1b7fda4e26483c9349a8f676ae388d676349dc528f656614"
+            },
+            "rank_escalations": null,
+            "raw": {},
+            "repetition": 1,
+            "residuals": {
+              "dual": 8.511238935026933e-15,
+              "gap": 7.460433873365609e-10,
+              "min_s": 3.518859683286728e-16,
+              "min_x": 3.9716676440813353e-16,
+              "objective": 130.7637633786876,
+              "objective_error": 5.759019507283818e-10,
+              "primal": 2.2601544296452475e-11
+            },
+            "run_id": "distributed-5-cg/distributed-rows-50000-vars-10000000-width-64/cfg-8f5b750c2b495ec4/rep-001",
+            "solve_seconds": 153.38924431,
+            "spark_jobs": null,
+            "status": "Success",
+            "stop_reason": null,
+            "warmup": false
+          },
+          {
+            "accuracy_basis": "independent-original-lp",
+            "algorithm": "CG",
+            "application_id": null,
+            "attempt_id": "distributed-5-cg/distributed-rows-50000-vars-10000000-width-64/cfg-8f5b750c2b495ec4/rep-002/attempt-001",
+            "attempt_number": 1,
+            "campaign_id": "distributed-5-cg",
+            "case_id": "distributed-rows-50000-vars-10000000-width-64",
+            "cg_restarts": 0,
+            "cg_steps": 440,
+            "configuration_id": "cfg-8f5b750c2b495ec4",
+            "maximum_rank": 0,
+            "memory": {
+              "peak_heap_bytes": 1989076224,
+              "peak_rss_bytes": 3000700928,
+              "scope": "driver process; combined with executors in local mode; includes validation"
+            },
+            "outer_iterations": 12,
+            "provenance": {
+              "line": 3,
+              "source_path": "results/records.jsonl",
+              "source_sha256": "ab72db176712dd2d1b7fda4e26483c9349a8f676ae388d676349dc528f656614"
+            },
+            "rank_escalations": null,
+            "raw": {},
+            "repetition": 2,
+            "residuals": {
+              "dual": 8.511238542965853e-15,
+              "gap": 7.460453286547091e-10,
+              "min_s": 3.5188596832899087e-16,
+              "min_x": 3.97166764407993e-16,
+              "objective": 130.76376337868777,
+              "objective_error": 5.759032449404801e-10,
+              "primal": 2.2601544624669836e-11
+            },
+            "run_id": "distributed-5-cg/distributed-rows-50000-vars-10000000-width-64/cfg-8f5b750c2b495ec4/rep-002",
+            "solve_seconds": 154.58900958,
+            "spark_jobs": null,
+            "status": "Success",
+            "stop_reason": null,
+            "warmup": false
+          },
+          {
+            "accuracy_basis": "independent-original-lp",
+            "algorithm": "CG",
+            "application_id": null,
+            "attempt_id": "distributed-5-cg/distributed-rows-50000-vars-10000000-width-64/cfg-8f5b750c2b495ec4/rep-003/attempt-001",
+            "attempt_number": 1,
+            "campaign_id": "distributed-5-cg",
+            "case_id": "distributed-rows-50000-vars-10000000-width-64",
+            "cg_restarts": 0,
+            "cg_steps": 440,
+            "configuration_id": "cfg-8f5b750c2b495ec4",
+            "maximum_rank": 0,
+            "memory": {
+              "peak_heap_bytes": 1986936376,
+              "peak_rss_bytes": 3007193088,
+              "scope": "driver process; combined with executors in local mode; includes validation"
+            },
+            "outer_iterations": 12,
+            "provenance": {
+              "line": 4,
+              "source_path": "results/records.jsonl",
+              "source_sha256": "ab72db176712dd2d1b7fda4e26483c9349a8f676ae388d676349dc528f656614"
+            },
+            "rank_escalations": null,
+            "raw": {},
+            "repetition": 3,
+            "residuals": {
+              "dual": 8.511238534788218e-15,
+              "gap": 7.460453286547091e-10,
+              "min_s": 3.518859683307231e-16,
+              "min_x": 3.9716676440795663e-16,
+              "objective": 130.76376337868777,
+              "objective_error": 5.759032449404801e-10,
+              "primal": 2.2601544689072997e-11
+            },
+            "run_id": "distributed-5-cg/distributed-rows-50000-vars-10000000-width-64/cfg-8f5b750c2b495ec4/rep-003",
+            "solve_seconds": 154.416953828,
+            "spark_jobs": null,
+            "status": "Success",
+            "stop_reason": null,
+            "warmup": false
+          },
+          {
+            "accuracy_basis": "independent-original-lp",
+            "algorithm": "CG",
+            "application_id": null,
+            "attempt_id": "distributed-5-cg/distributed-rows-50000-vars-10000000-width-64/cfg-8f5b750c2b495ec4/rep-004/attempt-001",
+            "attempt_number": 1,
+            "campaign_id": "distributed-5-cg",
+            "case_id": "distributed-rows-50000-vars-10000000-width-64",
+            "cg_restarts": 0,
+            "cg_steps": 440,
+            "configuration_id": "cfg-8f5b750c2b495ec4",
+            "maximum_rank": 0,
+            "memory": {
+              "peak_heap_bytes": 1998526848,
+              "peak_rss_bytes": 3008131072,
+              "scope": "driver process; combined with executors in local mode; includes validation"
+            },
+            "outer_iterations": 12,
+            "provenance": {
+              "line": 5,
+              "source_path": "results/records.jsonl",
+              "source_sha256": "ab72db176712dd2d1b7fda4e26483c9349a8f676ae388d676349dc528f656614"
+            },
+            "rank_escalations": null,
+            "raw": {},
+            "repetition": 4,
+            "residuals": {
+              "dual": 8.511239802248092e-15,
+              "gap": 7.460431716345443e-10,
+              "min_s": 3.518859683271397e-16,
+              "min_x": 3.971667644079341e-16,
+              "objective": 130.7637633786876,
+              "objective_error": 5.759019507283818e-10,
+              "primal": 2.2601555755324926e-11
+            },
+            "run_id": "distributed-5-cg/distributed-rows-50000-vars-10000000-width-64/cfg-8f5b750c2b495ec4/rep-004",
+            "solve_seconds": 154.30115882599998,
+            "spark_jobs": null,
+            "status": "Success",
+            "stop_reason": null,
+            "warmup": false
+          },
+          {
+            "accuracy_basis": "independent-original-lp",
+            "algorithm": "CG",
+            "application_id": null,
+            "attempt_id": "distributed-5-cg/distributed-rows-50000-vars-10000000-width-64/cfg-8f5b750c2b495ec4/rep-005/attempt-001",
+            "attempt_number": 1,
+            "campaign_id": "distributed-5-cg",
+            "case_id": "distributed-rows-50000-vars-10000000-width-64",
+            "cg_restarts": 0,
+            "cg_steps": 440,
+            "configuration_id": "cfg-8f5b750c2b495ec4",
+            "maximum_rank": 0,
+            "memory": {
+              "peak_heap_bytes": 1999349760,
+              "peak_rss_bytes": 3011358720,
+              "scope": "driver process; combined with executors in local mode; includes validation"
+            },
+            "outer_iterations": 12,
+            "provenance": {
+              "line": 6,
+              "source_path": "results/records.jsonl",
+              "source_sha256": "ab72db176712dd2d1b7fda4e26483c9349a8f676ae388d676349dc528f656614"
+            },
+            "rank_escalations": null,
+            "raw": {},
+            "repetition": 5,
+            "residuals": {
+              "dual": 8.511238760648727e-15,
+              "gap": 7.460451129526925e-10,
+              "min_s": 3.518859683288044e-16,
+              "min_x": 3.9716676440823934e-16,
+              "objective": 130.76376337868777,
+              "objective_error": 5.759032449404801e-10,
+              "primal": 2.2601544803048808e-11
+            },
+            "run_id": "distributed-5-cg/distributed-rows-50000-vars-10000000-width-64/cfg-8f5b750c2b495ec4/rep-005",
+            "solve_seconds": 153.73877658299998,
+            "spark_jobs": null,
+            "status": "Success",
+            "stop_reason": null,
+            "warmup": false
+          }
+        ],
+        "schema_version": 1,
+        "sources": [
+          {
+            "path": "results/records.jsonl",
+            "revision": null,
+            "sha256": "ab72db176712dd2d1b7fda4e26483c9349a8f676ae388d676349dc528f656614",
+            "uri": null
+          }
+        ]
+      },
+      "value": 5
+    },
+    "measured-unknown-count": {
+      "value": 0
+    },
+    "measured-unrun-count": {
+      "value": 0
+    },
+    "objective-error-max": {
+      "value": 5.759032449404801e-10
+    },
+    "outer-iterations": {
+      "lower_value": 12,
+      "upper_value": 12,
+      "value": 12
+    },
+    "primal-max": {
+      "value": 2.2601555755324926e-11
+    },
+    "warmup-attempted-count": {
+      "value": 1
+    },
+    "warmup-converged-count": {
+      "value": 1
+    },
+    "warmup-excluded-count": {
+      "value": 0
+    },
+    "warmup-failed-count": {
+      "value": 0
+    },
+    "warmup-records-count": {
+      "value": 1
+    },
+    "warmup-unknown-count": {
+      "value": 0
+    },
+    "warmup-unrun-count": {
+      "value": 0
+    }
+  }
+}

@@ -5,7 +5,7 @@ import org.apache.spark.sql.SparkSession
 import org.apache.spark.sql.functions._
 import org.scalatest.BeforeAndAfterAll
 import org.scalatest.funsuite.AnyFunSuite
-import support.{BenchmarkCase, DataGenerator}
+import com.github.vbmacher.spark_lp.support.{BenchmarkCase, DataGenerator}
 
 class DataGeneratorSuite extends AnyFunSuite with BeforeAndAfterAll {
   private implicit var spark: SparkSession = _

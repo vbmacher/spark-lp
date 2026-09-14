@@ -66,13 +66,13 @@ class LpDslWhiskasSuite extends AnyFunSuite with DataFrameSuiteBase {
     assert(values("beef")._2 ~== 66.6666667 absTol 1e-4)
   }
 
-  test("constraints DataFrame reports name, activity, sense, rhs, slack and NULL dual") {
+  test("constraints DataFrame reports original rows and LP shadow prices") {
     implicit val ss: SparkSession = spark
     val (model, _) = buildUntypedModel
     val solution = model.solve()
 
     assert(solution.constraints.columns.toSeq ==
-      Seq("name", "group", "activity", "sense", "rhs", "slack", "dual", "note"))
+      Seq("name", "group", "activity", "sense", "rhs", "slack", "dual", "note", "dual_note"))
     val rows = solution.constraints.collect().map(r => r.getString(0) -> r).toMap
     assert(rows.keySet == Set("total_weight", "protein_min", "fat_min", "fibre_max", "salt_max"))
 
@@ -80,7 +80,7 @@ class LpDslWhiskasSuite extends AnyFunSuite with DataFrameSuiteBase {
     assert(total.getString(3) == "==")
     assert(total.getDouble(4) == 100.0)
     assert(total.getDouble(2) ~== 100.0 absTol 1e-6)
-    assert(total.isNullAt(6), "dual is reserved and must be NULL")
+    assert(!total.isNullAt(6), "an emitted optimal LP row has a shadow price")
 
     // salt is the binding <= constraint: activity == rhs, slack ~ 0
     val salt = rows("salt_max")

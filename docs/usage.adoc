@@ -267,3 +267,17 @@ with `candidate.feasible=false`. If stopping occurred before any iteration compl
 `value`/`values` throw an explicit no-iterate error. Never publish those results as feasible output.
 Progress and cooperative stopping controls are rejected for integer models;
 branch-and-bound stopping is a separate contract.
+
+=== LP shadow prices
+
+For an optimal continuous linear solve, `solution.constraints` includes `dual`: the derivative of
+the original objective value with respect to the original row RHS, within numerical tolerance and
+while the active set is stable. Objective maximization signs and bound shifts are restored. For a
+minimization problem, active `>=` rows typically have nonnegative prices and `<=` rows nonpositive
+prices; equality prices are unrestricted. Maximization reverses these signs.
+
+`dual_note` explains unavailable prices. Presolved rows and all members of merged equivalent rows
+have no unique reconstructed price. Stopped, infeasible, quadratic and ordinary MIP solves do not
+expose LP shadow prices. Degeneracy can make even retained multipliers non-unique; they are local
+sensitivity information, not guarantees for arbitrary RHS changes. Prices share the solution's
+existing diagnostic lifetime and require no separate cached distributed vector.

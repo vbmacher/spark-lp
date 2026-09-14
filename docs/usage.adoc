@@ -430,3 +430,24 @@ Foreign-model terms, missing/non-finite values, unavailable candidates and close
 an explicit error. An available stopped or infeasible iterate can be evaluated for diagnostics;
 the result of an expression is not a feasibility or optimality claim. Complete evaluation before
 closing the solution. Variables declared after the solve have no values in the retained assignment.
+
+=== Original model inspection
+
+`val view = model.inspect` captures read-only declarations, objective/sense and constants without a
+Spark action. Later declaration/objective edits do not alter this view. Lazy input data is not copied:
+keep sources stable through expanded inspection, or materialize inputs for a durable snapshot.
+`variableDeclarations` and `constraintDeclarations` are local declaration metadata, including IDs,
+names, categories, domain kinds, bounds and row senses.
+
+`view.variables`, `view.constraints`, `view.coefficients` and `view.objectiveCoefficients` expose
+original expanded data as RDDs. `diagonalCoefficients` and `quadraticFactors` preserve quadratic
+objectives separately. IDs pair a declaration index with a canonical encoded key; scalar keys are
+empty. Declaration order is deterministic; distributed row ordering is unspecified. Repeated
+coefficients aggregate and exact zero coefficients disappear while empty original rows remain.
+Expanded coefficient/constraint methods perform source validation actions and never collect a whole
+matrix or family. These uncached RDDs own no solver resources; callers own any persistence they add.
+
+`view.statistics()` performs exact Spark counts, separating declaration counts from expanded variables,
+rows, constraint nonzeros and objective nonzeros. These are original-model sizes: fixed variables,
+redundant rows and contradictory rows remain visible, and solver slacks, shifts, splits and factor
+auxiliaries are excluded. Inspection does not optimize or mutate the model.

@@ -64,6 +64,20 @@ final class LpSolution private[dsl](
     if (!candidate.available) throw new LpModelException("No completed iterate is available for this solve")
   }
 
+  /** Evaluates a linear expression using this result's values and the coefficient sources as read now. */
+  def evaluate(expression: LpExpr): Double = {
+    requireCandidate()
+    implicit val spark: org.apache.spark.sql.SparkSession = problem.spark
+    val coefficients = LpExpressionData.expand(expression, Some(problem))
+    val joined = coefficients.leftOuterJoin(userValues)
+    if (joined.filter { case (_, (_, value)) => value.isEmpty || value.exists(v => !LpExpressionData.finite(v)) }
+      .take(1).nonEmpty)
+      throw new LpModelException("Expression references values absent or non-finite in this solution")
+    val value = joined.values.map { case (coefficient, x) => coefficient * x.get }.fold(0.0)(_ + _) + expression.constant
+    LpExpressionData.check(value)
+    value
+  }
+
   /** Releases the materialised result. Finish all Spark actions on values before closing. */
   override def close(): Unit = {
     closed = true

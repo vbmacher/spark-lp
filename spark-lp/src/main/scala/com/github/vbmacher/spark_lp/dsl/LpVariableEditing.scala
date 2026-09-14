@@ -14,8 +14,12 @@ private[dsl] final case class VariableMetadata(name: String, bounds: LpBounds,
 private[dsl] object LpVariableEditing {
   def validate(bounds: LpBounds, category: VariableCategory): Unit = {
     val lo = bounds.lower
-    if (lo.isNaN || lo.isPosInfinity || bounds.upper.exists(u => !java.lang.Double.isFinite(u) || u < lo))
-      throw new LpModelException("Bounds require lower <= upper, a non-NaN lower other than +infinity, and finite optional upper")
+    if (lo.isNaN || lo.isPosInfinity)
+      throw new LpModelException("The lower bound must not be NaN or +infinity")
+    if (bounds.upper.exists(u => !java.lang.Double.isFinite(u)))
+      throw new LpModelException("The upper bound must be finite when defined")
+    if (bounds.upper.exists(_ < lo))
+      throw new LpModelException("lowerBound must not exceed upperBound")
     val lower = if (category == Binary) math.max(0.0, lo) else lo
     val upper = if (category == Binary) math.min(1.0, bounds.upper.getOrElse(1.0)) else bounds.upper.getOrElse(Double.PositiveInfinity)
     if (category != Continuous && math.ceil(lower) > math.floor(upper))

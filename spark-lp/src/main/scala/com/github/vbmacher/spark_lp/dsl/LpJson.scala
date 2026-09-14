@@ -17,7 +17,7 @@ object LpJson {
   private val factory = mapper.getNodeFactory
   private def obj(fields: (String, JsonNode)*): ObjectNode = {
     val result = mapper.createObjectNode()
-    fields.foreach { case (key, value) => result.set[JsonNode](key, value) }
+    fields.foreach { case (key, value) => result.replace(key, value) }
     result
   }
   private def str(value: String): JsonNode = factory.textNode(value)

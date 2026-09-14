@@ -283,3 +283,23 @@ missing incumbents or unknown/non-finite bounds yield absent gaps. Node bounds r
 LP relaxation and dual residual within solver tolerance, so these are numerical certificates at the
 configured tolerance. `Optimal` includes tolerance acceptance; `GapTolerance` distinguishes a positive
 accepted gap from `SearchExhausted`. A node limit or unresolved relaxation retains its weaker status.
+
+=== MIP progress and cooperative stopping
+
+`SolveConfig(mip = MipConfig(control = MipControl(timeLimit = Some(30.seconds),
+onProgress = event => println(event), shouldStop = () => cancelled)))` supplies a whole-search
+budget and callbacks. The clock starts at branch-and-bound setup after model compilation and covers
+all root/child LP work and search processing, excluding final result reconstruction. `nanoTime`
+accepts an injected monotonic nanosecond clock for deterministic deadline tests. `onNodeProgress`
+delivers a node number and continuous solver event separately from whole-search `onProgress`.
+
+Whole-search events report processed/open nodes, elapsed seconds, and available incumbent, global
+bound and gaps in original objective units. Cooperative checks run both between nodes and within LP
+initialization/iterations/inner work. They cannot interrupt an active Spark action or native call.
+Callbacks run synchronously on the driver; exceptions propagate and release search-owned caches.
+
+A stopped result retains its best verified integer-feasible incumbent with matching objective and
+values, or `candidate.available=false` with no values. Check both `candidate.available` and
+`candidate.feasible` before use. Fractional root iterates are not exposed as incumbents. Completed
+conclusive results take precedence over a subsequent stop request. Continuous `SolveControl` and
+iteration callbacks keep their continuous-only contract; MIP uses `MipControl` explicitly.

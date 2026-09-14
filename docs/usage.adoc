@@ -267,3 +267,17 @@ with `candidate.feasible=false`. If stopping occurred before any iteration compl
 `value`/`values` throw an explicit no-iterate error. Never publish those results as feasible output.
 Progress and cooperative stopping controls are rejected for integer models;
 branch-and-bound stopping is a separate contract.
+
+=== Continuous relaxation
+
+`model.solve(SolveConfig(relaxIntegrality = true))` relaxes integer and binary variables for that
+solve. Integer lower/upper bounds are first tightened with ceiling/floor; binary bounds are first
+intersected with `{0, 1}` and similarly tightened. Ordinary linear constraints and continuous domains
+are preserved. The model and its handles retain their declared categories for subsequent solves.
+
+`solution.isRelaxation` identifies this result. Its status, candidate feasibility, objective and
+progress describe the continuous relaxation. Fractional values are not a MIP incumbent, and an optimal
+or unbounded relaxation does not establish MIP optimality or unboundedness. A valid relaxation bound
+bounds the original optimum; proved relaxation infeasibility implies original infeasibility. Normal
+continuous stopping controls apply. Discrete structures beyond integer/binary categories require
+explicitly supported relaxation semantics.

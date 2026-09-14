@@ -615,3 +615,21 @@ remain unchanged/open apart from the requested text write.
 The file contains `NAME`, `OBJSENSE`, `ROWS`, `COLUMNS`, `RHS`, `BOUNDS` and `ENDATA`. `OBJSENSE` explicitly preserves minimization or maximization. The RHS entry on the free objective row is the *negative* objective constant. Readers must support both extensions; readers that ignore them cannot preserve this dialect's objective. Integer columns use `INTORG`/`INTEND` markers, binary columns also use `BV`, and all bounds are explicit, including free, fixed and one-sided bounds. `relaxIntegrality = true` omits integer markers and `BV` while retaining binary bounds intersected with `[0,1]`; this intentionally exports a continuous relaxation.
 
 Quadratic objectives fail explicitly. Existing destinations require explicit overwrite; failed writes remove their temporary output. Optional interoperability tests use the installed SciPy-bundled HiGHS reader and solver and check both integer and relaxation objectives. The objective and bound encodings follow the https://docs.gurobi.com/projects/optimizer/en/current/reference/fileformats/modelformats.html[MPS format reference].
+
+== Variable bounds, fixing and names
+
+Scalar variables, variable families and lazy selected members expose `setBounds(lower, upper)`, `fix(value)`, `unfix()` and `rename(name)`, returning the same symbolic handle. Expressions keep referring to that identity. `lowerBound` and `upperBound` inspect the current selected bounds. Edits perform no Spark action and do not collect a distributed domain; missing selected keys and expanded-name collisions are rejected during compilation. Numeric/domain errors and directly known duplicate names fail immediately.
+
+`fix` sets both bounds to a finite value in the variable's category. The first fix saves the previous bounds; repeated fixes retain that restoration point. `unfix` restores it and is a no-op without a saved fix. Whole-family fixes save and restore selected-member overrides too. `setBounds` replaces bounds and clears the corresponding fix restoration point; whole-family `setBounds` also clears all member bound overrides. Fixes and bound edits may deliberately widen previously declared bounds. Family renaming preserves explicit member aliases; renamed members retain their encoded identity. Model copies own independent metadata and fix restoration state.
+
+Edits affect subsequent solves. Existing solutions retain values, diagnostics, and the names/bounds used by value and rounding reports. Read-only model views also snapshot declaration metadata. Input Spark plans remain lazy and must stay stable for their documented lifetime. Editing a model during a solve is unsupported and raises an error when attempted from callbacks. Concurrent mutation of a model from other threads is unsupported.
+
+The compiler represents per-member bound differences with additional rows against a common family transformation. These rows obey the configured row budget and stay out of user constraint reports. Their row metadata is held on the driver like other compiled constraint rows; the domain is streamed during lowering. Reduced costs and optional certificate artifacts are unavailable for this transformation; original user-row shadow prices remain available when uniquely mapped. Portable/JSON export includes expanded member bounds and names; portable import bounds local metadata overrides with `maxLocalOverrides` (default 10,000).
+
+[source,scala]
+----
+val capacity = model.variable("capacity", upperBound = Some(100.0))
+capacity.setBounds(0.0, Some(80.0)).fix(40.0).rename("available_capacity")
+capacity.unfix() // restores [0,80]
+// A keyed family uses the same operations: allocation(("region", 1)).fix(5.0)
+----

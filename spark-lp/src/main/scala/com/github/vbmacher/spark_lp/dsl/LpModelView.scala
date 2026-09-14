@@ -24,6 +24,7 @@ final class LpModelView private[dsl](problem: LpProblem) {
   val name: String = problem.name
   val sense: ObjectiveSense = problem.sense
   private val handles = problem.handles.toVector
+  private val metadata = handles.map(_.metadata)
   private val rows = problem.constraints.toVector
   val objective: LpExpr = problem.objective.getOrElse(LpExpr.zero)
   private val quadratic = problem.quadratic
@@ -40,9 +41,10 @@ final class LpModelView private[dsl](problem: LpProblem) {
   }
 
   def variables: RDD[LpExpandedVariable] = {
-    val pieces = handles.zip(variableDeclarations).map { case (h, d) =>
+    val pieces = handles.zip(variableDeclarations).zip(metadata).map { case ((h, d), m) =>
       h.domain.keyPairs().map { case (key, display) =>
-        LpExpandedVariable(LpVariableId(d.id, key), KeyCodec.displayName(d.name, display), d.lower, d.upper, d.category, display)
+        val bounds = m.at(key)
+        LpExpandedVariable(LpVariableId(d.id, key), m.display(key, display), bounds.lower, bounds.upper, d.category, display)
       }
     }
     if (pieces.isEmpty) sc.emptyRDD else sc.union(pieces)

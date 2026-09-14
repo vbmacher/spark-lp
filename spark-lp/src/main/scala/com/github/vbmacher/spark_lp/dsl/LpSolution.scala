@@ -49,6 +49,11 @@ final class LpSolution private[dsl](
   val mip: Option[MipSummary] = None,
   private[dsl] val reducedCostData: Option[RDD[((Int, String), Double)]] = None) extends AutoCloseable {
 
+  private val metadata = problem.handles.map(h => h.setIndex -> h.metadata).toMap
+  private[dsl] def snapshot(handle: VarSetHandle): VariableMetadata = {
+    requireOwner(handle)
+    metadata.getOrElse(handle.setIndex, throw new LpModelException("Variable was declared after this solution"))
+  }
   private var closed = false
 
   private[dsl] def requireOwner(handle: VarSetHandle): Unit = {
@@ -103,7 +108,7 @@ final class LpSolution private[dsl](
     val values = h.domain.keyPairs().mapValues(_ => ()).leftOuterJoin(costs)
       .mapValues { case (_, value) => value.getOrElse(Double.NaN) }
     import org.apache.spark.sql.functions.{col, isnan, lit, when}
-    h.domain.attachValues(values, h.name).withColumnRenamed("lp_value", "lp_reduced_cost")
+    h.domain.attachValues(values, snapshot(h).name, snapshot(h).names).withColumnRenamed("lp_value", "lp_reduced_cost")
       .withColumn("lp_reduced_cost", when(isnan(col("lp_reduced_cost")), lit(null).cast("double"))
         .otherwise(col("lp_reduced_cost")))
   }
@@ -125,7 +130,7 @@ final class LpSolution private[dsl](
     }
     val setIndex = handle.setIndex
     val setValues = userValues.filter(_._1._1 == setIndex).map { case ((_, enc), value) => (enc, value) }
-    handle.domain.attachValues(setValues, handle.name)
+    handle.domain.attachValues(setValues, snapshot(handle).name, snapshot(handle).names)
   }
 
   /** Primal value of one scalar variable, in the caller's original units. */

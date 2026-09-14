@@ -109,8 +109,13 @@ whole integers and are never widened by the rounding tolerance; they must lie wi
 Continuous variables take `lowerBound` and `upperBound = Some(value)`. Equal bounds fix a
 variable exactly. Fully fixed or finite-bound-only models need no artificial constraint. For a
 free variable use `lowerBound = Double.NegativeInfinity` and express any finite upper limit as a
-separate `x <= limit` constraint. Other linear models need at least one nontrivial constraint or finite
-upper bound. Nonzero-curvature QP models also support unconstrained objectives.
+separate `x <= limit` constraint.
+Linear models with no active constraint rows are solved analytically from their
+variable domains and objective coefficients, including empty-variable and constant-only
+models. Results have zero numerical iterations. An improving direction without a
+finite bound gives `Unbounded`, with a finite feasible assignment available for diagnostics.
+Rows eliminated by presolve retain their original diagnostics.
+Nonzero-curvature QP models also support unconstrained objectives.
 
 For `Dataset[Offer]`, declare `model.variablesOf("amount", offersDs, (o: Offer) => o.id)` and use
 `lpSum(amount.weightedBy(offersDs)(_.cost))`. Typed keys support primitives, tuples, and custom

@@ -111,7 +111,12 @@ private[dsl] final class Compiled(
   val intCols: IndexedSeq[IntColumn],
   val quadratic: Option[DVector] = None,
   val originalCosts: Option[RDD[((Int, String), Double)]] = None,
-  val originalCurvature: Option[RDD[((Int, String), Double)]] = None)
+  val originalCurvature: Option[RDD[((Int, String), Double)]] = None,
+  val direct: Option[DirectResult] = None)
+
+/** Analytic result for a separable linear objective with no active user rows. */
+private[dsl] final case class DirectResult(
+  values: RDD[((Int, String), Double)], objectiveValue: Double, unbounded: Boolean)
 
 /**
   * Deterministic, contiguous range partitioner over column indices `0 until total`. With

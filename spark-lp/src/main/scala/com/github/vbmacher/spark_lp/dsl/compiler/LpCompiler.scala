@@ -1222,7 +1222,8 @@ private[dsl] final class LpCompiler(problem: LpProblem, config: SolveConfig) ext
     candidate: Option[CandidateInfo] = None,
     stopReason: Option[StopReason] = None,
     evidence: Option[LpEvidence] = None,
-    originalValues: Option[RDD[((Int, String), Double)]] = None): LpSolution = {
+    originalValues: Option[RDD[((Int, String), Double)]] = None,
+    mip: Option[MipSummary] = None): LpSolution = {
 
     val available = candidate.forall(_.available)
     val userValues = caches.checkpoint(
@@ -1269,7 +1270,8 @@ private[dsl] final class LpCompiler(problem: LpProblem, config: SolveConfig) ext
       candidate = candidate.getOrElse(CandidateInfo(true, status == LpStatus.Optimal, Some(iterations))),
       stopReason = stopReason,
       evidence = evidence,
-      isRelaxation = config.relaxIntegrality)
+      isRelaxation = config.relaxIntegrality,
+      mip = mip)
   }
 }
 

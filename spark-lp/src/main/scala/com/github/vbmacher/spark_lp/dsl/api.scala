@@ -161,7 +161,10 @@ final case class SolveConfig(
 final case class MipConfig(
   maxNodes: Int = 1000,
   integralityTolerance: Double = 1e-6,
-  gapTolerance: Double = 1e-9) {
+  gapTolerance: Double = 1e-9,
+  absoluteGapTolerance: Double = 0.0) {
+  require(absoluteGapTolerance >= 0.0 && !absoluteGapTolerance.isInfinite,
+    "absoluteGapTolerance must be finite and nonnegative")
   require(maxNodes > 0, "maxNodes must be positive")
   require(integralityTolerance > 0.0 && integralityTolerance < 0.5,
     "integralityTolerance must be between 0 and 0.5 (exclusive)")
@@ -178,3 +181,19 @@ final case class MipConfig(
   * models these describe the retained LP relaxation, not the global search gap.
   */
 final case class LpResiduals(primal: Double, dual: Double, gap: Double)
+
+/** Certified-search metadata in original objective units; absent values are not zero gaps. */
+final case class MipSummary(incumbent: Option[Double], bestBound: Option[Double],
+  absoluteGap: Option[Double], relativeGap: Option[Double], processedNodes: Int,
+  openNodes: Int, termination: String)
+
+private[dsl] object MipGap {
+  def absolute(incumbent: Double, bound: Double): Double = math.max(0.0, incumbent - bound)
+  def relative(absolute: Double, originalIncumbent: Double): Double =
+    absolute / math.max(1.0, math.abs(originalIncumbent))
+  def accepted(incumbent: Double, bound: Double, originalIncumbent: Double, config: MipConfig): Boolean =
+    !incumbent.isNaN && !incumbent.isInfinite && !bound.isNaN && !bound.isInfinite && {
+      val gap = absolute(incumbent, bound)
+      gap <= config.absoluteGapTolerance || relative(gap, originalIncumbent) <= config.gapTolerance
+    }
+}

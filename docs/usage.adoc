@@ -496,3 +496,19 @@ rejected. `LpSolutionData` represents optional result metadata and value availab
 it does not establish a fresh feasibility or optimality proof. Its distributed values retain the
 source solution's lifetime unless callers materialize their own copy. Data RDDs own no implicit caches;
 callers control source consistency and persistence.
+
+=== Integer optimality gaps
+
+`MipConfig(absoluteGapTolerance = 0.0, gapTolerance = 1e-9)` accepts a verified incumbent when either
+its absolute or relative remaining improvement satisfies the configured threshold. Absolute gap is
+`max(0, incumbent - globalLowerBound)` for minimization, with the direction reversed for maximization.
+Relative gap divides by `max(1, abs(originalIncumbentObjective))`, including objective constants.
+Absolute tolerances therefore use application objective units. Both tolerances must be finite and
+nonnegative; zero permits only a closed numerical gap for that threshold.
+
+`solution.mip` exposes incumbent, global bound, achieved gaps, processed/open node counts and the
+termination reason. Bounds from open, pruned and unresolved subtrees remain part of the global bound;
+missing incumbents or unknown/non-finite bounds yield absent gaps. Node bounds require a converged
+LP relaxation and dual residual within solver tolerance, so these are numerical certificates at the
+configured tolerance. `Optimal` includes tolerance acceptance; `GapTolerance` distinguishes a positive
+accepted gap from `SearchExhausted`. A node limit or unresolved relaxation retains its weaker status.

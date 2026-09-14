@@ -17,5 +17,5 @@ Build with JDK 11: `sbt +test`. For Spark 3.5 only:
 Artifact versions are `<spark-version>_<library-version>`; this checkout builds library
 version 1.2.0-SNAPSHOT. Spark is provided by the application.
 
-Originally forked from [Ehsan M. Kermani's spark-lp](https://github.com/ehsanmok/spark-lp),
-which accompanies his thesis, [Distributed linear programming with Apache Spark](https://open.library.ubc.ca/cIRcle/collections/ubctheses/24/items/1.0340337).
+Attribution: [Ehsan M. Kermani's spark-lp](https://github.com/ehsanmok/spark-lp)
+and [Distributed linear programming with Apache Spark](https://open.library.ubc.ca/cIRcle/collections/ubctheses/24/items/1.0340337).

@@ -1,3 +1,5 @@
+import csv
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -7,7 +9,7 @@ import tempfile
 import unittest
 
 from reconcile import reconcile
-from report import import_jsonl, validate
+from report import import_jsonl, read_campaign, render_report, validate, write_campaign
 
 SCRIPTS = Path(__file__).resolve().parent
 HEADER = 'id,m,n,nonzeros_per_row,family,seed,tolerance,heap_gib\n'
@@ -78,6 +80,68 @@ class ArtifactTests(unittest.TestCase):
     def executable(self, path, text):
         path.write_text(text)
         path.chmod(0o755)
+
+    def test_report_retains_warmup_failures_and_partial_batches_without_timing_them(self):
+        (self.root / 'cases.csv').write_text(INVENTORY)
+        results = self.root / 'results'
+        results.mkdir()
+        for measured in ([], [dict(repetition=1, status='Unrun')]):
+            with self.subTest(measured=measured):
+                rows = [dict(repetition=0, status='ProcessFailure', solve_seconds=1234)] + measured
+                (results / 'records.jsonl').write_text(''.join(json.dumps(dict(
+                    case='small', backend='cholesky', **row)) + '\n' for row in rows))
+                output = self.root / f'test-{len(measured)}.csv'
+                campaign = import_jsonl(self.root, output.stem)
+                write_campaign(campaign, output)
+                rendered = render_report([read_campaign(output)])
+                self.assertIn('ProcessFailure ×1', rendered)
+                self.assertIn('0/0', rendered)
+                self.assertIn('Unrun ×1' if measured else 'No measured records captured', rendered)
+                self.assertNotIn('1234', rendered)
+
+    def test_published_results_omit_storage_locations_and_preserve_evidence(self):
+        (self.root / 'cases.csv').write_text(INVENTORY)
+        results = self.root / 'results'
+        results.mkdir()
+        locations = ['s3://private-bucket/run', 's3a://private-bucket/run',
+                     'https://private-bucket.s3.us-east-1.amazonaws.com/run',
+                     'https://s3.us-east-1.amazonaws.com/private-bucket/run']
+        evidence = results / 'records.jsonl'
+        evidence.write_text(json.dumps(dict(case='small', backend='cg', repetition=1,
+            status='ProcessFailure', reason='Failed to read ' + ' '.join(locations))) + '\n')
+        original = evidence.read_bytes()
+        (results / 'environment.json').write_text(json.dumps(dict(master='yarn',
+            computer='r7gd.8xlarge', emr_name='private-cluster', spark_version='3.5.3-amzn-0')))
+        campaign = import_jsonl(self.root, 'private-emr-test', locations[0])
+        write_campaign(campaign, self.root / 'private-emr-test.csv')
+        output = self.root / 'private-distributed-test.csv'
+        with output.open(newline='') as source:
+            reader = csv.DictReader(source)
+            fields, rows = reader.fieldnames, list(reader)
+        self.assertNotIn('source_uri', fields)
+        self.assertNotIn('emr_name', fields)
+        self.assertNotIn('application_id', fields)
+        self.assertNotIn('stop_reason', fields)
+        self.assertEqual(rows[0]['computer'], 'distributed cluster')
+        self.assertEqual(rows[0]['spark_version'], '3.5.3')
+        self.assertEqual(rows[0]['campaign_id'], 'private-distributed-test')
+        self.assertEqual(rows[0]['source_path'], 'results/records.jsonl')
+        self.assertEqual(rows[0]['source_sha256'], hashlib.sha256(original).hexdigest())
+        self.assertEqual(rows[0]['source_line'], '1')
+        self.assertEqual(evidence.read_bytes(), original)
+        rendered = render_report([read_campaign(output)])
+        for private in ('private-bucket', 'private-cluster', 'r7gd', 'amzn', 'EMR'):
+            self.assertNotIn(private, output.read_text() + rendered)
+        self.assertIn('ProcessFailure', rendered)
+        for location in locations + ['j-1234TEST', 'ip-10-0-0-1.ec2.internal', 'arn:aws:iam::123456789012:role/test']:
+            with self.subTest(location=location):
+                rows[0]['source_path'] = location
+                with output.open('w', newline='') as target:
+                    writer = csv.DictWriter(target, fieldnames=fields)
+                    writer.writeheader()
+                    writer.writerows(rows)
+                with self.assertRaisesRegex(ValueError, 'private infrastructure information'):
+                    read_campaign(output)
 
     def test_emr_bundle_and_remote_exit_handling_without_aws(self):
         # Build a small fake checkout so the build path can be exercised without sbt or AWS.

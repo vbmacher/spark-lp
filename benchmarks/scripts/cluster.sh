@@ -163,6 +163,10 @@ export OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 MKL_NUM_THREADS=1
 command=(spark-submit --master yarn --deploy-mode client --driver-memory "${driver_heap}g"
   --num-executors "$executors" --executor-cores "$executor_cores" --executor-memory "${executor_heap}g"
   --conf "spark.executor.memoryOverhead=${overhead}g" --conf spark.task.cpus=1
+  --conf spark.driver.maxResultSize=0
+  --conf spark.eventLog.logStageExecutorMetrics=true
+  --conf spark.executor.processTreeMetrics.enabled=true
+  --conf spark.executor.metrics.pollingInterval=1000
   --conf spark.dynamicAllocation.enabled=false --conf spark.speculation=false
   --conf "spark.sql.shuffle.partitions=$partitions" --conf "spark.eventLog.dir=$run_uri/events/"
   --conf spark.eventLog.enabled=true --conf spark.executorEnv.OPENBLAS_NUM_THREADS=1
@@ -185,7 +189,8 @@ if $dry_run; then
   exit 0
 fi
 aws --region "$region" s3 cp "$bundle/" "$run_uri/input/" --recursive --only-show-errors
-aws --region "$region" s3 cp /dev/null "$run_uri/events/.keep" --only-show-errors
+touch "$bundle/events.keep"
+aws --region "$region" s3 cp "$bundle/events.keep" "$run_uri/events/.keep" --only-show-errors
 aws --region "$region" emr add-steps --cluster-id "$cluster_id" --steps "file://$bundle/steps.json" --output json > "$bundle/submission.json"
 cat "$bundle/submission.json"
 aws --region "$region" s3 cp "$bundle/submission.json" "$run_uri/submission.json" --only-show-errors

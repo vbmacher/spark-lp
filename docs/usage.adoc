@@ -276,3 +276,15 @@ with `candidate.feasible=false`. If stopping occurred before any iteration compl
 `value`/`values` throw an explicit no-iterate error. Never publish those results as feasible output.
 Progress and cooperative stopping controls are rejected for integer models;
 branch-and-bound stopping is a separate contract.
+
+== Independent model scenarios
+
+`val scenario = model.copy("scenario")` copies variable declarations, objective,
+sense and named scalar/grouped constraints. `scenario.model` is independently
+editable; use `scenario.variable(x)` or `scenario.variables(amounts)` for copied
+handles, and `scenario.expression(expr)` to rebind an expression. Foreign handles
+are rejected. Linear and quadratic objectives preserve their constants and factors.
+Copying performs no Spark actions. Immutable expressions and lazy DataFrame/Dataset
+sources share data plans, so a copy is not a durable source-data snapshot. Keep
+sources stable during each solve or materialize them explicitly. Closing a result
+from one model does not release another model's result or caller-owned input caches.

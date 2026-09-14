@@ -103,8 +103,13 @@ Integer bounds must be within `+/- (2^53 - 1)` because values use `Double`.
 Continuous variables accept `lowerBound` and `upperBound = Some(value)`.
 Equal bounds fix a variable exactly. Fully fixed and finite-bound-only models need no
 artificial constraint. For a free variable use `lowerBound = Double.NegativeInfinity`;
-express any finite upper limit as a separate `x <= limit` constraint.
-Other linear models need at least one nontrivial constraint or finite upper bound.
+combine it with `upperBound = Some(limit)` for an upper-only continuous variable.
+Upper-only variables compile as `x = limit - y`, `y >= 0`, and results use original units.
+Linear models with no active constraint rows are solved analytically from their
+variable domains and objective coefficients, including empty-variable and constant-only
+models. Results have zero numerical iterations. An improving direction without a
+finite bound gives `Unbounded`, with a finite feasible assignment available for diagnostics.
+Rows eliminated by presolve retain their original diagnostics.
 Nonzero-curvature QP models also support unconstrained objectives.
 
 For `Dataset[Offer]`, declare

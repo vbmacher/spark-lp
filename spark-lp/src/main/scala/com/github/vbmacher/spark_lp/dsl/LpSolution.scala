@@ -32,7 +32,7 @@ final class LpSolution private[dsl](
   /**
     * Per-constraint diagnostics: `name`, `group` (when present), `activity`, `sense`, `rhs`,
     * `slack` (the distance to the bound in the constraint's own direction: `rhs - activity` for
-    * `<=`, `activity - rhs` for `>=`), `dual` (reserved, always NULL) and `note` (presolve notes).
+    * `<=`, `activity - rhs` for `>=`), `dual` (objective sensitivity to original RHS), `dual_note` (unavailability reason) and `note` (presolve notes).
     * At [[LpStatus.IterationLimit]] and the infeasibility-related statuses the iterate need not be
     * primal-feasible, so slack may be materially negative and equality rows may be violated;
     * `residuals.primal` quantifies this, and at [[LpStatus.Infeasible]] the negative slacks locate
@@ -43,16 +43,93 @@ final class LpSolution private[dsl](
   private[dsl] val userValues: RDD[((Int, String), Double)],
   val candidate: CandidateInfo,
   val stopReason: Option[StopReason] = None,
-  val evidence: Option[LpEvidence] = None) extends AutoCloseable {
+  val evidence: Option[LpEvidence] = None,
+  /** Status and candidate feasibility apply to the continuous relaxation when true. */
+  val isRelaxation: Boolean = false,
+  val mip: Option[MipSummary] = None,
+  private[dsl] val reducedCostData: Option[RDD[((Int, String), Double)]] = None,
+  val presolve: Option[LpPresolveSummary] = None,
+  val backend: Option[LpBackendSummary] = None,
+  val start: Option[LpStartSummary] = None) extends AutoCloseable {
 
-  private def requireCandidate(): Unit = {
+  private val metadata = problem.handles.map(h => h.setIndex -> h.metadata).toMap
+  private[dsl] def snapshot(handle: VarSetHandle): VariableMetadata = {
+    requireOwner(handle)
+    metadata.getOrElse(handle.setIndex, throw new LpModelException("Variable was declared after this solution"))
+  }
+  private var closed = false
+
+  def asStart(config: LpStartConfig = LpStartConfig()): LpStart = {
+    requireCandidate()
+    LpStart.create(problem, userValues.map { case ((family, key), value) =>
+      LpCandidateValue(LpVariableId(family, key), value)
+    }, config)
+  }
+
+  private[dsl] def requireOwner(handle: VarSetHandle): Unit = {
+    if (!(handle.problem eq problem)) throw new LpModelException("Variable belongs to a different problem")
+  }
+
+  /** Explicit reporting view; does not change raw values or attach feasibility metadata. */
+  def rounded(rounding: LpRounding = LpRounding()): LpRoundedValues = {
+    requireCandidate()
+    new LpRoundedValues(this, rounding)
+  }
+
+  private[dsl] def requireOpen(): Unit =
+    if (closed) throw new LpModelException("Solution is closed")
+
+  private[dsl] def requireCandidate(): Unit = {
+    requireOpen()
     if (!candidate.available) throw new LpModelException("No completed iterate is available for this solve")
+  }
+
+  /** Evaluates a linear expression using this result's values and the coefficient sources as read now. */
+  def evaluate(expression: LpExpr): Double = {
+    requireCandidate()
+    implicit val spark: org.apache.spark.sql.SparkSession = problem.spark
+    val coefficients = LpExpressionData.expand(expression, Some(problem))
+    val joined = coefficients.leftOuterJoin(userValues)
+    if (joined.filter { case (_, (_, value)) => value.isEmpty || value.exists(v => !LpExpressionData.finite(v)) }
+      .take(1).nonEmpty)
+      throw new LpModelException("Expression references values absent or non-finite in this solution")
+    val value = joined.values.map { case (coefficient, x) => coefficient * x.get }.fold(0.0)(_ + _) + expression.constant
+    LpExpressionData.check(value)
+    value
+  }
+
+  /** Original-coordinate reduced cost, or None when LP sensitivity is unavailable for this variable. */
+  def reducedCost(variable: LpVariable): Option[Double] = {
+    requireOpen()
+    requireOwner(variable.handle)
+    val id = (variable.handle.setIndex, variable.selectedKey.getOrElse(""))
+    reducedCostData.flatMap(_.filter(_._1 == id).values.take(1).headOption)
+  }
+
+  /** Domain rows plus nullable lp_reduced_cost; absent sensitivity is never encoded as zero. */
+  def reducedCosts[K](variables: LpVariableSet[K]): DataFrame = {
+    requireOpen()
+    requireOwner(variables.handle)
+    val h = variables.handle
+    val si = h.setIndex
+    val sc = h.problem.spark.sparkContext
+    val costs = reducedCostData.getOrElse(sc.emptyRDD[((Int, String), Double)])
+      .filter(_._1._1 == si).map { case ((_, key), value) => key -> value }
+    val values = h.domain.keyPairs().mapValues(_ => ()).leftOuterJoin(costs)
+      .mapValues { case (_, value) => value.getOrElse(Double.NaN) }
+    import org.apache.spark.sql.functions.{col, isnan, lit, when}
+    h.domain.attachValues(values, snapshot(h).name, snapshot(h).names).withColumnRenamed("lp_value", "lp_reduced_cost")
+      .withColumn("lp_reduced_cost", when(isnan(col("lp_reduced_cost")), lit(null).cast("double"))
+        .otherwise(col("lp_reduced_cost")))
   }
 
   /** Releases the materialised result. Finish all Spark actions on values before closing. */
   override def close(): Unit = {
+    closed = true
     userValues.unpersist(blocking = false)
     evidence.foreach(_.close())
+    reducedCostData.foreach(_.unpersist(false))
+    if (backend.nonEmpty) constraints.unpersist(false)
   }
 
   /** The original variable domain plus `lp_variable` (display name) and `lp_value` columns. */
@@ -64,7 +141,7 @@ final class LpSolution private[dsl](
     }
     val setIndex = handle.setIndex
     val setValues = userValues.filter(_._1._1 == setIndex).map { case ((_, enc), value) => (enc, value) }
-    handle.domain.attachValues(setValues, handle.name)
+    handle.domain.attachValues(setValues, snapshot(handle).name, snapshot(handle).names)
   }
 
   /** Primal value of one scalar variable, in the caller's original units. */
@@ -75,7 +152,9 @@ final class LpSolution private[dsl](
       throw new LpModelException(s"Variable '${handle.name}' belongs to a different problem")
     }
     val setIndex = handle.setIndex
-    val collected = userValues.filter(_._1._1 == setIndex).map(_._2).collect()
+    val key = variable.selectedKey.getOrElse("")
+    val collected = userValues.filter { case ((si, enc), _) => si == setIndex && enc == key }
+      .map(_._2).take(1)
     if (collected.isEmpty) {
       throw new LpModelException(s"No value available for variable '${handle.name}'")
     }

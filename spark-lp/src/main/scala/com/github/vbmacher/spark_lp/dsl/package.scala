@@ -10,8 +10,24 @@ package object dsl {
   type NewtonSolver = newton.NewtonSolver
   val NewtonSolver: newton.NewtonSolver.type = newton.NewtonSolver
 
+  /** Local dot product; both finite collections must have equal lengths. */
+  def lpDot[A](coefficients: Iterable[Double], values: Iterable[A])(
+    implicit toExpression: A => LpExpr): LpExpr = {
+    val cs = coefficients.iterator
+    val vs = values.iterator
+    var result = LpExpr.zero
+    while (cs.hasNext && vs.hasNext) {
+      val coefficient = cs.next()
+      LpArithmetic.requireFinite(coefficient, "Dot-product coefficient")
+      result = result.plus(toExpression(vs.next()).scaledBy(coefficient))
+    }
+    if (cs.hasNext || vs.hasNext)
+      throw new LpModelException("Dot-product collections must have equal lengths")
+    result
+  }
+
   /** Sums a scalar variable into an expression, PuLP-style. */
-  def lpSum(variable: LpVariable): LpExpr = variable.handle.toExpr(1.0)
+  def lpSum(variable: LpVariable): LpExpr = variable.toExpr(1.0)
 
   /** Sums every variable of a set with coefficient 1. */
   def lpSum[K](variables: LpVariableSet[K]): LpExpr = variables.handle.toExpr(1.0)

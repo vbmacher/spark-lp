@@ -18,3 +18,6 @@ private[dsl] final case class ShiftedKind(shift: Double, upper: Option[Double]) 
 
 /** Free variable, represented as the difference of two non-negative columns `x = x_plus - x_minus`. */
 private[dsl] case object SplitKind extends PlanKind
+
+/** Upper-only variable: x = upper - y, y >= 0. */
+private[dsl] final case class ReflectedKind(upper: Double) extends PlanKind

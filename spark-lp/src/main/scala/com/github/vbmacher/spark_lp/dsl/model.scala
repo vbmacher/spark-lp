@@ -19,7 +19,40 @@ private[dsl] object LpSense {
   */
 final class LpExpr private[dsl](
   private[dsl] val terms: Vector[LpTerm],
-  private[dsl] val constant: Double) {
+  val constant: Double) {
+
+  /** Distributed aggregated coefficients. Evaluates source validation actions, never collects the matrix. */
+  def coefficients(implicit spark: SparkSession): RDD[LpCoefficient] =
+    LpExpressionData.expand(this).map { case ((family, key), value) =>
+      LpCoefficient(LpVariableId(family, key), value)
+    }
+
+  /** Scalar action returning one aggregated coefficient; missing coefficients are zero. */
+  def coefficient(variable: LpVariable): Double = {
+    implicit val spark: SparkSession = variable.handle.problem.spark
+    val id = (variable.handle.setIndex, variable.selectedKey.getOrElse(""))
+    LpExpressionData.expand(this, Some(variable.handle.problem))
+      .filter(_._1 == id)
+      .values.fold(0.0)(_ + _)
+  }
+
+  def withConstant(value: Double): LpExpr = {
+    LpExpressionData.check(value)
+    new LpExpr(terms, value)
+  }
+
+  /** Replaces one coefficient without changing this expression or reading a distributed source. */
+  def withCoefficient(variable: LpVariable, value: Double): LpExpr = {
+    LpExpressionData.check(value)
+    LpExpressionData.owner(this, Some(variable.handle.problem))
+    val key = variable.selectedKey.getOrElse("")
+    val kept = terms.map { term =>
+      if (term.handle eq variable.handle) FilteredCoeffTerm(term, Set(key)) else term
+    }
+    new LpExpr(kept ++ (if (value == 0.0) Vector.empty else variable.toExpr(value).terms), constant)
+  }
+
+  def withoutCoefficient(variable: LpVariable): LpExpr = withCoefficient(variable, 0.0)
 
   private[dsl] def plus(other: LpExpr): LpExpr = new LpExpr(terms ++ other.terms, constant + other.constant)
 
@@ -54,6 +87,16 @@ private[dsl] final case class ConstCoeffTerm(handle: VarSetHandle, coeff: Double
   override def scaledBy(factor: Double): LpTerm = copy(coeff = coeff * factor)
 }
 
+/** Coefficient of one selected family member. Membership is checked during evaluation/compilation. */
+private[dsl] final case class KeyCoeffTerm(handle: VarSetHandle, key: String, coeff: Double) extends LpTerm {
+  override def scaledBy(factor: Double): LpTerm = copy(coeff = coeff * factor)
+}
+
+private[dsl] final case class FilteredCoeffTerm(inner: LpTerm, excluded: Set[String]) extends LpTerm {
+  override def handle: VarSetHandle = inner.handle
+  override def scaledBy(factor: Double): LpTerm = copy(inner = inner.scaledBy(factor))
+}
+
 /** A coefficient held in a Spark column, resolved against the set's own domain. */
 private[dsl] final case class ColumnCoeffTerm(handle: VarSetHandle, column: Column, scale: Double) extends LpTerm {
   override def scaledBy(factor: Double): LpTerm = copy(scale = scale * factor)
@@ -72,8 +115,14 @@ private[dsl] final case class WeightedCoeffTerm(
 final class LpConstraint private[dsl](
   private[dsl] val terms: Vector[LpTerm],
   private[dsl] val sense: LpSense,
-  private[dsl] val rhs: Double,
+  val rhs: Double,
   private[dsl] val explicitName: Option[String]) {
+
+  /** Returns a separate pending constraint with the same name and normalized left-hand side. */
+  def withRhs(value: Double): LpConstraint = {
+    LpExpressionData.check(value)
+    new LpConstraint(terms, sense, value, explicitName)
+  }
 
   private[dsl] def withName(name: String): LpConstraint = new LpConstraint(terms, sense, rhs, Some(name))
 }
@@ -114,7 +163,7 @@ private[dsl] sealed trait DomainAccess {
   def columnPairs(column: Column, context: String): RDD[(String, Double)]
 
   /** Original domain plus `lp_variable` and `lp_value` columns, joined by encoded key. */
-  def attachValues(values: RDD[(String, Double)], setName: String): DataFrame
+  def attachValues(values: RDD[(String, Double)], setName: String, names: Map[String, String] = Map.empty): DataFrame
 }
 
 private[dsl] final class ScalarDomain(spark: SparkSession) extends DomainAccess {
@@ -125,7 +174,7 @@ private[dsl] final class ScalarDomain(spark: SparkSession) extends DomainAccess 
   override def columnPairs(column: Column, context: String): RDD[(String, Double)] =
     throw new LpModelException(s"$context: a scalar variable does not support column coefficients")
 
-  override def attachValues(values: RDD[(String, Double)], setName: String): DataFrame = {
+  override def attachValues(values: RDD[(String, Double)], setName: String, names: Map[String, String]): DataFrame = {
     val schema = StructType(Seq(StructField("lp_variable", StringType), StructField("lp_value", DoubleType)))
     val rows = values.map { case (_, value) => Row(setName, value) }
     spark.createDataFrame(rows, schema)
@@ -155,7 +204,7 @@ private[dsl] final class ColumnDomain(val df: DataFrame, key: Column) extends Do
     }
   }
 
-  override def attachValues(values: RDD[(String, Double)], setName: String): DataFrame = {
+  override def attachValues(values: RDD[(String, Double)], setName: String, names: Map[String, String]): DataFrame = {
     val spark = df.sparkSession
     val schema = StructType(df.schema.fields ++
       Seq(StructField("lp_variable", StringType), StructField("lp_value", DoubleType)))
@@ -164,8 +213,8 @@ private[dsl] final class ColumnDomain(val df: DataFrame, key: Column) extends Do
       val value = row.get(0)
       (KeyCodec.encodeValue(value), (KeyCodec.displayParts(value), row.getStruct(1)))
     }
-    val rows = keyed.join(values).map { case (_, ((display, original), value)) =>
-      Row.fromSeq(original.toSeq :+ KeyCodec.displayName(setName, display) :+ value)
+    val rows = keyed.join(values).map { case (encoded, ((display, original), value)) =>
+      Row.fromSeq(original.toSeq :+ names.getOrElse(encoded, KeyCodec.displayName(setName, display)) :+ value)
     }
     spark.createDataFrame(rows, schema)
   }
@@ -195,7 +244,7 @@ private[dsl] final class TypedDomain[K, Key](
       s"$context: column coefficients require a variable set declared over a DataFrame domain " +
         "(LpProblem.variables); for a typed variable set use weightedBy")
 
-  override def attachValues(values: RDD[(String, Double)], setName: String): DataFrame = {
+  override def attachValues(values: RDD[(String, Double)], setName: String, names: Map[String, String]): DataFrame = {
     val spark = ds.sparkSession
     val fn = keyFn
     val enc = keyEncoder
@@ -206,8 +255,8 @@ private[dsl] final class TypedDomain[K, Key](
       (KeyCodec.encodeParts(parts), (display, k))
     }
     val setNameLocal = setName
-    val joined = keyed.join(values).map { case (_, ((display, k), value)) =>
-      (k, KeyCodec.displayName(setNameLocal, display), value)
+    val joined = keyed.join(values).map { case (encoded, ((display, k), value)) =>
+      (k, names.getOrElse(encoded, KeyCodec.displayName(setNameLocal, display)), value)
     }
     implicit val tupleEncoder: Encoder[(K, String, Double)] =
       Encoders.tuple(kEncoder, Encoders.STRING, Encoders.scalaDouble)
@@ -222,22 +271,57 @@ private[dsl] final class TypedDomain[K, Key](
   }
 }
 
+/** Materialized portable keys; import preserves canonical identity without encoding a second time. */
+private[dsl] final class EncodedDomain(data: RDD[(String, Seq[String])], spark: SparkSession) extends DomainAccess {
+  override def keyPairs(): RDD[(String, Seq[String])] = data
+  override def columnPairs(column: Column, context: String): RDD[(String, Double)] =
+    throw new LpModelException(s"$context: imported domains have no source coefficient columns")
+  override def attachValues(values: RDD[(String, Double)], setName: String, names: Map[String, String]): DataFrame = {
+    val rows = data.join(values).map { case (key, (display, value)) =>
+      Row(key, names.getOrElse(key, KeyCodec.displayName(setName, display)), value)
+    }
+    spark.createDataFrame(rows, StructType(Seq(StructField("lp_key", StringType, false),
+      StructField("lp_variable", StringType, false), StructField("lp_value", DoubleType, false))))
+  }
+}
+
 /** Internal identity + metadata shared by [[LpVariable]] and [[LpVariableSet]]. */
 private[dsl] final class VarSetHandle(
   val problem: LpProblem,
   val setIndex: Int,
-  val name: String,
-  val lowerBound: Double,
-  val upperBound: Option[Double],
+  initialName: String,
+  initialLower: Double,
+  initialUpper: Option[Double],
   val category: VariableCategory,
   val domain: DomainAccess) {
+
+  private[dsl] var metadata = VariableMetadata(initialName, LpBounds(initialLower, initialUpper), Map.empty, Map.empty)
+  private[dsl] var fixedMembers = Map.empty[String, Option[LpBounds]]
+  private[dsl] var fixedFamily: Option[(LpBounds, Map[String, LpBounds], Map[String, Option[LpBounds]])] = None
+  def name: String = metadata.name
+  def lowerBound: Double = metadata.bounds.lower
+  def upperBound: Option[Double] = metadata.bounds.upper
 
   private[dsl] def toExpr(coeff: Double): LpExpr = new LpExpr(Vector(ConstCoeffTerm(this, coeff)), 0.0)
 }
 
 /** One scalar decision variable. */
-final class LpVariable private[dsl](private[dsl] val handle: VarSetHandle) {
-  def name: String = handle.name
+final class LpVariable private[dsl](private[dsl] val handle: VarSetHandle,
+  private[dsl] val selectedKey: Option[String] = None,
+  private[dsl] val display: Seq[String] = Seq.empty) {
+  def name: String = handle.metadata.display(selectedKey.getOrElse(""), display)
+  def lowerBound: Double = handle.metadata.at(selectedKey.getOrElse("")).lower
+  def upperBound: Option[Double] = handle.metadata.at(selectedKey.getOrElse("")).upper
+  def setBounds(lowerBound: Double, upperBound: Option[Double]): this.type = {
+    LpVariableEditing.bounds(handle, selectedKey, LpBounds(lowerBound, upperBound)); this
+  }
+  def fix(value: Double): this.type = { LpVariableEditing.fix(handle, selectedKey, value); this }
+  def unfix(): this.type = { LpVariableEditing.unfix(handle, selectedKey); this }
+  def rename(name: String): this.type = { LpVariableEditing.rename(handle, selectedKey, name); this }
+  private[dsl] def toExpr(coeff: Double): LpExpr = selectedKey match {
+    case Some(key) => new LpExpr(Vector(KeyCoeffTerm(handle, key, coeff)), 0.0)
+    case None => handle.toExpr(coeff)
+  }
 }
 
 /**
@@ -250,6 +334,22 @@ final class LpVariableSet[K] private[dsl](
   private[dsl] val keyColumn: Option[Column]) {
 
   def name: String = handle.name
+  def lowerBound: Double = handle.lowerBound
+  def upperBound: Option[Double] = handle.upperBound
+  def setBounds(lowerBound: Double, upperBound: Option[Double]): this.type = {
+    LpVariableEditing.bounds(handle, None, LpBounds(lowerBound, upperBound)); this
+  }
+  def fix(value: Double): this.type = { LpVariableEditing.fix(handle, None, value); this }
+  def unfix(): this.type = { LpVariableEditing.unfix(handle, None); this }
+  def rename(name: String): this.type = { LpVariableEditing.rename(handle, None, name); this }
+
+  /** Lazy symbolic member lookup. Null keys fail now; missing/incompatible keys fail at solve time. */
+  def apply[Key: LpKeyEncoder](key: Key): LpVariable = {
+    val parts = if (key == null) Seq(null) else implicitly[LpKeyEncoder[Key]].parts(key)
+    val encoded = KeyCodec.encodeParts(parts)
+    if (encoded == null) throw new LpModelException(s"Variable family '$name': null or empty key")
+    new LpVariable(handle, Some(encoded), parts.flatMap(KeyCodec.flatParts).map(String.valueOf(_)))
+  }
 
   /** Sum all variables, with coefficient one. */
   def sum: LpExpr = handle.toExpr(1.0)

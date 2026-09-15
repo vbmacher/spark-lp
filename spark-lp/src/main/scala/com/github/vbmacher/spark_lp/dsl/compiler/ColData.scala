@@ -4,7 +4,7 @@ import org.apache.spark.mllib.linalg.{Vector => MLVector}
 
 /**
   * One solver column. `kind`: 0 = plain shifted variable (`x = shift + y`), 1 = positive part of
-  * a free split, 2 = negative part, 3 = internal slack.
+  * a free split, 2 = negative part, 3 = internal slack, 4 = upper reflection (`x = shift - y`).
   */
 private[dsl] final case class ColData(
   setIndex: Int,

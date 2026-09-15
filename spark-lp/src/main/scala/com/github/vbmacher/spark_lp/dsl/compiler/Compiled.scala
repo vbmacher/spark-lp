@@ -1,5 +1,6 @@
 package com.github.vbmacher.spark_lp.dsl.compiler
 
+import com.github.vbmacher.spark_lp.dsl.LpSubstitution
 import com.github.vbmacher.spark_lp.vectors.{DMatrix, DVector}
 import org.apache.spark.mllib.linalg.DenseVector
 import org.apache.spark.rdd.RDD
@@ -20,4 +21,10 @@ private[dsl] final class Compiled(
   val intCols: IndexedSeq[IntColumn],
   val quadratic: Option[DVector] = None,
   val originalCosts: Option[RDD[((Int, String), Double)]] = None,
-  val originalCurvature: Option[RDD[((Int, String), Double)]] = None)
+  val originalCurvature: Option[RDD[((Int, String), Double)]] = None,
+  val direct: Option[DirectResult] = None,
+  val substitutions: Map[Int, LpSubstitution] = Map.empty)
+
+/** Analytic result for a separable linear objective with no active user rows. */
+private[dsl] final case class DirectResult(
+  values: RDD[((Int, String), Double)], objectiveValue: Double, unbounded: Boolean)

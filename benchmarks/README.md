@@ -3,6 +3,7 @@
 This module measures Cholesky and CG on reproducible linear programs generated with Spark DataFrames. Campaigns are CSV case inventories; algorithm suites share the same generation, execution, and validation code.
 
 - [Measured results](src/results/REPORT.md)
+- [CG partition performance and recommended settings](src/results/PARTITIONS.md)
 - [Bencher data format](#bencher-data-format)
 - [Remaining runs and EMR plan](src/results/TODO.md)
 - [Case inventories](src/main/resources/)
@@ -129,6 +130,13 @@ aws emr terminate-clusters --cluster-ids "$BENCHMARK_CLUSTER_ID"
 Raw measurements, environment, command, application log and exit status upload under `results/`; Spark event logs go directly to `events/`, and submission inputs remain under `input/`. Before uploading, the step retains existing records and fills missing repetitions with the process failure followed by `Unrun` slots. An existing watchdog failure is preserved without adding another failure. The step attempts the result upload on failure as well as success, and preserves a nonzero process exit. A whole-application timeout also bounds generation/validation to `(warmups + repetitions) × 30 minutes + 10 minutes`. Node loss or forced termination can prevent uploads; reconcile missing attempts against the step/container logs before importing. Per-executor memory sampling is [pending](src/results/TODO.md).
 
 ## Results and environments
+
+For the measured seed-11, width-32 CG fixtures (1,000 × 100,000 well-conditioned
+and near-dependent; 5,000 × 1,000,000 well-conditioned), use `--partitions 16`
+with four four-core executors. Both comparison orders showed 1.44–2.16× median
+paired speedups against 64 partitions at the same `1e-8` accuracy. See the
+[partition measurements](src/results/PARTITIONS.md) for fixed runtime settings,
+ranges and limits; other workloads and executor counts need their own measurements.
 
 ```sh
 python3 benchmarks/scripts/report.py import-jsonl /absolute/artifacts/scaling-run --campaign solver-scaling-new-run --output benchmarks/src/results

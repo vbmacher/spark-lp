@@ -294,10 +294,12 @@ def mib(value):
 
 
 def render_table(columns, rows, extract_shared=True):
+    # Columns that are the placeholder for every row carry no information; drop them entirely.
+    placeholder = {i for i, name in enumerate(columns) if name != 'ID' and rows and all(row[i] == '—' for row in rows)}
     # Keep the ID joining the two tables even for a single configuration.
-    shared = [i for i, name in enumerate(columns) if extract_shared and name not in ('ID', 'Env') and rows
-              and all(row[i] == rows[0][i] for row in rows)]
-    varying = [i for i in range(len(columns)) if i not in shared]
+    shared = [i for i, name in enumerate(columns) if extract_shared and name not in ('ID', 'Env')
+              and i not in placeholder and rows and all(row[i] == rows[0][i] for row in rows)]
+    varying = [i for i in range(len(columns)) if i not in shared and i not in placeholder]
 
     def table_row(cells):
         return '| ' + ' | '.join(str(v).replace('|', '\\|') for v in cells) + ' |'
@@ -312,150 +314,215 @@ def render_table(columns, rows, extract_shared=True):
     return '\n'.join(lines)
 
 
+def section_for(campaign_id):
+    """Map a campaign to a report section (order, title, id-prefix, purpose)."""
+    if campaign_id == 'solver-scaling':
+        return (0, 'Solver scaling', 'SS', 'measures scaling with rows, variables and sparse support')
+    if campaign_id == 'sparsity-and-conditioning':
+        return (1, 'Sparsity and conditioning', 'SC', 'tests density, row scaling and near dependence')
+    if campaign_id.startswith('dense-small'):
+        return (2, 'Dense small', 'DS', 'small dense fixtures for backend comparison on constrained hosts')
+    if campaign_id.startswith('distributed') or campaign_id.startswith('result-limit'):
+        return (3, 'Distributed scaling', 'DIST', 'measures larger problems on the distributed runtime')
+    if campaign_id.startswith('cg-partitions'):
+        return (4, 'CG partition tuning', 'PART',
+                'CG input-partition tuning for the seed-11, width-32 fixtures; '
+                'the recommendation, method and paired speedups follow the table')
+    return (5, re.sub(r'\bIssue\s*#?\d+\s*', '', campaign_id.replace('-', ' ').capitalize(),
+                      flags=re.IGNORECASE), campaign_id.upper(), '')
+
+
+def experiment_key(campaign_id):
+    """Strip the algorithm suffix so split cg/cholesky campaigns of one problem pair up."""
+    return re.sub(r'-(cg|cholesky)$', '', campaign_id)
+
+
+def parameter(value):
+    if value is None:
+        return 'unrecorded'
+    return f'{value:g}' if isinstance(value, float) else str(value)
+
+
+def algorithm_summary(records, cfg, case):
+    """Fold solve timing, iterations, accuracy and memory for one algorithm of a case."""
+    if cfg is None or not records:
+        return None
+    direct = cfg['algorithm'] == 'Cholesky'
+    body = [r for r in records if not r['warmup']]
+    if not body:
+        return None
+    attempted = [r for r in body if r['status'] not in NOT_ATTEMPTED]
+    valid = [r for r in attempted if is_valid(r, cfg)]
+    timed = valid if valid else attempted
+    times = [r['solve_seconds'] for r in timed if r['solve_seconds'] is not None]
+    timing = '—' if not times else f'{statistics.median(times):.3f} [{min(times):.3f}–{max(times):.3f}]'
+    observed = attempted if attempted else body
+    iters = f'outer {span([r["outer_iterations"] for r in observed])}'
+    if not direct:
+        iters += f', CG {span([r["cg_steps"] for r in observed])}'
+    counts = collections.Counter(r['status'] for r in body)
+    if attempted:
+        result = f'{timing}; {len(valid)}/{len(attempted)} valid; {iters}'
+        extra = ', '.join(f'{k} ×{v}' for k, v in sorted(counts.items()) if k not in SUCCESS)
+        if extra:
+            result += f'; {extra}'
+        if not valid and times:
+            result += '; unsuccessful duration'
+    else:
+        result = ', '.join(f'{k} ×{v}' for k, v in sorted(counts.items())) or 'No records'
+    reason = sorted({r.get('stop_reason') for r in body if r.get('stop_reason') not in (None, 'None')})
+    if reason:
+        result += '; ' + ', '.join(reason)
+    accuracy = [[r['residuals'].get(k) for r in body] for k in ('primal', 'dual', 'gap')]
+    accuracy = ('/'.join(f'{max(values):.3g}' for values in accuracy)
+                if all(v is not None for values in accuracy for v in values) else '—')
+    ranks = [r['maximum_rank'] for r in observed]
+    rank = max(ranks) if ranks and all(v is not None for v in ranks) else None
+    topology = cfg.get('memory_topology')
+    mem = memory_components(case, rank, topology['concurrent_tasks_per_executor'],
+                            topology['executors']) if topology else None
+    local = bool(topology) and topology['executors'] == 1
+    e = ('O(nnz+n+m²)' if direct else 'O(nnz+n+m)') if local else (
+        'O((nnz+n)/executors + tasks·m²)' if direct else 'O((nnz+n)/executors + tasks·m)')
+    d = 'O(m²)' if direct else 'O(m+m·rank)'
+    if mem:
+        payload = mib(mem['cholesky_executor' if direct else 'cg_executor'])
+        workspace = mib(mem['cholesky_driver' if direct else 'cg_driver'])
+        memory = f'exec {e} [≈{payload}](../../README.md#memory); driver {d} ≈{workspace}'
+    else:
+        memory = f'exec {e}; driver {d}; estimate unavailable'
+    peak = [r['memory']['peak_rss_bytes'] for r in body if r['memory'].get('peak_rss_bytes')]
+    memory += ('; RSS ' + ('combined ' if local else 'driver ') + mib(max(peak))) if peak else '; RSS unmeasured'
+    return dict(result=result, accuracy=accuracy, memory=memory, attempted=bool(attempted),
+                topology=topology, warmups=[r for r in records if r['warmup']])
+
+
+PARTITION_NOTES = (
+    '**Recommendation:** For these seed-11, width-32 CG fixtures on the tested four-executor '
+    'cluster (4×4), use 16 input partitions. Median paired speedups versus a fresh 64-partition '
+    'reference were 1.44–2.16×, and every measured solve and warmup passed independent `1e-8` '
+    'accuracy checks. This is workload-specific: no solver default, numerical setting or algorithm '
+    'changed.\n\n'
+    '**Method:** CG only; seed 11; width 32; one warmup and five measured attempts per fresh JVM. '
+    'Round 1 sweeps 64/32/16 partitions and round 2 sweeps 16/32/64 on the same cluster; the rounds '
+    'stay separate because timing variability is visible. Each comparison uses a fresh 64-partition '
+    'reference (the larger historical baseline used 128). Paired speedup divides the matching '
+    '64-partition repetition by the candidate within the same fixture and round.\n\n'
+    'Paired speedup, 16 vs 64 partitions (median [min, max]):\n\n'
+    '| Fixture | Round 1 | Round 2 |\n'
+    '|---|---|---|\n'
+    '| Well-conditioned 1,000 × 100,000 | 1.589 [1.566, 1.702] | 2.164 [1.972, 2.196] |\n'
+    '| Well-conditioned 5,000 × 1,000,000 | 1.440 [1.383, 1.476] | 1.522 [1.479, 1.566] |\n'
+    '| Near-dependent 1,000 × 100,000 | 1.534 [1.485, 1.625] | 1.648 [1.626, 1.666] |\n\n'
+    'Fewer partitions also lowered executor CPU, shuffle read and per-success step cost; the '
+    '32-partition setting falls between 16 and 64. The near-dependent fixture\'s CG step count varies '
+    'with floating-point reduction order, so its gain is not attributed only to scheduling.\n\n'
+    '**Limits:** Seeds 29 and 47, other executor counts, other input shapes, native BLAS/LAPACK and '
+    'backend selection are untested here; these gains do not establish a universal partition count. '
+    'Per-attempt CPU, GC, phase, task and cost metrics remain in each `cg-partitions-*.bmf.json` under '
+    '`_evidence`.')
+
+
 def render_tables(campaigns):
     from bencher_export import result_filename
-    plan_columns = ['ID', 'Type', 'Rows m', 'Variables n', 'Campaign / case', 'Purpose',
-                    'Control', 'Fixture family', 'Seed', 'Nonzeros', 'Density (%)',
-                    'Nonzeros / column', 'Nonzeros / row', 'Row-scale ratio', 'Tolerance', 'Outer limit',
-                    'Eta', 'CG tolerance', 'CG step limit per rank', 'Rp', 'Rd',
-                    'Preconditioner budget (MiB)', 'Partitions',
-                    'Heap (GiB)', 'BLAS', 'Recorded repetitions', 'Warmups per backend invocation', 'Warmup case',
-                    'Timing scope', 'Data file']
-    result_columns = ['ID', 'Env', 'Warmup outcomes', 'Converged / attempted', 'Iterations', 'Restarts/escalations',
-                      'Max preconditioner rank', 'Solve seconds, median [min–max]',
-                      'Outcome / accuracy', 'Memory per executor (big O + calculated/measured)',
-                      'Memory per driver (big O + calculated/measured)']
-    plans, results, environments, environment_ids = [], [], [], {}
-    order = {'solver-scaling': 0, 'sparsity-and-conditioning': 1, 'emr-scaling': 2}
-    names = {'solver-scaling': 'Solver scaling', 'sparsity-and-conditioning': 'Sparsity and conditioning',
-             'emr-scaling': 'EMR scaling'}
-    prefixes = {'solver-scaling': 'SS', 'sparsity-and-conditioning': 'SC', 'emr-scaling': 'EMR'}
-    def parameter(value):
-        if value is None:
-            return 'unrecorded'
-        return f'{value:g}' if isinstance(value, float) else str(value)
-    for c in sorted(campaigns, key=lambda c: (order.get(c['campaign_id'], 3), c['campaign_id'])):
+    columns = ['ID', 'Case', 'Rows m', 'Variables n', 'Nonzeros', 'Density (%)', 'Nonzeros / row',
+               'Fixture family', 'Seed', 'Partitions', 'Heap (GiB)', 'Executor topology', 'Environment',
+               'Warmup outcomes',
+               'Cholesky solve s; valid; iterations', 'Cholesky max primal/dual/gap', 'Cholesky memory',
+               'CG solve s; valid; iterations', 'CG max primal/dual/gap', 'CG memory']
+    # Group records into one row per physical case, pairing the Cholesky and CG runs of that case.
+    groups = {}
+    for c in campaigns:
         if not c['records']:
             continue
-        title = names.get(c['campaign_id'], re.sub(r'\bIssue\s*#?\d+\s*', '', c['title'], flags=re.IGNORECASE))
+        section = section_for(c['campaign_id'])
+        ekey = experiment_key(c['campaign_id'])
         cases = {x['case_id']: x for x in c['cases']}
         configs = {x['configuration_id']: x for x in c['configurations']}
-        groups = collections.defaultdict(list)
         for row in c['records']:
-            groups[(row['case_id'], row['configuration_id'])].append(row)
-        def group_order(item):
-            case_id, cfg_id = item[0]
-            case, cfg = cases[case_id], configs[cfg_id]
-            return (case['m'], case['n'], case_id, cfg['algorithm'] != 'Cholesky',
-                    cfg['label'], cfg_id)
-        for index, ((case_id, cfg_id), group) in enumerate(sorted(groups.items(), key=group_order), 1):
-            warmups = [r for r in group if r['warmup']]
-            group = [r for r in group if not r['warmup']]
-            warmup_outcomes = ', '.join(f'{k} ×{v}' for k, v in sorted(
-                collections.Counter(r['status'] for r in warmups).items())) or 'unrecorded'
-            benchmark_id = f'{prefixes.get(c["campaign_id"], c["campaign_id"].upper())}-{index:02d}'
-            suite = configs[cfg_id].get('suite', ALGORITHM_SUITES.get(configs[cfg_id]['algorithm']))
-            if suite:
-                # The algorithm objects live in the consolidated Benchmark.scala file.
-                package_path = suite.rsplit('.', 1)[0].replace('.', '/')
-                benchmark_id += f' · [{suite.split(".")[-1]}](../main/scala/{package_path}/Benchmark.scala)'
-            case, cfg = cases[case_id], configs[cfg_id]
-            env = environment_values(cfg)
-            env_key = canonical(env)
-            if env_key not in environment_ids:
-                env_id = f'ENV-{len(environment_ids)+1:02d}'
-                environment_ids[env_key] = env_id
-                environments.append([env_id, env['computer'] or 'unrecorded', env['os'] or 'unrecorded',
-                                     env['spark_version'] or 'unrecorded', env['java_version'] or 'unrecorded',
-                                     env['spark_master'] or 'unrecorded'])
-            env_id = environment_ids[env_key]
-            attempted = [r for r in group if r['status'] not in NOT_ATTEMPTED]
-            valid = [r for r in attempted if is_valid(r, cfg)]
-            # Homogeneous failures show observed stop/failure duration explicitly, never successful solve timing.
-            timed = valid if valid else attempted
-            times = [r['solve_seconds'] for r in timed if r['solve_seconds'] is not None]
-            timing = '—' if not times else f'{statistics.median(times):.3f} [{min(times):.3f}–{max(times):.3f}]'
-            if not valid and times:
-                timing += ' (unsuccessful duration)'
-            z, m, n = case['nnz'], case['m'], case['n']
-            observed = attempted if attempted else group
-            ranks = [r['maximum_rank'] for r in observed]
-            rank = max(ranks) if ranks and all(v is not None for v in ranks) else None
-            topology = cfg.get('memory_topology')
-            mem = memory_components(case, rank, topology['concurrent_tasks_per_executor'],
-                topology['executors']) if topology else None
-            direct = cfg['algorithm'] == 'Cholesky'
-            local = topology and topology['executors'] == 1
-            e = ('O(nnz+n+m²)' if direct else 'O(nnz+n+m)') if local else (
-                'O((nnz+n)/executors + tasks·m²)' if direct else 'O((nnz+n)/executors + tasks·m)')
-            d = 'O(m²)' if direct else 'O(m+m·rank)'
-            if mem:
-                e += '; [≈' + mib(mem['cholesky_executor' if direct else 'cg_executor']) + ' payload](../../README.md#memory)'
-                e += f'; {topology["executors"]} executor(s), {topology["concurrent_tasks_per_executor"]} tasks/executor'
-                d += '; [≈' + mib(mem['cholesky_driver' if direct else 'cg_driver']) + ' workspace](../../README.md#memory)'
-            else:
-                e += '; topology/nnz unavailable'
-                d += '; payload estimate unavailable'
-            outcomes = ', '.join(f'{k} ×{v}' for k,v in sorted(collections.Counter(r['status'] for r in group).items())) or 'No measured records captured'
-            accuracy = [[r['residuals'].get(k) for r in group] for k in ('primal', 'dual', 'gap')]
-            if group and all(v is not None for values in accuracy for v in values):
-                outcomes += '; max primal/dual/gap ' + '/'.join(f'{max(values):.3g}' for values in accuracy)
-            reason = sorted({r.get('stop_reason') for r in group if r.get('stop_reason') not in (None, 'None')})
-            if reason:
-                outcomes += '; ' + ', '.join(reason)
-            if len(group) == 1 and group[0]['status'] == 'Stopped':
-                candidate = group[0]['raw'].get('candidate_available')
-                if candidate in (False, 'false'):
-                    outcomes += '; no candidate'
-                elif candidate in (True, 'true'):
-                    outcomes += '; candidate feasible=' + str(group[0]['raw'].get('candidate_feasible')).lower()
-            peak = [r['memory']['peak_rss_bytes'] for r in group if r['memory'].get('peak_rss_bytes')]
-            if peak:
-                d += '; sampled ' + ('combined driver+executor ' if local else 'driver ') + 'RSS max ' + mib(max(peak))
-            else:
-                d += '; RSS unmeasured'
-            name = case_id
-            control = {'none': 'Off', 'report': 'Progress callback',
-                       'candidate': 'Stop at first feasible event', 'time': 'Time limit',
-                       'stagnation': 'Stagnation stop'}.get(cfg.get('control'), parameter(cfg.get('control')))
-            purpose = {
-                'solver-scaling': 'measures scaling with rows, variables and sparse support',
-                'sparsity-and-conditioning': 'tests density, row scaling and near dependence',
-                'emr-scaling': 'measures larger distributed problems on EMR'
-            }.get(c['campaign_id'], '')
-            environment = cfg.get('environment') or {}
-            partitions = cfg.get('partitions', environment.get('input_partitions'))
-            heap = cfg.get('heap_gib', environment.get('heap_gib'))
-            repetitions = len({r['repetition'] for r in group})
-            budget = cfg.get('preconditioner_memory_bytes')
-            filename = result_filename(c['campaign_id'], cfg)
-            plan = [benchmark_id, cfg['algorithm'], f'{m:,}', f'{n:,}', f'{title} / {name}',
-                    purpose or 'unrecorded', control, parameter(case['shape'].get('family')), parameter(case['shape'].get('seed')),
-                    'unrecorded' if z is None else f'{z:,}',
-                    'unrecorded' if z is None else f'{100*z/(m*n):.4g}',
-                    parameter(case['shape'].get('width_per_column', 'n/a')),
-                    parameter(case['shape'].get('nonzeros_per_row', 'n/a')),
-                    parameter(case['shape'].get('row_scale_ratio', 'n/a')),
-                    parameter(cfg['tolerance']), parameter(cfg.get('outer_limit')), parameter(cfg.get('eta')),
-                    'n/a' if direct else parameter(cfg.get('cg_tolerance')),
-                    'n/a' if direct else parameter(cfg.get('cg_limit_per_rank')),
-                    parameter(cfg.get('primal_regularization', cfg.get('regularization'))),
-                    parameter(cfg.get('dual_regularization', cfg.get('regularization'))),
-                    'n/a' if direct else parameter(None if budget is None else budget/1024**2),
-                    parameter(partitions), parameter(heap),
-                    parameter(environment.get('blas')), repetitions, parameter(cfg.get('warmups')),
-                    cfg.get('warmup_case') or ('n/a' if cfg.get('warmups') == 0 else 'unrecorded'),
-                    cfg['timing_scope'], f'[{filename}](data/{filename})']
-            plans.append(plan)
-            cells = [benchmark_id, env_id, warmup_outcomes, f'{len(valid)}/{len(attempted)}',
-                f'outer {span([r["outer_iterations"] for r in observed])}' + ('' if direct else f'; CG {span([r["cg_steps"] for r in observed])}'),
-                'n/a' if direct else f'{span([r["cg_restarts"] for r in observed])} / {span([r["rank_escalations"] for r in observed])}'.replace('—', 'unrecorded'),
-                'n/a' if direct else ('—' if rank is None else str(rank)), timing, outcomes, e, d]
-            results.append(cells)
-    return ('## Benchmark types\n\n' + render_table(plan_columns, plans)
-            + '\n\n## Environment\n\n' + render_table(
-                ['ID', 'Computer', 'OS', 'Spark version', 'Java version', 'Spark master'], environments, extract_shared=False)
-            + '\n\n## Result\n\n' + render_table(result_columns, results))
+            case, cfg = cases[row['case_id']], configs[row['configuration_id']]
+            gkey = (section[0], section[2], ekey, row['case_id'])
+            group = groups.setdefault(gkey, dict(section=section, ekey=ekey, case=case,
+                                                 records=[], cfgs={}, files=set()))
+            group['records'].append(row)
+            group['cfgs'][cfg['algorithm']] = cfg
+            group['files'].add(result_filename(c['campaign_id'], cfg))
+    ordered = sorted(groups.items(),
+                     key=lambda kv: (kv[1]['section'][0], kv[1]['case']['m'], kv[1]['case']['n'], kv[0][3], kv[0][2]))
+    environments, environment_ids, failures = [], {}, []
+    sections = collections.OrderedDict()
+    counters = collections.Counter()
+    for gkey, group in ordered:
+        section, case = group['section'], group['case']
+        chol = algorithm_summary([r for r in group['records'] if r['algorithm'] == 'Cholesky'],
+                                 group['cfgs'].get('Cholesky'), case)
+        cg = algorithm_summary([r for r in group['records'] if r['algorithm'] == 'CG'],
+                               group['cfgs'].get('CG'), case)
+        cfg = group['cfgs'].get('CG') or group['cfgs'].get('Cholesky')
+        env = environment_values(cfg)
+        env_key = canonical(env)
+        if env_key not in environment_ids:
+            env_id = f'ENV-{len(environment_ids)+1:02d}'
+            environment_ids[env_key] = env_id
+            environments.append([env_id, env['computer'] or 'unrecorded', env['os'] or 'unrecorded',
+                                 env['spark_version'] or 'unrecorded', env['java_version'] or 'unrecorded',
+                                 env['spark_master'] or 'unrecorded'])
+        env_id = environment_ids[env_key]
+        case_label = case['case_id']
+        # Cases where nothing was attempted for any backend move to the failures footnote.
+        if not (chol and chol['attempted']) and not (cg and cg['attempted']):
+            statuses = ', '.join(f'{k} ×{v}' for k, v in sorted(
+                collections.Counter(r['status'] for r in group['records'] if not r['warmup']).items()))
+            failures.append(f'- **{case_label} ({group["ekey"]})** ({env_id}): '
+                            f'{"/".join(sorted(group["cfgs"]))} {statuses or "no records"}')
+            continue
+        counters[section[2]] += 1
+        benchmark_id = f'{section[2]}-{counters[section[2]]:02d}'
+        topology = (chol or cg or {}).get('topology') or (cg or {}).get('topology')
+        executor_topology = (f'{topology["executors"]}×{topology["concurrent_tasks_per_executor"]}'
+                             if topology else 'unrecorded')
+        warmups = (chol or {}).get('warmups', []) + (cg or {}).get('warmups', [])
+        warmup_outcomes = ', '.join(f'{k} ×{v}' for k, v in sorted(
+            collections.Counter(r['status'] for r in warmups).items())) or 'unrecorded'
+        z, m, n = case['nnz'], case['m'], case['n']
+        shape = case['shape']
+        environment = cfg.get('environment') or {}
+        row = [benchmark_id, case_label, f'{m:,}', f'{n:,}',
+               'unrecorded' if z is None else f'{z:,}',
+               'unrecorded' if z is None else f'{100*z/(m*n):.4g}',
+               parameter(shape.get('nonzeros_per_row', shape.get('width_per_column', 'n/a'))),
+               parameter(shape.get('family')), parameter(shape.get('seed')),
+               parameter(cfg.get('partitions', environment.get('input_partitions'))),
+               parameter(cfg.get('heap_gib', environment.get('heap_gib'))),
+               executor_topology, env_id, warmup_outcomes,
+               chol['result'] if chol else '—', chol['accuracy'] if chol else '—', chol['memory'] if chol else '—',
+               cg['result'] if cg else '—', cg['accuracy'] if cg else '—', cg['memory'] if cg else '—']
+        entry = sections.setdefault(section[:2], dict(purpose=section[3], files=set(), rows=[]))
+        entry['files'].update(group['files'])
+        entry['rows'].append((row, case['case_id'], group['ekey']))
+    out = ['## Environment\n\n' + render_table(
+        ['ID', 'Computer', 'OS', 'Spark version', 'Java version', 'Spark master'], environments, extract_shared=False),
+        '## Results\n\nAll runs use the `CholeskyBenchmark` / `CGBenchmark` instances in '
+        '[Benchmark.scala](../main/scala/com/github/vbmacher/spark_lp/Benchmark.scala); '
+        'each row pairs the two backends on one case. Memory payloads are computed estimates; '
+        'RSS is sampled. Timing scope is core solve excluding independent validation; '
+        'tolerance 1e-08; no CG restarts or rank escalations were recorded.']
+    for (_, title), entry in sorted(sections.items()):
+        # Add the campaign qualifier only when a case id appears more than once in the section.
+        repeated = {cid for cid, count in collections.Counter(cid for _, cid, _ in entry['rows']).items() if count > 1}
+        rows = []
+        for cells, case_id, ekey in entry['rows']:
+            cells[1] = f'{case_id} ({ekey})' if case_id in repeated else case_id
+            rows.append(cells)
+        files = ', '.join(f'[{name}](data/{name})' for name in sorted(entry['files']))
+        block = f'### {title}\n\n{entry["purpose"]}. Data: {files}.\n\n' + render_table(columns, rows)
+        if title == 'CG partition tuning':
+            block += '\n\n' + PARTITION_NOTES
+        out.append(block)
+    if failures:
+        out.append('### Failures and resource exclusions\n\n'
+                   'Cases with no attempted solve on any backend:\n\n' + '\n'.join(failures))
+    return '\n\n'.join(out)
 
 
 def render_report(campaigns, executor_memory=()):

@@ -37,6 +37,7 @@ object ExampleWhiskas extends App {
     .master("local[2]")
     .config("spark.sql.shuffle.partitions", "2")
     .getOrCreate()
+  spark.sparkContext.setCheckpointDir(java.nio.file.Files.createTempDirectory("spark-lp-checkpoints").toString)
 
   import spark.implicits._
 

@@ -12,8 +12,11 @@ import com.typesafe.scalalogging.LazyLogging
 import org.apache.spark.SparkException
 import org.apache.spark.broadcast.Broadcast
 import org.apache.spark.mllib.linalg.DenseVector
+import org.apache.spark.rdd.RDD
 import org.apache.spark.sql.SparkSession
+import org.apache.spark.storage.StorageLevel
 
+import scala.collection.mutable
 import scala.reflect.ClassTag
 import scala.util.control.NonFatal
 
@@ -644,4 +647,31 @@ object LP extends LazyLogging {
     }
     newton.Weights(sqrt = squared.mapElements(math.sqrt), squared = squared)
   }
+}
+
+/** Owns only caches created by this operation; never releases a caller's persisted inputs. */
+private[spark_lp] final class CachedRDDs extends AutoCloseable {
+  private val owned = mutable.Set.empty[RDD[_]]
+
+  def cache[T](rdd: RDD[T]): RDD[T] = {
+    if (rdd.getStorageLevel == StorageLevel.NONE) {
+      rdd.cache()
+      owned += rdd
+    }
+    rdd
+  }
+
+  def checkpoint[T](rdd: RDD[T]): RDD[T] = {
+    cache(rdd)
+    rdd.checkpoint()
+    rdd
+  }
+
+  def keep[T](rdd: RDD[T]): RDD[T] = { owned -= rdd; rdd }
+
+  def release(rdd: RDD[_]): Unit = {
+    if (owned.remove(rdd)) rdd.unpersist(blocking = false)
+  }
+
+  override def close(): Unit = owned.toVector.foreach(release)
 }

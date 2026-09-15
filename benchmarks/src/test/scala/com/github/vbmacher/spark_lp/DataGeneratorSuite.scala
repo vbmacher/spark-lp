@@ -15,6 +15,7 @@ class DataGeneratorSuite extends AnyFunSuite with BeforeAndAfterAll {
     spark = SparkSession.builder().master("local[2]").appName("benchmark-regressions")
       .config("spark.ui.enabled", "false").config("spark.sql.shuffle.partitions", "2").getOrCreate()
     spark.sparkContext.setLogLevel("ERROR")
+    spark.sparkContext.setCheckpointDir(java.nio.file.Files.createTempDirectory("spark-lp-checkpoints").toString)
   }
 
   override def afterAll(): Unit = {

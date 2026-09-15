@@ -59,6 +59,10 @@ object BenchmarkRunner {
       .config("spark.speculation", "false").getOrCreate()
     val sc = spark.sparkContext
     sc.setLogLevel("ERROR")
+    sc.setCheckpointDir(sparkConf.getOption("spark.checkpoint.dir").getOrElse {
+      require(sc.isLocal, "Set spark.checkpoint.dir to a distributed filesystem for cluster benchmarks")
+      new File(output, "checkpoints").toURI.toString
+    })
     val generationClock = new Stopwatch
     val data = DataGenerator.generate(spec, partitions)
     val fingerprint = data.hash

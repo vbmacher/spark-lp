@@ -22,6 +22,7 @@ import scala.util.hashing.MurmurHash3
   * dense `n x m` structure or DataFrame pivot is ever materialised.
   */
 private[dsl] final class LpCompiler(problem: LpProblem, config: SolveConfig) extends AutoCloseable {
+  import LpCompiler.notFinite
 
   /** Tolerance for presolved zero-term rows (`0 <sense> rhs`). */
   private val PresolveTolerance = 1e-11
@@ -52,12 +53,7 @@ private[dsl] final class LpCompiler(problem: LpProblem, config: SolveConfig) ext
       fail("stopAfterIteration and SolveControl are supported only for continuous models")
     if (compiled.numCols == 0) {
       val feasible = compiled.rowSpecs.forall { row =>
-        val violation = row.sense match {
-          case LpSense.Eq => math.abs(row.b0)
-          case LpSense.Le => math.max(0.0, -row.b0)
-          case LpSense.Ge => math.max(0.0, row.b0)
-        }
-        violation <= config.control.feasibilityTolerance * (1.0 + math.abs(row.rhsUser))
+        row.sense.violation(-row.b0) <= config.control.feasibilityTolerance * (1.0 + math.abs(row.rhsUser))
       }
       buildSolution(compiled, sc.emptyRDD, LpStatus.Optimal, compiled.objConstant, 0,
         LpResiduals(0.0, 0.0, 0.0), Map.empty, Some(CandidateInfo(true, feasible, Some(0))))
@@ -110,7 +106,7 @@ private[dsl] final class LpCompiler(problem: LpProblem, config: SolveConfig) ext
   private[dsl] def compile(): Compiled = {
     val objective = problem.objective.getOrElse(
       fail(s"Problem '${problem.name}' has no objective; add one with += or setObjective"))
-    if (objective.constant.isNaN || objective.constant.isInfinite) {
+    if (notFinite(objective.constant)) {
       fail(s"Problem '${problem.name}': non-finite objective constant ${objective.constant}")
     }
 
@@ -120,7 +116,7 @@ private[dsl] final class LpCompiler(problem: LpProblem, config: SolveConfig) ext
     val factors = problem.quadratic.toSeq.flatMap(_.factors).filter(_._2 != 0.0)
     val objectiveSign = if (problem.sense == Maximize) -1.0 else 1.0
     factors.foreach { case (_, weight) =>
-      if (weight.isNaN || weight.isInfinite || weight * objectiveSign < 0.0)
+      if (notFinite(weight) || weight * objectiveSign < 0.0)
         fail("Quadratic factor weights must be finite and convex in minimization form")
     }
     val auxiliaryHandles = factors.indices.flatMap { i =>
@@ -202,7 +198,7 @@ private[dsl] final class LpCompiler(problem: LpProblem, config: SolveConfig) ext
     }
     val curvature = caches.cache((if (curvaturePieces.isEmpty) emptyObj else sc.union(curvaturePieces))
       .reduceByKey(_ + _).filter(_._2 != 0.0))
-    curvature.filter { case (_, q) => q.isNaN || q.isInfinite || senseMultQ * q < 0.0 }.take(1).foreach {
+    curvature.filter { case (_, q) => notFinite(q) || senseMultQ * q < 0.0 }.take(1).foreach {
       case ((si, key), q) => fail(s"Invalid curvature $q for variable '${plans(si).handle.name}' (key $key): objective must be convex in minimization form")
     }
     val freeSets = plans.filter(_.kind == SplitKind).map(_.handle.setIndex).toSet
@@ -224,12 +220,12 @@ private[dsl] final class LpCompiler(problem: LpProblem, config: SolveConfig) ext
 
     val rowNames = sc.broadcast(rowSpecs.map(_.name).toArray)
     val handleNames = sc.broadcast(plans.map(_.handle.name).toArray)
-    userTermsAgg.filter { case (_, v) => v.isNaN || v.isInfinite }.take(1).foreach {
+    userTermsAgg.filter { case (_, v) => notFinite(v) }.take(1).foreach {
       case ((si, enc, r), v) =>
         fail(s"Non-finite coefficient $v in constraint '${rowNames.value(r)}' " +
           s"for variable '${handleNames.value(si)}' (key $enc)")
     }
-    objTerms.filter { case (_, v) => v.isNaN || v.isInfinite }.take(1).foreach {
+    objTerms.filter { case (_, v) => notFinite(v) }.take(1).foreach {
       case ((si, enc), v) =>
         fail(s"Non-finite coefficient $v in the objective for variable '${handleNames.value(si)}' (key $enc)")
     }
@@ -263,7 +259,7 @@ private[dsl] final class LpCompiler(problem: LpProblem, config: SolveConfig) ext
       fixed.get(si).orElse(shifted.get(si)).map(l => c * l).getOrElse(0.0)
     }.sum()
     val objConstant = objective.constant + objAdjust + quadraticConstantCorrection
-    if (objConstant.isNaN || objConstant.isInfinite) fail("Non-finite objective after bound shifts")
+    if (notFinite(objConstant)) fail("Non-finite objective after bound shifts")
 
     val fixedSetIdx = sc.broadcast(fixedVals.keySet)
     val solverTerms = caches.cache(userTermsAgg.filter { case ((si, _, _), _) => !fixedSetIdx.value.contains(si) })
@@ -272,11 +268,7 @@ private[dsl] final class LpCompiler(problem: LpProblem, config: SolveConfig) ext
     val liveRows = solverTerms.map(_._1._3).distinct().collect().toSet
     rowSpecs.foreach { rs =>
       if (!liveRows.contains(rs.rowId)) {
-        val feasible = rs.sense match {
-          case LpSense.Eq => math.abs(rs.b0) <= PresolveTolerance
-          case LpSense.Le => rs.b0 >= -PresolveTolerance
-          case LpSense.Ge => rs.b0 <= PresolveTolerance
-        }
+        val feasible = rs.sense.violation(-rs.b0) <= PresolveTolerance
         if (!feasible) {
           fail(s"Constraint '${rs.name}' has no remaining terms but requires 0 ${rs.sense.symbol} ${rs.b0} " +
             "(after presolve) — trivially infeasible")
@@ -542,7 +534,7 @@ private[dsl] final class LpCompiler(problem: LpProblem, config: SolveConfig) ext
       fail(s"$where: lower bound must not be NaN or +inf (got $declaredLb); Double.NegativeInfinity means a free variable")
     }
     handle.upperBound.foreach { ub =>
-      if (ub.isNaN || ub.isInfinite) {
+      if (notFinite(ub)) {
         fail(s"$where: upper bound must be finite when defined (got $ub); unbounded is expressed as None")
       }
     }
@@ -642,7 +634,7 @@ private[dsl] final class LpCompiler(problem: LpProblem, config: SolveConfig) ext
     val rid = rowId
     term match {
       case ConstCoeffTerm(handle, coeff) =>
-        if (coeff.isNaN || coeff.isInfinite) {
+        if (notFinite(coeff)) {
           fail(s"$context: non-finite coefficient $coeff for variable '${handle.name}'")
         }
         val c = coeff
@@ -866,7 +858,7 @@ private[dsl] final class LpCompiler(problem: LpProblem, config: SolveConfig) ext
       }
 
       row(a).fullOuterJoin(row(b)).filter { case (_, (x, y)) =>
-        x.isEmpty || y.isEmpty || x != y || x.exists(v => v.isNaN || v.isInfinite)
+        x.isEmpty || y.isEmpty || x != y || x.exists(notFinite)
       }.take(1).isEmpty
     }
 
@@ -898,7 +890,7 @@ private[dsl] final class LpCompiler(problem: LpProblem, config: SolveConfig) ext
 
   /** Rejects a NaN or infinite right-hand side. */
   private def validateRhs(value: Double, context: String): Unit = {
-    if (value.isNaN || value.isInfinite) {
+    if (notFinite(value)) {
       fail(s"$context: non-finite right-hand side $value")
     }
   }
@@ -1085,7 +1077,7 @@ private[dsl] final class LpCompiler(problem: LpProblem, config: SolveConfig) ext
         if (data.kind == 0) {
           val value = data.shift + values(i)
           val (lower, upper) = bounds(data.setIndex)
-          if (value.isNaN || value.isInfinite) violation = Double.PositiveInfinity
+          if (notFinite(value)) violation = Double.PositiveInfinity
           else {
             violation = math.max(violation, (lower - value) / (1.0 + math.abs(lower)))
             upper.foreach(u => violation = math.max(violation, (value - u) / (1.0 + math.abs(u))))
@@ -1107,13 +1099,8 @@ private[dsl] final class LpCompiler(problem: LpProblem, config: SolveConfig) ext
     }
     compiled.rowSpecs.foldLeft(boundViolation) { (worst, row) =>
       val residual = activity(row.finalIdx) - row.rhsUser
-      val violation = if (residual.isNaN || residual.isInfinite) Double.PositiveInfinity else {
-        (row.sense match {
-          case LpSense.Eq => math.abs(residual)
-          case LpSense.Le => math.max(0.0, residual)
-          case LpSense.Ge => math.max(0.0, -residual)
-        }) / (1.0 + math.abs(row.rhsUser))
-      }
+      val violation = if (notFinite(residual)) Double.PositiveInfinity
+        else row.sense.violation(residual) / (1.0 + math.abs(row.rhsUser))
       math.max(worst, violation)
     }
   }
@@ -1135,7 +1122,7 @@ private[dsl] final class LpCompiler(problem: LpProblem, config: SolveConfig) ext
       p.handle.setIndex -> limits
     }.toMap
     val boundViolations = values.map { case ((si, _), value) =>
-      if (value.isNaN || value.isInfinite) Double.PositiveInfinity
+      if (notFinite(value)) Double.PositiveInfinity
       else {
         val (lower, upper) = bounds(si)
         math.max(lower.map(l => (l - value) / (1.0 + math.abs(l))).getOrElse(0.0),
@@ -1147,12 +1134,8 @@ private[dsl] final class LpCompiler(problem: LpProblem, config: SolveConfig) ext
       .join(values).map { case (_, ((row, c), value)) => (row, c * value) }.reduceByKey(_ + _)
     val violations = activity.rightOuterJoin(rows).map { case (_, (act, (rhs, sense))) =>
       val residual = act.getOrElse(0.0) - rhs
-      if (residual.isNaN || residual.isInfinite) Double.PositiveInfinity
-      else (sense match {
-        case LpSense.Eq => math.abs(residual)
-        case LpSense.Le => math.max(0.0, residual)
-        case LpSense.Ge => math.max(0.0, -residual)
-      }) / (1.0 + math.abs(rhs))
+      if (notFinite(residual)) Double.PositiveInfinity
+      else sense.violation(residual) / (1.0 + math.abs(rhs))
     }
     boundViolations.union(violations).fold(0.0)(math.max)
   }
@@ -1221,4 +1204,9 @@ private[dsl] final class LpCompiler(problem: LpProblem, config: SolveConfig) ext
       stopReason = stopReason,
       evidence = evidence)
   }
+}
+
+private[dsl] object LpCompiler {
+  /** True for a NaN or infinite value; the compiler rejects non-finite user data. */
+  private[compiler] def notFinite(value: Double): Boolean = value.isNaN || value.isInfinite
 }

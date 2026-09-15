@@ -5,7 +5,21 @@ import org.apache.spark.sql.functions.{col, lit, struct}
 import org.apache.spark.sql.types.{DoubleType, StringType, StructField, StructType}
 import org.apache.spark.sql.{AnalysisException, Column, DataFrame, Dataset, Encoder, Encoders, Row, SparkSession}
 
-private[dsl] sealed trait LpSense { def symbol: String }
+private[dsl] sealed trait LpSense {
+  def symbol: String
+
+  /**
+    * Non-negative constraint-violation magnitude for a signed residual `activity - rhs`; `0.0`
+    * when the constraint is satisfied. A `Le` row is violated when the activity exceeds the RHS
+    * (positive residual), a `Ge` row when it falls short (negative residual), and an `Eq` row by
+    * any deviation.
+    */
+  def violation(residual: Double): Double = this match {
+    case LpSense.Le => math.max(0.0, residual)
+    case LpSense.Ge => math.max(0.0, -residual)
+    case LpSense.Eq => math.abs(residual)
+  }
+}
 
 private[dsl] object LpSense {
   case object Le extends LpSense { val symbol = "<=" }

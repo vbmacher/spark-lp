@@ -17,4 +17,7 @@ private[dsl] final class Compiled(
   val objConstant: Double,
   val senseMult: Double,
   val userTermsAgg: RDD[((Int, String, Int), Double)],
-  val intCols: IndexedSeq[IntColumn])
+  val intCols: IndexedSeq[IntColumn],
+  val quadratic: Option[DVector] = None,
+  val originalCosts: Option[RDD[((Int, String), Double)]] = None,
+  val originalCurvature: Option[RDD[((Int, String), Double)]] = None)

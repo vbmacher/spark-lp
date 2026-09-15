@@ -4,7 +4,9 @@
 
 == Compile to equality form
 
-The continuous solver minimizes `c^T x` subject to `A x = b`, `x >= 0`.
+The linear solver minimizes `c^T x` subject to `A x = b`, `x >= 0`.
+Continuous convex QP adds a diagonal quadratic objective in this form; sparse
+coupled factors are reduced to diagonal QP as described below.
 The compiler stores columns of `A` as sparse Spark rows of `AT = A^T`.
 Variable order is `(declaration order, encoded key)`; row order follows constraint
 declaration and group keys. No wide DataFrame pivot is needed.
@@ -109,7 +111,7 @@ about 1.6 GB (1.49 GiB) at `m = 10000`, excluding other driver data. Executors a
 need packed aggregation buffers (about 400 MB each at that size). Explicit Cholesky rejects
 models above `maxLocalConstraints` and has a packed-array limit of 65535 rows.
 CG avoids that Gramian limit, but row metadata, RHS, residuals, and group keys remain on
-the driver; matrix indices are still `Int`. Each CG step adds distributed work.
+the driver; matrix indices use `Int`. Each CG step adds distributed work.
 The matrix-free operator streams each stored matrix row once per application: it
 computes the row's dot product, multiplies by its weight, and accumulates the scaled
 row into a partition sum. Partition scratch is a single row-sized sum vector.
@@ -154,7 +156,7 @@ The driver-local `org.apache.spark.wrappers.ConjugateGradient` wrapper owns the 
 iteration, warm-start state, restarts, and true-residual replacement. It uses the
 netlib BLAS dependency for dot products (`ddot`), norms (`dnrm2`), scaling
 (`dscal`), and vector updates (`daxpy`). `CgFactory` supplies the distributed operator
-and partial-Cholesky preconditioner, and retains rank escalation, monitoring, and
+and partial-Cholesky preconditioner, and controls rank escalation, monitoring, and
 bounded-inexact acceptance policy. Retrying the wrapper with a stronger preconditioner
 preserves the current solution and cumulative iteration counts without forming a Gramian.
 
@@ -205,9 +207,11 @@ restarts and rank escalations.
 
 The outer primal, dual and objective-gap residuals are always recomputed from the
 original LP. Solving only the regularized equations cannot yield `Optimal`.
-The implementation uses Mehrotra predictor-corrector steps, uniform configurable
-regularization, and Jacobi with adaptive partial Cholesky. General quadratic programming
-is outside this implementation.
+The implementation uses Mehrotra predictor-corrector steps instead of
+the paper's fixed barrier reduction, uses uniform configurable regularization instead
+of dynamically adjusting individual diagonal entries, and starts with Jacobi before
+partial Cholesky. Continuous convex quadratic objectives extend these equations as described below;
+nonconvex, mixed-integer quadratic and quadratically constrained models are unsupported.
 
 [source,scala]
 ----
@@ -226,9 +230,35 @@ val config = SolveConfig(
 
 `CgConfig` configures the matrix-free conjugate-gradient backend only. Cholesky is
 the direct alternative, selected through `newtonSolver`; it ignores CG tuning.
-Import core solver choices and settings directly from
-`com.github.vbmacher.spark_lp.newton`. The DSL exposes `NewtonSolver`
+Pass `CgConfig` through the `cgConfig` argument. Import core solver choices and
+settings from `com.github.vbmacher.spark_lp.newton`. The DSL exposes `NewtonSolver`
 through its wildcard import.
+
+== Convex quadratic extension
+
+For `0.5*x^T Q*x + c^T*x`, diagonal `Q` changes the Newton weights to
+`W = (S/X + Q + Rp)^(-1)` and direction recovery includes `Q*dx`.
+Stationarity uses `A^T*lambda + s - c - Q*x`; the objective gap compares
+`0.5*x^T Q*x + c^T*x` with `b^T*lambda - 0.5*x^T Q*x`.
+Recession certificates additionally require `Q*d = 0` within tolerance.
+Bound shifts preserve both the induced linear term and objective constant.
+
+Sparse coupled objectives use PSD factors `sum(w*(a^T*x+t)^2)`.
+Each factor adds nonnegative `u,v`, an equality `a^T*x+t = u-v`, and diagonal
+penalty `w*(u^2+v^2)`. Minimizing over `u,v` recovers the exact original penalty.
+The solver therefore applies the distributed weighted normal operator to
+an enlarged sparse matrix, without collecting a dense Hessian or forming its inverse.
+Rows include factor equalities; columns include their two auxiliary variables.
+
+Free-variable splits can make coupled Cholesky systems numerically singular near
+convergence. `Auto` selects regularized CG for coupled models containing free
+variables; explicit Cholesky is rejected. Separable objectives reject curved free
+variables. See link:quadratic-programming.md[representations and restrictions] and
+link:../benchmarks/quadratic/README.md[the measured strategy comparison].
+
+Public evidence retains original unshifted costs and curvature. For coupled QP,
+the equivalent factor-expanded model is exposed explicitly; see
+link:certificates.md[independent certificate verification].
 
 == Opt-in progress policy
 
@@ -255,8 +285,8 @@ changes for the same right-hand side. True residual checks occur at cycle ends a
 policy enabled, at most every `min(25, innerPatience)` steps, with an additional check at the
 total step cap. A rank change cannot reset the window or cap. A stalled or capped unfinished
 inner solve requests `NoProgress` and discards the unfinished direction. A successfully checked
-inner solution is accepted even if it used the final allowed step. Controls disabled retain
-the existing per-rank numerical recovery and inexact-acceptance policy.
+inner solution is accepted even if it used the final allowed step. With controls disabled,
+inner solves use the per-rank numerical recovery and inexact-acceptance policy.
 
 See link:usage.adoc[usage] for deadlines, callback fields and candidate ownership.
 

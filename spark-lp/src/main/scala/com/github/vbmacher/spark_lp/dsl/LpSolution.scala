@@ -42,14 +42,18 @@ final class LpSolution private[dsl](
   private val problem: LpProblem,
   private[dsl] val userValues: RDD[((Int, String), Double)],
   val candidate: CandidateInfo,
-  val stopReason: Option[StopReason] = None) extends AutoCloseable {
+  val stopReason: Option[StopReason] = None,
+  val evidence: Option[LpEvidence] = None) extends AutoCloseable {
 
   private def requireCandidate(): Unit = {
     if (!candidate.available) throw new LpModelException("No completed iterate is available for this solve")
   }
 
   /** Releases the materialised result. Finish all Spark actions on values before closing. */
-  override def close(): Unit = userValues.unpersist(blocking = false)
+  override def close(): Unit = {
+    userValues.unpersist(blocking = false)
+    evidence.foreach(_.close())
+  }
 
   /** The original variable domain plus `lp_variable` (display name) and `lp_value` columns. */
   def values[K](variables: LpVariableSet[K]): DataFrame = {

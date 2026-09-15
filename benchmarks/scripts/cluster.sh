@@ -169,6 +169,7 @@ command=(spark-submit --master yarn --deploy-mode client --driver-memory "${driv
   --conf spark.executor.metrics.pollingInterval=1000
   --conf spark.dynamicAllocation.enabled=false --conf spark.speculation=false
   --conf "spark.sql.shuffle.partitions=$partitions" --conf "spark.eventLog.dir=$run_uri/events/"
+  --conf "spark.checkpoint.dir=$run_uri/checkpoints/"
   --conf spark.eventLog.enabled=true --conf spark.executorEnv.OPENBLAS_NUM_THREADS=1
   --conf spark.executorEnv.OMP_NUM_THREADS=1 --conf spark.executorEnv.MKL_NUM_THREADS=1
   --driver-java-options "$java_options" --class com.github.vbmacher.spark_lp.BenchmarkRunner

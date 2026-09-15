@@ -12,12 +12,11 @@ This module measures Cholesky and CG on reproducible linear programs generated w
 
 | Location | Responsibility |
 |---|---|
-| [spark_lp/Benchmark.scala](src/main/scala/com/github/vbmacher/spark_lp/Benchmark.scala) | Algorithm contract and registry |
-| [CholeskyBenchmark.scala](src/main/scala/com/github/vbmacher/spark_lp/CholeskyBenchmark.scala), [CGBenchmark.scala](src/main/scala/com/github/vbmacher/spark_lp/CGBenchmark.scala) | Algorithm instances implementing `Benchmark` |
+| [spark_lp/Benchmark.scala](src/main/scala/com/github/vbmacher/spark_lp/Benchmark.scala) | Algorithm contract, registry and the Cholesky/CG instances |
 | [spark_lp/BenchmarkRunner.scala](src/main/scala/com/github/vbmacher/spark_lp/BenchmarkRunner.scala) | CLI parsing and `run(benchmark, config)` API |
 | [support/BenchmarkCase.scala](src/main/scala/com/github/vbmacher/spark_lp/support/BenchmarkCase.scala) | Shared CSV schema, parsing and case validation |
 | [support/DataGenerator.scala](src/main/scala/com/github/vbmacher/spark_lp/support/DataGenerator.scala) | Distributed coefficients, witnesses, input adapters and accuracy checks |
-| [support/JvmSampler.scala](src/main/scala/com/github/vbmacher/spark_lp/support/JvmSampler.scala), [Stopwatch.scala](src/main/scala/com/github/vbmacher/spark_lp/support/Stopwatch.scala), [SolveMeasurements.scala](src/main/scala/com/github/vbmacher/spark_lp/support/SolveMeasurements.scala), [RuntimeEnvironment.scala](src/main/scala/com/github/vbmacher/spark_lp/support/RuntimeEnvironment.scala) | JVM sampling, timing, progress phases, environment capture and watchdog |
+| [support/JvmSampler.scala](src/main/scala/com/github/vbmacher/spark_lp/support/JvmSampler.scala), [SolveMeasurements.scala](src/main/scala/com/github/vbmacher/spark_lp/support/SolveMeasurements.scala), [RuntimeEnvironment.scala](src/main/scala/com/github/vbmacher/spark_lp/support/RuntimeEnvironment.scala) | JVM sampling, timing, progress phases, environment capture and watchdog |
 | `src/main/resources/*.csv` | Inputs for local and EMR runs, all one schema |
 | `src/results/data/*.bmf.json` | Bencher metrics per campaign and testbed, with failure and exclusion counts |
 | `scripts/` | Campaign launch, artifact analysis, normalization and report generation |

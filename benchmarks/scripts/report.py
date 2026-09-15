@@ -356,7 +356,9 @@ def render_tables(campaigns):
             benchmark_id = f'{prefixes.get(c["campaign_id"], c["campaign_id"].upper())}-{index:02d}'
             suite = configs[cfg_id].get('suite', ALGORITHM_SUITES.get(configs[cfg_id]['algorithm']))
             if suite:
-                benchmark_id += f' · [{suite.split(".")[-1]}](../main/scala/{suite.replace(".", "/")}.scala)'
+                # The algorithm objects live in the consolidated Benchmark.scala file.
+                package_path = suite.rsplit('.', 1)[0].replace('.', '/')
+                benchmark_id += f' · [{suite.split(".")[-1]}](../main/scala/{package_path}/Benchmark.scala)'
             case, cfg = cases[case_id], configs[cfg_id]
             env = environment_values(cfg)
             env_key = canonical(env)

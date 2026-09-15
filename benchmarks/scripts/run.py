@@ -11,7 +11,7 @@ import subprocess
 import sys
 import tarfile
 import time
-from reconcile import reconcile
+from reconcile import reconcile, status_from_exit
 
 ROOT = Path(__file__).resolve().parents[2]
 AXIS = 'benchmarksSpark_3_52_12'
@@ -112,8 +112,7 @@ def main():
                         code = 124
                 (batch/'exit.json').write_text(json.dumps(dict(exit_code=code))+'\n')
                 if code:
-                    text = (batch/'application.log').read_text(errors='replace')
-                    status = 'Timeout' if code==124 else 'OOM' if 'OutOfMemoryError' in text else 'ProcessFailure'
+                    status = status_from_exit(code, (batch/'application.log').read_text(errors='replace'))
                     reason = f'Application exit {code}; see application.log'
             reconcile(batch/'records.jsonl', base, args.repetitions, args.warmups, status, reason)
             subprocess.run([sys.executable,str(ROOT/'benchmarks/scripts/analyze.py'),str(output)],check=True)

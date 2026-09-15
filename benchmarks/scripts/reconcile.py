@@ -6,6 +6,15 @@ from pathlib import Path
 import sys
 
 
+def status_from_exit(code, log_text):
+    """Map a benchmark process exit code to a record status."""
+    if not code:
+        return 'Unrun'
+    if code == 124:
+        return 'Timeout'
+    return 'OOM' if 'OutOfMemoryError' in log_text else 'ProcessFailure'
+
+
 def reconcile(records, base, repetitions, warmups, status, reason):
     records = Path(records)
     content = records.read_bytes() if records.exists() else b''
@@ -50,8 +59,7 @@ def main():
     code = int(exit_code)
     log = output / 'application.log'
     text = log.read_text(errors='replace') if log.exists() else ''
-    status = ('Timeout' if code == 124 else 'OOM' if 'OutOfMemoryError' in text
-              else 'ProcessFailure') if code else 'Unrun'
+    status = status_from_exit(code, text)
     reconcile(output / 'records.jsonl', base, manifest['repetitions'], manifest['warmups'],
               status, f'Application exit {code}; see application.log and exit.json')
 

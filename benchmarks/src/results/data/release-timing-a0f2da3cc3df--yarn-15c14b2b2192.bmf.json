@@ -1,0 +1,820 @@
+{
+  "rows-1000-vars-10000-width-8 / CG / cfg-3433e38056a6fa79": {
+    "cg-restarts": {
+      "lower_value": 0,
+      "upper_value": 0,
+      "value": 0
+    },
+    "cg-steps": {
+      "lower_value": 125,
+      "upper_value": 125,
+      "value": 125
+    },
+    "driver-heap-bytes-max": {
+      "value": 2989125232
+    },
+    "driver-rss-bytes-max": {
+      "value": 3863404544
+    },
+    "dual-max": {
+      "value": 3.348744962936415e-17
+    },
+    "gap-max": {
+      "value": 6.820322559042745e-11
+    },
+    "latency": {
+      "lower_value": 23921288035.0,
+      "upper_value": 27066789098.0,
+      "value": 25514702972.000004
+    },
+    "maximum-rank": {
+      "lower_value": 0,
+      "upper_value": 0,
+      "value": 0
+    },
+    "measured-attempted-count": {
+      "value": 5
+    },
+    "measured-converged-count": {
+      "value": 5
+    },
+    "measured-excluded-count": {
+      "value": 0
+    },
+    "measured-failed-count": {
+      "value": 0
+    },
+    "measured-records-count": {
+      "_evidence": {
+        "campaign": {
+          "campaign_id": "release-timing-a0f2da3cc3df",
+          "notes": [],
+          "schedule": [],
+          "schema_version": 1,
+          "title": "Release timing a0f2da3cc3df"
+        },
+        "case": {
+          "case_id": "rows-1000-vars-10000-width-8",
+          "fixture_hash": "49f0c4a2d0cadea55c575aca84d3037d74055680cb97c553b9cdf3d47e0ecff9",
+          "m": 1000,
+          "n": 10000,
+          "nnz": 8000,
+          "nnz_basis": "see source provenance",
+          "shape": {
+            "family": "well",
+            "nonzeros_per_row": 8,
+            "seed": 11
+          }
+        },
+        "configuration": {
+          "algorithm": "CG",
+          "cg_limit_per_rank": 1000,
+          "cg_tolerance": 1e-10,
+          "configuration_id": "cfg-3433e38056a6fa79",
+          "control": "",
+          "dual_regularization": 1e-08,
+          "environment": {
+            "blas": "com.github.fommil.netlib.F2jBLAS",
+            "computer": "distributed cluster",
+            "java_version": "11.0.32.1+10-LTS",
+            "master": "yarn",
+            "os": "Linux",
+            "spark_version": "3.5.3"
+          },
+          "environment_id": "env-59108452d067",
+          "eta": null,
+          "heap_gib": 4,
+          "implementation": "cg",
+          "label": "cg",
+          "memory_topology": {
+            "concurrent_tasks_per_executor": 4,
+            "executors": 4
+          },
+          "outer_limit": 100,
+          "partitions": 16,
+          "preconditioner_memory_bytes": 268435456,
+          "primal_regularization": 1e-08,
+          "scenario": "",
+          "source_configuration_id": "cfg-5c7ac39f0bb6f14b",
+          "source_hash": "49b8cc90e7ef92f9ef840655ac14bab098de1ca36617d2dfdabf75073c19a58e",
+          "suite": "com.github.vbmacher.spark_lp.CGBenchmark",
+          "timing_scope": "core solve excluding independent validation",
+          "tolerance": 1e-08,
+          "warmup_case": null,
+          "warmups": 1
+        },
+        "records": [
+          {
+            "accuracy_basis": "independent-original-lp",
+            "algorithm": "CG",
+            "application_id": null,
+            "attempt_id": "release-timing-a0f2da3cc3df/rows-1000-vars-10000-width-8/cfg-3433e38056a6fa79/rep-000/attempt-001",
+            "attempt_number": 1,
+            "campaign_id": "release-timing-a0f2da3cc3df",
+            "case_id": "rows-1000-vars-10000-width-8",
+            "cg_restarts": 0,
+            "cg_steps": 125,
+            "configuration_id": "cfg-3433e38056a6fa79",
+            "maximum_rank": 0,
+            "memory": {
+              "peak_heap_bytes": 2133274624,
+              "peak_rss_bytes": 3010506752,
+              "scope": "driver process; combined with executors in local mode; includes validation"
+            },
+            "outer_iterations": 7,
+            "provenance": {
+              "line": 1,
+              "source_path": "cg/records.jsonl",
+              "source_sha256": "5b2b748d26abc10b7704dd2f8c11b5a44e444c714cf63628165791bd2163dae4"
+            },
+            "rank_escalations": null,
+            "raw": {},
+            "repetition": 0,
+            "residuals": {
+              "dual": 3.348744962936415e-17,
+              "gap": 6.820212407348117e-11,
+              "min_s": 2.422759150784204e-15,
+              "min_x": 6.597386301319121e-15,
+              "objective": 7.869552711228064,
+              "objective_error": 4.217688359626856e-11,
+              "primal": 1.331105731882007e-11
+            },
+            "run_id": "release-timing-a0f2da3cc3df/rows-1000-vars-10000-width-8/cfg-3433e38056a6fa79/rep-000",
+            "solve_seconds": 31.827489749,
+            "spark_jobs": null,
+            "status": "Success",
+            "stop_reason": null,
+            "warmup": true
+          },
+          {
+            "accuracy_basis": "independent-original-lp",
+            "algorithm": "CG",
+            "application_id": null,
+            "attempt_id": "release-timing-a0f2da3cc3df/rows-1000-vars-10000-width-8/cfg-3433e38056a6fa79/rep-001/attempt-001",
+            "attempt_number": 1,
+            "campaign_id": "release-timing-a0f2da3cc3df",
+            "case_id": "rows-1000-vars-10000-width-8",
+            "cg_restarts": 0,
+            "cg_steps": 125,
+            "configuration_id": "cfg-3433e38056a6fa79",
+            "maximum_rank": 0,
+            "memory": {
+              "peak_heap_bytes": 2325260800,
+              "peak_rss_bytes": 3208593408,
+              "scope": "driver process; combined with executors in local mode; includes validation"
+            },
+            "outer_iterations": 7,
+            "provenance": {
+              "line": 2,
+              "source_path": "cg/records.jsonl",
+              "source_sha256": "5b2b748d26abc10b7704dd2f8c11b5a44e444c714cf63628165791bd2163dae4"
+            },
+            "rank_escalations": null,
+            "raw": {},
+            "repetition": 1,
+            "residuals": {
+              "dual": 3.347007663342434e-17,
+              "gap": 6.820322559042745e-11,
+              "min_s": 2.4227591507814418e-15,
+              "min_x": 6.597386301317464e-15,
+              "objective": 7.869552711228073,
+              "objective_error": 4.217798511321482e-11,
+              "primal": 1.3311055952009022e-11
+            },
+            "run_id": "release-timing-a0f2da3cc3df/rows-1000-vars-10000-width-8/cfg-3433e38056a6fa79/rep-001",
+            "solve_seconds": 25.452570697000002,
+            "spark_jobs": null,
+            "status": "Success",
+            "stop_reason": null,
+            "warmup": false
+          },
+          {
+            "accuracy_basis": "independent-original-lp",
+            "algorithm": "CG",
+            "application_id": null,
+            "attempt_id": "release-timing-a0f2da3cc3df/rows-1000-vars-10000-width-8/cfg-3433e38056a6fa79/rep-002/attempt-001",
+            "attempt_number": 1,
+            "campaign_id": "release-timing-a0f2da3cc3df",
+            "case_id": "rows-1000-vars-10000-width-8",
+            "cg_restarts": 0,
+            "cg_steps": 125,
+            "configuration_id": "cfg-3433e38056a6fa79",
+            "maximum_rank": 0,
+            "memory": {
+              "peak_heap_bytes": 2570289152,
+              "peak_rss_bytes": 3436240896,
+              "scope": "driver process; combined with executors in local mode; includes validation"
+            },
+            "outer_iterations": 7,
+            "provenance": {
+              "line": 3,
+              "source_path": "cg/records.jsonl",
+              "source_sha256": "5b2b748d26abc10b7704dd2f8c11b5a44e444c714cf63628165791bd2163dae4"
+            },
+            "rank_escalations": null,
+            "raw": {},
+            "repetition": 2,
+            "residuals": {
+              "dual": 3.347007663342434e-17,
+              "gap": 6.820222421138538e-11,
+              "min_s": 2.4227591507820184e-15,
+              "min_x": 6.597386301316055e-15,
+              "objective": 7.869552711228064,
+              "objective_error": 4.217688359626856e-11,
+              "primal": 1.331105798460847e-11
+            },
+            "run_id": "release-timing-a0f2da3cc3df/rows-1000-vars-10000-width-8/cfg-3433e38056a6fa79/rep-002",
+            "solve_seconds": 26.264784722999998,
+            "spark_jobs": null,
+            "status": "Success",
+            "stop_reason": null,
+            "warmup": false
+          },
+          {
+            "accuracy_basis": "independent-original-lp",
+            "algorithm": "CG",
+            "application_id": null,
+            "attempt_id": "release-timing-a0f2da3cc3df/rows-1000-vars-10000-width-8/cfg-3433e38056a6fa79/rep-003/attempt-001",
+            "attempt_number": 1,
+            "campaign_id": "release-timing-a0f2da3cc3df",
+            "case_id": "rows-1000-vars-10000-width-8",
+            "cg_restarts": 0,
+            "cg_steps": 125,
+            "configuration_id": "cfg-3433e38056a6fa79",
+            "maximum_rank": 0,
+            "memory": {
+              "peak_heap_bytes": 2722097416,
+              "peak_rss_bytes": 3582205952,
+              "scope": "driver process; combined with executors in local mode; includes validation"
+            },
+            "outer_iterations": 7,
+            "provenance": {
+              "line": 4,
+              "source_path": "cg/records.jsonl",
+              "source_sha256": "5b2b748d26abc10b7704dd2f8c11b5a44e444c714cf63628165791bd2163dae4"
+            },
+            "rank_escalations": null,
+            "raw": {},
+            "repetition": 3,
+            "residuals": {
+              "dual": 3.347007663342434e-17,
+              "gap": 6.820322559042745e-11,
+              "min_s": 2.422759150785049e-15,
+              "min_x": 6.597386301311879e-15,
+              "objective": 7.869552711228073,
+              "objective_error": 4.217798511321482e-11,
+              "primal": 1.3311053381720387e-11
+            },
+            "run_id": "release-timing-a0f2da3cc3df/rows-1000-vars-10000-width-8/cfg-3433e38056a6fa79/rep-003",
+            "solve_seconds": 27.066789098,
+            "spark_jobs": null,
+            "status": "Success",
+            "stop_reason": null,
+            "warmup": false
+          },
+          {
+            "accuracy_basis": "independent-original-lp",
+            "algorithm": "CG",
+            "application_id": null,
+            "attempt_id": "release-timing-a0f2da3cc3df/rows-1000-vars-10000-width-8/cfg-3433e38056a6fa79/rep-004/attempt-001",
+            "attempt_number": 1,
+            "campaign_id": "release-timing-a0f2da3cc3df",
+            "case_id": "rows-1000-vars-10000-width-8",
+            "cg_restarts": 0,
+            "cg_steps": 125,
+            "configuration_id": "cfg-3433e38056a6fa79",
+            "maximum_rank": 0,
+            "memory": {
+              "peak_heap_bytes": 2836354048,
+              "peak_rss_bytes": 3715076096,
+              "scope": "driver process; combined with executors in local mode; includes validation"
+            },
+            "outer_iterations": 7,
+            "provenance": {
+              "line": 5,
+              "source_path": "cg/records.jsonl",
+              "source_sha256": "5b2b748d26abc10b7704dd2f8c11b5a44e444c714cf63628165791bd2163dae4"
+            },
+            "rank_escalations": null,
+            "raw": {},
+            "repetition": 4,
+            "residuals": {
+              "dual": 3.348744962936415e-17,
+              "gap": 6.820222421138536e-11,
+              "min_s": 2.4227591507808478e-15,
+              "min_x": 6.59738630131648e-15,
+              "objective": 7.869552711228066,
+              "objective_error": 4.217718400998118e-11,
+              "primal": 1.331105562393006e-11
+            },
+            "run_id": "release-timing-a0f2da3cc3df/rows-1000-vars-10000-width-8/cfg-3433e38056a6fa79/rep-004",
+            "solve_seconds": 25.514702972000002,
+            "spark_jobs": null,
+            "status": "Success",
+            "stop_reason": null,
+            "warmup": false
+          },
+          {
+            "accuracy_basis": "independent-original-lp",
+            "algorithm": "CG",
+            "application_id": null,
+            "attempt_id": "release-timing-a0f2da3cc3df/rows-1000-vars-10000-width-8/cfg-3433e38056a6fa79/rep-005/attempt-001",
+            "attempt_number": 1,
+            "campaign_id": "release-timing-a0f2da3cc3df",
+            "case_id": "rows-1000-vars-10000-width-8",
+            "cg_restarts": 0,
+            "cg_steps": 125,
+            "configuration_id": "cfg-3433e38056a6fa79",
+            "maximum_rank": 0,
+            "memory": {
+              "peak_heap_bytes": 2989125232,
+              "peak_rss_bytes": 3863404544,
+              "scope": "driver process; combined with executors in local mode; includes validation"
+            },
+            "outer_iterations": 7,
+            "provenance": {
+              "line": 6,
+              "source_path": "cg/records.jsonl",
+              "source_sha256": "5b2b748d26abc10b7704dd2f8c11b5a44e444c714cf63628165791bd2163dae4"
+            },
+            "rank_escalations": null,
+            "raw": {},
+            "repetition": 5,
+            "residuals": {
+              "dual": 3.347007663342434e-17,
+              "gap": 6.820212407348117e-11,
+              "min_s": 2.422759150785245e-15,
+              "min_x": 6.5973863013149605e-15,
+              "objective": 7.869552711228064,
+              "objective_error": 4.217688359626856e-11,
+              "primal": 1.3311057111747483e-11
+            },
+            "run_id": "release-timing-a0f2da3cc3df/rows-1000-vars-10000-width-8/cfg-3433e38056a6fa79/rep-005",
+            "solve_seconds": 23.921288035,
+            "spark_jobs": null,
+            "status": "Success",
+            "stop_reason": null,
+            "warmup": false
+          }
+        ],
+        "schema_version": 1,
+        "sources": [
+          {
+            "path": "cg/records.jsonl",
+            "revision": null,
+            "sha256": "5b2b748d26abc10b7704dd2f8c11b5a44e444c714cf63628165791bd2163dae4",
+            "uri": null
+          }
+        ]
+      },
+      "value": 5
+    },
+    "measured-unknown-count": {
+      "value": 0
+    },
+    "measured-unrun-count": {
+      "value": 0
+    },
+    "objective-error-max": {
+      "value": 4.217798511321482e-11
+    },
+    "outer-iterations": {
+      "lower_value": 7,
+      "upper_value": 7,
+      "value": 7
+    },
+    "primal-max": {
+      "value": 1.331105798460847e-11
+    },
+    "warmup-attempted-count": {
+      "value": 1
+    },
+    "warmup-converged-count": {
+      "value": 1
+    },
+    "warmup-excluded-count": {
+      "value": 0
+    },
+    "warmup-failed-count": {
+      "value": 0
+    },
+    "warmup-records-count": {
+      "value": 1
+    },
+    "warmup-unknown-count": {
+      "value": 0
+    },
+    "warmup-unrun-count": {
+      "value": 0
+    }
+  },
+  "rows-1000-vars-10000-width-8 / Cholesky / cfg-be271503d6c2cba4": {
+    "cg-restarts": {
+      "lower_value": 0,
+      "upper_value": 0,
+      "value": 0
+    },
+    "cg-steps": {
+      "lower_value": 0,
+      "upper_value": 0,
+      "value": 0
+    },
+    "driver-heap-bytes-max": {
+      "value": 2780033528
+    },
+    "driver-rss-bytes-max": {
+      "value": 3710132224
+    },
+    "dual-max": {
+      "value": 3.351881612962007e-17
+    },
+    "gap-max": {
+      "value": 9.274001625840151e-11
+    },
+    "latency": {
+      "lower_value": 21617212463.999996,
+      "upper_value": 23064374763.0,
+      "value": 22373617523.0
+    },
+    "maximum-rank": {
+      "lower_value": 0,
+      "upper_value": 0,
+      "value": 0
+    },
+    "measured-attempted-count": {
+      "value": 5
+    },
+    "measured-converged-count": {
+      "value": 5
+    },
+    "measured-excluded-count": {
+      "value": 0
+    },
+    "measured-failed-count": {
+      "value": 0
+    },
+    "measured-records-count": {
+      "_evidence": {
+        "campaign": {
+          "campaign_id": "release-timing-a0f2da3cc3df",
+          "notes": [],
+          "schedule": [],
+          "schema_version": 1,
+          "title": "Release timing a0f2da3cc3df"
+        },
+        "case": {
+          "case_id": "rows-1000-vars-10000-width-8",
+          "fixture_hash": "49f0c4a2d0cadea55c575aca84d3037d74055680cb97c553b9cdf3d47e0ecff9",
+          "m": 1000,
+          "n": 10000,
+          "nnz": 8000,
+          "nnz_basis": "see source provenance",
+          "shape": {
+            "family": "well",
+            "nonzeros_per_row": 8,
+            "seed": 11
+          }
+        },
+        "configuration": {
+          "algorithm": "Cholesky",
+          "cg_limit_per_rank": 1000,
+          "cg_tolerance": 1e-10,
+          "configuration_id": "cfg-be271503d6c2cba4",
+          "control": "",
+          "dual_regularization": 0.0,
+          "environment": {
+            "blas": "com.github.fommil.netlib.F2jBLAS",
+            "computer": "distributed cluster",
+            "java_version": "11.0.32.1+10-LTS",
+            "master": "yarn",
+            "os": "Linux",
+            "spark_version": "3.5.3"
+          },
+          "environment_id": "env-59108452d067",
+          "eta": null,
+          "heap_gib": 4,
+          "implementation": "cholesky",
+          "label": "cholesky",
+          "memory_topology": {
+            "concurrent_tasks_per_executor": 4,
+            "executors": 4
+          },
+          "outer_limit": 100,
+          "partitions": 16,
+          "preconditioner_memory_bytes": 268435456,
+          "primal_regularization": 0.0,
+          "scenario": "",
+          "source_configuration_id": "cfg-1184373587486bf8",
+          "source_hash": "49b8cc90e7ef92f9ef840655ac14bab098de1ca36617d2dfdabf75073c19a58e",
+          "suite": "com.github.vbmacher.spark_lp.CholeskyBenchmark",
+          "timing_scope": "core solve excluding independent validation",
+          "tolerance": 1e-08,
+          "warmup_case": null,
+          "warmups": 1
+        },
+        "records": [
+          {
+            "accuracy_basis": "independent-original-lp",
+            "algorithm": "Cholesky",
+            "application_id": null,
+            "attempt_id": "release-timing-a0f2da3cc3df/rows-1000-vars-10000-width-8/cfg-be271503d6c2cba4/rep-000/attempt-001",
+            "attempt_number": 1,
+            "campaign_id": "release-timing-a0f2da3cc3df",
+            "case_id": "rows-1000-vars-10000-width-8",
+            "cg_restarts": 0,
+            "cg_steps": 0,
+            "configuration_id": "cfg-be271503d6c2cba4",
+            "maximum_rank": 0,
+            "memory": {
+              "peak_heap_bytes": 2146344448,
+              "peak_rss_bytes": 3031330816,
+              "scope": "driver process; combined with executors in local mode; includes validation"
+            },
+            "outer_iterations": 7,
+            "provenance": {
+              "line": 1,
+              "source_path": "cholesky/records.jsonl",
+              "source_sha256": "1fcaf4a69a95f709f2d40d5df310c6c2ab15842836e35966a435961edce656dd"
+            },
+            "rank_escalations": null,
+            "raw": {},
+            "repetition": 0,
+            "residuals": {
+              "dual": 3.3436291417855225e-17,
+              "gap": 9.274001625840151e-11,
+              "min_s": 2.422756435609805e-15,
+              "min_x": 6.597384502635133e-15,
+              "objective": 7.869552711445703,
+              "objective_error": 6.671467564264608e-11,
+              "primal": 1.7227362611603032e-16
+            },
+            "run_id": "release-timing-a0f2da3cc3df/rows-1000-vars-10000-width-8/cfg-be271503d6c2cba4/rep-000",
+            "solve_seconds": 28.777029536,
+            "spark_jobs": null,
+            "status": "Success",
+            "stop_reason": null,
+            "warmup": true
+          },
+          {
+            "accuracy_basis": "independent-original-lp",
+            "algorithm": "Cholesky",
+            "application_id": null,
+            "attempt_id": "release-timing-a0f2da3cc3df/rows-1000-vars-10000-width-8/cfg-be271503d6c2cba4/rep-001/attempt-001",
+            "attempt_number": 1,
+            "campaign_id": "release-timing-a0f2da3cc3df",
+            "case_id": "rows-1000-vars-10000-width-8",
+            "cg_restarts": 0,
+            "cg_steps": 0,
+            "configuration_id": "cfg-be271503d6c2cba4",
+            "maximum_rank": 0,
+            "memory": {
+              "peak_heap_bytes": 2218171904,
+              "peak_rss_bytes": 3141718016,
+              "scope": "driver process; combined with executors in local mode; includes validation"
+            },
+            "outer_iterations": 7,
+            "provenance": {
+              "line": 2,
+              "source_path": "cholesky/records.jsonl",
+              "source_sha256": "1fcaf4a69a95f709f2d40d5df310c6c2ab15842836e35966a435961edce656dd"
+            },
+            "rank_escalations": null,
+            "raw": {},
+            "repetition": 1,
+            "residuals": {
+              "dual": 3.3362280486264004e-17,
+              "gap": 9.27387144656468e-11,
+              "min_s": 2.4227564356102725e-15,
+              "min_x": 6.597384502635668e-15,
+              "objective": 7.8695527114456905,
+              "objective_error": 6.67132737119872e-11,
+              "primal": 1.7901657725855948e-16
+            },
+            "run_id": "release-timing-a0f2da3cc3df/rows-1000-vars-10000-width-8/cfg-be271503d6c2cba4/rep-001",
+            "solve_seconds": 22.742273978,
+            "spark_jobs": null,
+            "status": "Success",
+            "stop_reason": null,
+            "warmup": false
+          },
+          {
+            "accuracy_basis": "independent-original-lp",
+            "algorithm": "Cholesky",
+            "application_id": null,
+            "attempt_id": "release-timing-a0f2da3cc3df/rows-1000-vars-10000-width-8/cfg-be271503d6c2cba4/rep-002/attempt-001",
+            "attempt_number": 1,
+            "campaign_id": "release-timing-a0f2da3cc3df",
+            "case_id": "rows-1000-vars-10000-width-8",
+            "cg_restarts": 0,
+            "cg_steps": 0,
+            "configuration_id": "cfg-be271503d6c2cba4",
+            "maximum_rank": 0,
+            "memory": {
+              "peak_heap_bytes": 2527712272,
+              "peak_rss_bytes": 3448590336,
+              "scope": "driver process; combined with executors in local mode; includes validation"
+            },
+            "outer_iterations": 7,
+            "provenance": {
+              "line": 3,
+              "source_path": "cholesky/records.jsonl",
+              "source_sha256": "1fcaf4a69a95f709f2d40d5df310c6c2ab15842836e35966a435961edce656dd"
+            },
+            "rank_escalations": null,
+            "raw": {},
+            "repetition": 2,
+            "residuals": {
+              "dual": 3.344063990099046e-17,
+              "gap": 9.27399161204973e-11,
+              "min_s": 2.422756435610135e-15,
+              "min_x": 6.597384502634137e-15,
+              "objective": 7.869552711445701,
+              "objective_error": 6.671447536683766e-11,
+              "primal": 1.7081850787430886e-16
+            },
+            "run_id": "release-timing-a0f2da3cc3df/rows-1000-vars-10000-width-8/cfg-be271503d6c2cba4/rep-002",
+            "solve_seconds": 23.064374763,
+            "spark_jobs": null,
+            "status": "Success",
+            "stop_reason": null,
+            "warmup": false
+          },
+          {
+            "accuracy_basis": "independent-original-lp",
+            "algorithm": "Cholesky",
+            "application_id": null,
+            "attempt_id": "release-timing-a0f2da3cc3df/rows-1000-vars-10000-width-8/cfg-be271503d6c2cba4/rep-003/attempt-001",
+            "attempt_number": 1,
+            "campaign_id": "release-timing-a0f2da3cc3df",
+            "case_id": "rows-1000-vars-10000-width-8",
+            "cg_restarts": 0,
+            "cg_steps": 0,
+            "configuration_id": "cfg-be271503d6c2cba4",
+            "maximum_rank": 0,
+            "memory": {
+              "peak_heap_bytes": 2566190592,
+              "peak_rss_bytes": 3498332160,
+              "scope": "driver process; combined with executors in local mode; includes validation"
+            },
+            "outer_iterations": 7,
+            "provenance": {
+              "line": 4,
+              "source_path": "cholesky/records.jsonl",
+              "source_sha256": "1fcaf4a69a95f709f2d40d5df310c6c2ab15842836e35966a435961edce656dd"
+            },
+            "rank_escalations": null,
+            "raw": {},
+            "repetition": 3,
+            "residuals": {
+              "dual": 3.351881612962007e-17,
+              "gap": 9.27386143277426e-11,
+              "min_s": 2.422756435609719e-15,
+              "min_x": 6.597384502636507e-15,
+              "objective": 7.869552711445689,
+              "objective_error": 6.671307343617879e-11,
+              "primal": 1.809934168659024e-16
+            },
+            "run_id": "release-timing-a0f2da3cc3df/rows-1000-vars-10000-width-8/cfg-be271503d6c2cba4/rep-003",
+            "solve_seconds": 22.373617523,
+            "spark_jobs": null,
+            "status": "Success",
+            "stop_reason": null,
+            "warmup": false
+          },
+          {
+            "accuracy_basis": "independent-original-lp",
+            "algorithm": "Cholesky",
+            "application_id": null,
+            "attempt_id": "release-timing-a0f2da3cc3df/rows-1000-vars-10000-width-8/cfg-be271503d6c2cba4/rep-004/attempt-001",
+            "attempt_number": 1,
+            "campaign_id": "release-timing-a0f2da3cc3df",
+            "case_id": "rows-1000-vars-10000-width-8",
+            "cg_restarts": 0,
+            "cg_steps": 0,
+            "configuration_id": "cfg-be271503d6c2cba4",
+            "maximum_rank": 0,
+            "memory": {
+              "peak_heap_bytes": 2716220416,
+              "peak_rss_bytes": 3659296768,
+              "scope": "driver process; combined with executors in local mode; includes validation"
+            },
+            "outer_iterations": 7,
+            "provenance": {
+              "line": 5,
+              "source_path": "cholesky/records.jsonl",
+              "source_sha256": "1fcaf4a69a95f709f2d40d5df310c6c2ab15842836e35966a435961edce656dd"
+            },
+            "rank_escalations": null,
+            "raw": {},
+            "repetition": 4,
+            "residuals": {
+              "dual": 3.338406543972784e-17,
+              "gap": 9.273941543097626e-11,
+              "min_s": 2.422756435609838e-15,
+              "min_x": 6.597384502633301e-15,
+              "objective": 7.869552711445698,
+              "objective_error": 6.671407481522084e-11,
+              "primal": 1.6862803520791314e-16
+            },
+            "run_id": "release-timing-a0f2da3cc3df/rows-1000-vars-10000-width-8/cfg-be271503d6c2cba4/rep-004",
+            "solve_seconds": 21.811749115,
+            "spark_jobs": null,
+            "status": "Success",
+            "stop_reason": null,
+            "warmup": false
+          },
+          {
+            "accuracy_basis": "independent-original-lp",
+            "algorithm": "Cholesky",
+            "application_id": null,
+            "attempt_id": "release-timing-a0f2da3cc3df/rows-1000-vars-10000-width-8/cfg-be271503d6c2cba4/rep-005/attempt-001",
+            "attempt_number": 1,
+            "campaign_id": "release-timing-a0f2da3cc3df",
+            "case_id": "rows-1000-vars-10000-width-8",
+            "cg_restarts": 0,
+            "cg_steps": 0,
+            "configuration_id": "cfg-be271503d6c2cba4",
+            "maximum_rank": 0,
+            "memory": {
+              "peak_heap_bytes": 2780033528,
+              "peak_rss_bytes": 3710132224,
+              "scope": "driver process; combined with executors in local mode; includes validation"
+            },
+            "outer_iterations": 7,
+            "provenance": {
+              "line": 6,
+              "source_path": "cholesky/records.jsonl",
+              "source_sha256": "1fcaf4a69a95f709f2d40d5df310c6c2ab15842836e35966a435961edce656dd"
+            },
+            "rank_escalations": null,
+            "raw": {},
+            "repetition": 5,
+            "residuals": {
+              "dual": 3.344063990099046e-17,
+              "gap": 9.274001625840151e-11,
+              "min_s": 2.422756435610231e-15,
+              "min_x": 6.597384502635924e-15,
+              "objective": 7.869552711445701,
+              "objective_error": 6.671447536683766e-11,
+              "primal": 1.7916485573776964e-16
+            },
+            "run_id": "release-timing-a0f2da3cc3df/rows-1000-vars-10000-width-8/cfg-be271503d6c2cba4/rep-005",
+            "solve_seconds": 21.617212463999998,
+            "spark_jobs": null,
+            "status": "Success",
+            "stop_reason": null,
+            "warmup": false
+          }
+        ],
+        "schema_version": 1,
+        "sources": [
+          {
+            "path": "cholesky/records.jsonl",
+            "revision": null,
+            "sha256": "1fcaf4a69a95f709f2d40d5df310c6c2ab15842836e35966a435961edce656dd",
+            "uri": null
+          }
+        ]
+      },
+      "value": 5
+    },
+    "measured-unknown-count": {
+      "value": 0
+    },
+    "measured-unrun-count": {
+      "value": 0
+    },
+    "objective-error-max": {
+      "value": 6.671447536683766e-11
+    },
+    "outer-iterations": {
+      "lower_value": 7,
+      "upper_value": 7,
+      "value": 7
+    },
+    "primal-max": {
+      "value": 1.809934168659024e-16
+    },
+    "warmup-attempted-count": {
+      "value": 1
+    },
+    "warmup-converged-count": {
+      "value": 1
+    },
+    "warmup-excluded-count": {
+      "value": 0
+    },
+    "warmup-failed-count": {
+      "value": 0
+    },
+    "warmup-records-count": {
+      "value": 1
+    },
+    "warmup-unknown-count": {
+      "value": 0
+    },
+    "warmup-unrun-count": {
+      "value": 0
+    }
+  }
+}

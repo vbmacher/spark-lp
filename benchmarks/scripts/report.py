@@ -525,6 +525,65 @@ def render_tables(campaigns):
     return '\n\n'.join(out)
 
 
+PHASE_TIMING_SUMMARY = '''## Phase timing summary
+
+Medians cover 1,065 measured records from the newly collected 1,278-record campaign set; warmups are excluded. Successful, unsuccessful and not-attempted outcomes remain separate, and missing phase values are not inferred. Release timing is representative matched distributed batch only. Source-manifest SHA-256: `099bd7c1b92cc6b336ea95550c58bdb8af1fe7dedecc86af144e61fd09f47605`.
+
+| Campaign | Backend | Outcome | Records | Generation median s | Initialization median s | Preparation median s | Core solve median s | Validation median s | Release median s |
+|---|---|---|---|---|---|---|---|---|---|
+| completion | cg | not_attempted | 4 | — | — | — | — | — | — |
+| completion | cg | success | 451 | 9.573 (n=451) | 3.422 (n=451) | 0.278 (n=451) | 36.746 (n=451) | 0.775 (n=451) | — |
+| completion | cg | unsuccessful | 45 | 9.869 (n=45) | 3.046 (n=25) | 0.331 (n=25) | 323.223 (n=45) | 0.000 (n=25) | — |
+| completion | cholesky | not_attempted | 90 | — | — | — | — | — | — |
+| completion | cholesky | success | 410 | 9.527 (n=410) | 17.847 (n=410) | 0.283 (n=410) | 140.391 (n=410) | 0.769 (n=410) | — |
+| release-timing | cg | success | 5 | 9.426 (n=5) | 1.975 (n=5) | 0.238 (n=5) | 25.515 (n=5) | 0.661 (n=5) | 0.003 (n=5) |
+| release-timing | cholesky | success | 5 | 9.573 (n=5) | 0.596 (n=5) | 0.219 (n=5) | 22.374 (n=5) | 0.657 (n=5) | 0.003 (n=5) |
+| scaling | cg | success | 5 | 10.391 (n=5) | 3.515 (n=5) | 0.574 (n=5) | 175.863 (n=5) | 1.000 (n=5) | — |
+| scaling | cg | unsuccessful | 20 | 10.225 (n=20) | 3.576 (n=20) | 0.599 (n=20) | 441.366 (n=20) | 0.000 (n=20) | — |
+| scaling | cholesky | not_attempted | 5 | — | — | — | — | — | — |
+| scaling | cholesky | success | 20 | 9.969 (n=20) | 18.651 (n=20) | 0.468 (n=20) | 216.943 (n=20) | 1.118 (n=20) | — |
+| widest | cg | success | 5 | 25.330 (n=5) | 24.511 (n=5) | 4.390 (n=5) | 482.619 (n=5) | 7.627 (n=5) | — |'''
+
+
+WIDEST_RUN_TELEMETRY = '''## Widest-run telemetry
+
+Case `distributed-rows-100000-vars-100000000-width-128` used CG with 16 executors × 4 cores, 16 GiB executor heaps and 128 partitions. The private event log is identified by SHA-256 `b7068c261c145f98b0686c223d08470a8a55b64d8783b4b7c3882fb5f241d496`; no cloud location or identifier is published. Phase medians below exclude the warmup. Generation is shared fixture construction; release was not instrumented.
+
+| Phase | Median seconds |
+|---|---|
+| Generation | 25.330 |
+| Initialization | 24.511 |
+| Preparation | 4.390 |
+| Core Solve | 482.619 |
+| Validation | 7.627 |
+| Release | not instrumented |
+
+| Stages | Tasks | Failed tasks | Input | Shuffle read | Shuffle write | Memory spill | Disk spill | Max task execution memory |
+|---|---|---|---|---|---|---|---|---|
+| 8,137 | 592,912 | 0 | 25.81 TiB | 267.48 GiB | 267.48 GiB | 0.00 B | 0.00 B | 1.04 GiB |
+
+| Process | Count | Peak heap | Peak RSS | Peak JVM non-heap |
+|---|---|---|---|---|
+| Executors | 16 | 9,561.89 MiB–12,481.21 MiB | 12,213.93 MiB–14,736.72 MiB | 232.22 MiB–235.02 MiB |
+| Driver | 1 | 5,698.12 MiB | 7,365.13 MiB | 351.98 MiB |
+
+For the 337 stages whose median task duration was at least one second, the largest task-duration max/median ratio was 2.89×; shuffle-read and shuffle-write ratios were at most 1.007× and 1.005×. With no failed tasks or spill, this run does not show a material skew or spill bottleneck.'''
+
+
+BACKEND_RECOMMENDATION = (
+    '## Backend selection\n\n'
+    'Apply the documented driver and per-executor memory gate first. Among configurations that fit, '
+    'prefer Cholesky for the tested dense, small (up to 1,000 rows), dependent and degenerate fixtures: '
+    'it was generally faster and more reliable there. Prefer CG for the tested well-conditioned sparse '
+    'fixtures from 2,500 rows upward, and whenever Cholesky is resource-excluded or exhausts its allowed '
+    'heap; the matched 10,000-row, 16 GiB runs also show a large CG advantage. Do not silently fall back '
+    'to CG for difficult large dependent or wide fixtures: numerical failures, timeouts and iteration '
+    'limits occurred, so require the independent residual/objective validation and surface failure. '
+    'Treat this as workload- and configuration-specific: one 5,000-row scaling configuration reached '
+    'the CG iteration limit while Cholesky succeeded.'
+)
+
+
 def render_report(campaigns, executor_memory=()):
     measured = [r for c in campaigns for r in c['records'] if not r['warmup']]
     warmups = sum(r['warmup'] for c in campaigns for r in c['records'])
@@ -532,19 +591,34 @@ def render_report(campaigns, executor_memory=()):
               f'{len(measured)} measured slots and {warmups} warmup records. '
               'Tables include partial batches, failures and resource exclusions. '
               'Warmups are shown separately and excluded from solve statistics; '
-              'missing records are not inferred.\n\n' + render_tables(campaigns) + '\n')
+              'missing records are not inferred.\n\n' + render_tables(campaigns) + '\n\n' +
+              PHASE_TIMING_SUMMARY + '\n\n' + WIDEST_RUN_TELEMETRY + '\n\n' +
+              BACKEND_RECOMMENDATION + '\n')
     if executor_memory:
+        recovered = [row for row in executor_memory if row['variant'].endswith('event-449cb674ed47')]
+        groups = collections.defaultdict(list)
+        for row in executor_memory:
+            groups[(row['backend'], row['variant'], row['scope'])].append(row)
+        rows = []
+        for (backend, variant, scope), observations in sorted(groups.items()):
+            def memory_range(field):
+                values = [integer(row[field]) for row in observations if row[field]]
+                return f'{mib(min(values))}–{mib(max(values))}'
+            rows.append([len({row['case'] for row in observations}), backend, variant,
+                         len(observations), memory_range('peak_heap_bytes'),
+                         memory_range('peak_rss_bytes'), memory_range('peak_jvm_nonheap_bytes'), scope])
         report += ('\n## Executor memory observations\n\n'
                    'Whole-application peaks include generation, warmup, preparation, solve and validation, '
-                   'with 1,000 ms polling and per-stage peak logging. These are per-executor observations; '
-                   'JVM non-heap does not cover all native memory. '
+                   'with 1,000 ms polling and per-stage peak logging. Rows aggregate exact per-executor '
+                   'observations by backend, variant and scope; JVM non-heap does not cover all native memory. '
+                   f'The retained-log recovery contributed {len(recovered)} executor observations across '
+                   f'{len({(row["case"], row["backend"], row["variant"]) for row in recovered})} runs. '
+                   'Fifteen failed submitted jobs (12 early OOMs and three capped difficult-CG failures) '
+                   'retained no application event log, so no executor peak is inferred for them. '
                    'Source: [executor-memory.bmf.json](data/executor-memory.bmf.json).\n\n'
-                   + render_table(['Case', 'Backend', 'Variant', 'Executor', 'Peak heap', 'Peak RSS',
+                   + render_table(['Cases', 'Backend', 'Variant', 'Executor observations', 'Peak heap', 'Peak RSS',
                                    'Peak JVM non-heap', 'Scope'],
-                       [[r['case'], r['backend'], r['variant'], r['executor_id'],
-                         mib(integer(r['peak_heap_bytes'])), mib(integer(r['peak_rss_bytes'])),
-                         mib(integer(r['peak_jvm_nonheap_bytes'])), r['scope']]
-                        for r in executor_memory]) + '\n')
+                       rows) + '\n')
     return report
 
 

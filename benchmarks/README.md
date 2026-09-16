@@ -5,7 +5,6 @@ This module measures Cholesky and CG on reproducible linear programs generated w
 - [Measured results](src/results/REPORT.md)
 - [CG partition performance and recommended settings](src/results/REPORT.md#cg-partition-tuning)
 - [Bencher data format](#bencher-data-format)
-- [Remaining runs and EMR plan](src/results/TODO.md)
 - [Case inventories](src/main/resources/)
 
 ## Structure
@@ -60,7 +59,7 @@ Generation uses `spark.range`, SQL expressions, joins and aggregations. Coeffici
 |---|---|
 | `solver-scaling.csv` | How do solve time and memory change as rows, variables and support grow? |
 | `sparsity-and-conditioning.csv` | How do density, scaling, near dependence and degeneracy affect convergence and cost? |
-| `emr-scaling.csv` | How do the algorithms behave on larger distributed problems? Validation status: pending; see the campaign plan. |
+| `emr-scaling.csv` | How do the algorithms behave on larger distributed problems? See the distributed results and widest-run telemetry in the measured report. |
 
 ## Build and run
 
@@ -89,7 +88,7 @@ The launcher refuses to overwrite a run, pins BLAS to one thread, alternates bac
 
 Use AWS CLI credentials with access to the cluster and S3 prefix. The primary node needs AWS CLI, Bash, Python 3, `timeout`, `sha256sum` and `spark-submit`, and its instance role needs read/write on the artifact prefix. The local launcher needs `jq` and sbt, or a prebuilt assembly via `--jar`.
 
-Create a dedicated cluster with `aws emr create-cluster` or reuse an idle one. This example uses existing IAM roles, a chosen subnet and EMR 7.6.0; replace the parameters and size instances for the [campaign plan](src/results/TODO.md). See [AWS CLI cluster creation](https://docs.aws.amazon.com/cli/latest/reference/emr/create-cluster.html).
+Create a dedicated cluster with `aws emr create-cluster` or reuse an idle one. This example uses existing IAM roles, a chosen subnet and EMR 7.6.0; replace the parameters and size instances for the intended campaign. See [AWS CLI cluster creation](https://docs.aws.amazon.com/cli/latest/reference/emr/create-cluster.html).
 
 ```sh
 export AWS_DEFAULT_REGION=us-east-1
@@ -128,7 +127,7 @@ aws emr terminate-clusters --cluster-ids "$BENCHMARK_CLUSTER_ID"
 
 Reliable solver checkpoints use `checkpoints/` under the local output directory or the EMR run prefix. For a custom cluster, set `--conf spark.checkpoint.dir=<distributed-uri>`; the runner passes it to `SparkContext.setCheckpointDir`. Retain checkpoints until the run finishes.
 
-Raw measurements, environment, command, application log and exit status upload under `results/`; Spark event logs under `events/`, submission inputs under `input/`. The step fills missing repetitions with the process failure followed by `Unrun` slots, preserves an existing watchdog failure and a nonzero exit, and attempts the upload on failure too. A whole-application timeout bounds work to `(warmups + repetitions) × 30 minutes + 10 minutes`. Node loss or forced termination can prevent uploads — reconcile missing attempts against step/container logs before importing. Per-executor memory sampling is [pending](src/results/TODO.md).
+Raw measurements, environment, command, application log and exit status upload under `results/`; Spark event logs under `events/`, submission inputs under `input/`. The step fills missing repetitions with the process failure followed by `Unrun` slots, preserves an existing watchdog failure and a nonzero exit, and attempts the upload on failure too. A whole-application timeout bounds work to `(warmups + repetitions) × 30 minutes + 10 minutes`. Node loss or forced termination can prevent uploads — reconcile missing attempts against step/container logs before importing. The measured report includes per-executor memory observations derived from Spark event logs.
 
 ## Results and environments
 

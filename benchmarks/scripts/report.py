@@ -337,6 +337,14 @@ def experiment_key(campaign_id):
     return re.sub(r'-(cg|cholesky)$', '', campaign_id)
 
 
+def comparison_key(cfg):
+    """Keep runs separate when a backend-independent execution setting changes."""
+    return canonical({key: cfg.get(key) for key in (
+        'source_hash', 'environment', 'partitions', 'heap_gib', 'memory_topology',
+        'tolerance', 'outer_limit', 'eta', 'control', 'scenario', 'timing_scope',
+        'warmups', 'warmup_case')})
+
+
 def parameter(value):
     if value is None:
         return 'unrecorded'
@@ -423,6 +431,26 @@ PARTITION_NOTES = (
     '`_evidence`.')
 
 
+SCALING_NOTES = (
+    '**Fixed-wide executor sweep:** The identical 5,000 × 50,000 seed-11 fixture used '
+    '4×4/16, 8×4/32 and 16×4/64 executor/partition configurations, each with one warmup and '
+    'five measured attempts per backend. Cholesky medians were 202.785, 208.440 and 224.481 '
+    'seconds respectively; all attempts passed independent `1e-8` validation. CG reached its '
+    'iteration limit in every measured attempt, so unsuccessful durations are not speedups. '
+    'This fixed-input sweep does not show a benefit from adding executors.\n\n'
+    '**Proportional scaling:** The 5,000/4-executor, 10,000/8-executor and '
+    '20,000/16-executor cases remain separate. Outcomes change with problem size: Cholesky alone '
+    'succeeded at 5,000 rows, both backends succeeded at 10,000 rows, and at 20,000 rows Cholesky '
+    'was resource-excluded while CG reached its iteration limit. These results do not support a '
+    'monotonic scaling claim.')
+
+
+ACCURACY_NOTES = (
+    '**Accuracy protocols:** `primary-*`, `difficulty-*`, `shape-*`, `memory-*` and `scale-*` '
+    'cases use the primary `1e-8` protocol. The `accuracy-*` cases are the separate near-crossover '
+    '`1e-6` sweep; timings and validation counts are never pooled across tolerances.')
+
+
 def render_tables(campaigns):
     from bencher_export import result_filename
     columns = ['ID', 'Case', 'Rows m', 'Variables n', 'Nonzeros', 'Density (%)', 'Nonzeros / row',
@@ -441,14 +469,20 @@ def render_tables(campaigns):
         configs = {x['configuration_id']: x for x in c['configurations']}
         for row in c['records']:
             case, cfg = cases[row['case_id']], configs[row['configuration_id']]
-            gkey = (section[0], section[2], ekey, row['case_id'])
+            gkey = (section[0], section[2], ekey, row['case_id'], comparison_key(cfg))
             group = groups.setdefault(gkey, dict(section=section, ekey=ekey, case=case,
                                                  records=[], cfgs={}, files=set()))
             group['records'].append(row)
             group['cfgs'][cfg['algorithm']] = cfg
             group['files'].add(result_filename(c['campaign_id'], cfg))
-    ordered = sorted(groups.items(),
-                     key=lambda kv: (kv[1]['section'][0], kv[1]['case']['m'], kv[1]['case']['n'], kv[0][3], kv[0][2]))
+    def group_order(item):
+        gkey, group = item
+        cfg = next(iter(group['cfgs'].values()))
+        topology = cfg.get('memory_topology') or {}
+        return (group['section'][0], group['case']['m'], group['case']['n'], gkey[3], gkey[2],
+                topology.get('executors', 0), cfg.get('partitions') or 0)
+
+    ordered = sorted(groups.items(), key=group_order)
     environments, environment_ids, failures = [], {}, []
     sections = collections.OrderedDict()
     counters = collections.Counter()
@@ -506,7 +540,7 @@ def render_tables(campaigns):
         '[Benchmark.scala](../main/scala/com/github/vbmacher/spark_lp/Benchmark.scala); '
         'each row pairs the two backends on one case. Memory payloads are computed estimates; '
         'RSS is sampled. Timing scope is core solve excluding independent validation; '
-        'tolerance 1e-08; no CG restarts or rank escalations were recorded.']
+        'the tolerance is recorded per case; no CG restarts or rank escalations were recorded.']
     for (_, title), entry in sorted(sections.items()):
         # Add the campaign qualifier only when a case id appears more than once in the section.
         repeated = {cid for cid, count in collections.Counter(cid for _, cid, _ in entry['rows']).items() if count > 1}
@@ -518,6 +552,10 @@ def render_tables(campaigns):
         block = f'### {title}\n\n{entry["purpose"]}. Data: {files}.\n\n' + render_table(columns, rows)
         if title == 'CG partition tuning':
             block += '\n\n' + PARTITION_NOTES
+        elif title.startswith('Benchmark scaling distributed'):
+            block += '\n\n' + SCALING_NOTES
+        elif title.startswith('Sparsity and conditioning distributed'):
+            block += '\n\n' + ACCURACY_NOTES
         out.append(block)
     if failures:
         out.append('### Failures and resource exclusions\n\n'
@@ -579,8 +617,10 @@ BACKEND_RECOMMENDATION = (
     'heap; the matched 10,000-row, 16 GiB runs also show a large CG advantage. Do not silently fall back '
     'to CG for difficult large dependent or wide fixtures: numerical failures, timeouts and iteration '
     'limits occurred, so require the independent residual/objective validation and surface failure. '
-    'Treat this as workload- and configuration-specific: one 5,000-row scaling configuration reached '
-    'the CG iteration limit while Cholesky succeeded.'
+    'Treat this as workload- and configuration-specific: all three fixed-wide 5,000-row executor '
+    'configurations reached the CG iteration limit while Cholesky succeeded. Row count alone does not '
+    'establish a universal crossover, so `Auto` keeps the documented 10,000-row conservative heuristic '
+    'and memory gate; callers can lower the gate or explicitly select either backend.'
 )
 
 

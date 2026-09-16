@@ -288,7 +288,7 @@ Cases with no attempted solve on any backend:
 
 ## Phase timing summary
 
-Medians cover 1,065 measured records from the newly collected 1,278-record campaign set; warmups are excluded. Successful, unsuccessful and not-attempted outcomes remain separate, and missing phase values are not inferred. Release timing is representative matched distributed batch only. Source-manifest SHA-256: `099bd7c1b92cc6b336ea95550c58bdb8af1fe7dedecc86af144e61fd09f47605`. Data: [PHASE_TIMINGS.json](PHASE_TIMINGS.json).
+Medians cover 1,065 measured records from the newly collected 1,278-record campaign set; warmups are excluded. Successful, unsuccessful and not-attempted outcomes remain separate, and missing phase values are not inferred. Release timing is representative matched distributed batch only. Source-manifest SHA-256: `099bd7c1b92cc6b336ea95550c58bdb8af1fe7dedecc86af144e61fd09f47605`.
 
 | Campaign | Backend | Outcome | Records | Generation median s | Initialization median s | Preparation median s | Core solve median s | Validation median s | Release median s |
 |---|---|---|---|---|---|---|---|---|---|

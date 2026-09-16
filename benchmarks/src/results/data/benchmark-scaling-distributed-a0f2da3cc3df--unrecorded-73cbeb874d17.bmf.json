@@ -1,0 +1,365 @@
+{
+  "scaling-wide-20000-10-20-seed-11 / Cholesky / cfg-4a2fe36d451728fe": {
+    "measured-attempted-count": {
+      "value": 0
+    },
+    "measured-converged-count": {
+      "value": 0
+    },
+    "measured-excluded-count": {
+      "value": 5
+    },
+    "measured-failed-count": {
+      "value": 0
+    },
+    "measured-records-count": {
+      "_evidence": {
+        "campaign": {
+          "campaign_id": "benchmark-scaling-distributed-a0f2da3cc3df",
+          "notes": [],
+          "schedule": [],
+          "schema_version": 1,
+          "title": "Benchmark scaling distributed a0f2da3cc3df"
+        },
+        "case": {
+          "case_id": "scaling-wide-20000-10-20-seed-11",
+          "fixture_hash": "95a7c05433fbb36b8d0a65821e8f7d76fc062cd4c5785dfd7e42674c112f0a5b",
+          "m": 20000,
+          "n": 200000,
+          "nnz": 400000,
+          "nnz_basis": "see source provenance",
+          "shape": {
+            "family": "wide",
+            "nonzeros_per_row": 20,
+            "seed": 11
+          }
+        },
+        "configuration": {
+          "algorithm": "Cholesky",
+          "cg_limit_per_rank": null,
+          "cg_tolerance": null,
+          "configuration_id": "cfg-4a2fe36d451728fe",
+          "control": "",
+          "dual_regularization": null,
+          "environment": {
+            "blas": "",
+            "computer": "",
+            "java_version": "",
+            "master": "",
+            "os": "",
+            "spark_version": ""
+          },
+          "environment_id": "env-598484fa71b2",
+          "eta": null,
+          "heap_gib": 16,
+          "implementation": "cholesky",
+          "label": "cholesky",
+          "memory_topology": null,
+          "outer_limit": null,
+          "partitions": 64,
+          "preconditioner_memory_bytes": null,
+          "primal_regularization": null,
+          "scenario": "",
+          "source_configuration_id": "cfg-880c8d43201d1ad7",
+          "source_hash": "27550f49a95499df115f9c3ee81764150f08778820608d19923bb62092ead6af",
+          "suite": "com.github.vbmacher.spark_lp.CholeskyBenchmark",
+          "timing_scope": "core solve excluding independent validation",
+          "tolerance": 1e-08,
+          "warmup_case": null,
+          "warmups": null
+        },
+        "records": [
+          {
+            "accuracy_basis": "independent-original-lp",
+            "algorithm": "Cholesky",
+            "application_id": null,
+            "attempt_id": "benchmark-scaling-distributed-a0f2da3cc3df/scaling-wide-20000-10-20-seed-11/cfg-4a2fe36d451728fe/rep-000/attempt-001",
+            "attempt_number": 1,
+            "campaign_id": "benchmark-scaling-distributed-a0f2da3cc3df",
+            "case_id": "scaling-wide-20000-10-20-seed-11",
+            "cg_restarts": null,
+            "cg_steps": null,
+            "configuration_id": "cfg-4a2fe36d451728fe",
+            "maximum_rank": null,
+            "memory": {
+              "peak_heap_bytes": null,
+              "peak_rss_bytes": null,
+              "scope": "driver process; combined with executors in local mode; includes validation"
+            },
+            "outer_iterations": null,
+            "provenance": {
+              "line": 1,
+              "source_path": "scaling-wide-20000-10-20-seed-11--cholesky--e16-p64/records.jsonl",
+              "source_sha256": "9a695df39cfedc44bcac3bee1f17f7968f16b500d3a6d910098e46a8171189f2"
+            },
+            "rank_escalations": null,
+            "raw": {},
+            "repetition": 0,
+            "residuals": {
+              "dual": null,
+              "gap": null,
+              "min_s": null,
+              "min_x": null,
+              "objective": null,
+              "objective_error": null,
+              "primal": null
+            },
+            "run_id": "benchmark-scaling-distributed-a0f2da3cc3df/scaling-wide-20000-10-20-seed-11/cfg-4a2fe36d451728fe/rep-000",
+            "solve_seconds": null,
+            "spark_jobs": null,
+            "status": "ResourceExcluded",
+            "stop_reason": null,
+            "warmup": true
+          },
+          {
+            "accuracy_basis": "independent-original-lp",
+            "algorithm": "Cholesky",
+            "application_id": null,
+            "attempt_id": "benchmark-scaling-distributed-a0f2da3cc3df/scaling-wide-20000-10-20-seed-11/cfg-4a2fe36d451728fe/rep-001/attempt-001",
+            "attempt_number": 1,
+            "campaign_id": "benchmark-scaling-distributed-a0f2da3cc3df",
+            "case_id": "scaling-wide-20000-10-20-seed-11",
+            "cg_restarts": null,
+            "cg_steps": null,
+            "configuration_id": "cfg-4a2fe36d451728fe",
+            "maximum_rank": null,
+            "memory": {
+              "peak_heap_bytes": null,
+              "peak_rss_bytes": null,
+              "scope": "driver process; combined with executors in local mode; includes validation"
+            },
+            "outer_iterations": null,
+            "provenance": {
+              "line": 2,
+              "source_path": "scaling-wide-20000-10-20-seed-11--cholesky--e16-p64/records.jsonl",
+              "source_sha256": "9a695df39cfedc44bcac3bee1f17f7968f16b500d3a6d910098e46a8171189f2"
+            },
+            "rank_escalations": null,
+            "raw": {},
+            "repetition": 1,
+            "residuals": {
+              "dual": null,
+              "gap": null,
+              "min_s": null,
+              "min_x": null,
+              "objective": null,
+              "objective_error": null,
+              "primal": null
+            },
+            "run_id": "benchmark-scaling-distributed-a0f2da3cc3df/scaling-wide-20000-10-20-seed-11/cfg-4a2fe36d451728fe/rep-001",
+            "solve_seconds": null,
+            "spark_jobs": null,
+            "status": "ResourceExcluded",
+            "stop_reason": null,
+            "warmup": false
+          },
+          {
+            "accuracy_basis": "independent-original-lp",
+            "algorithm": "Cholesky",
+            "application_id": null,
+            "attempt_id": "benchmark-scaling-distributed-a0f2da3cc3df/scaling-wide-20000-10-20-seed-11/cfg-4a2fe36d451728fe/rep-002/attempt-001",
+            "attempt_number": 1,
+            "campaign_id": "benchmark-scaling-distributed-a0f2da3cc3df",
+            "case_id": "scaling-wide-20000-10-20-seed-11",
+            "cg_restarts": null,
+            "cg_steps": null,
+            "configuration_id": "cfg-4a2fe36d451728fe",
+            "maximum_rank": null,
+            "memory": {
+              "peak_heap_bytes": null,
+              "peak_rss_bytes": null,
+              "scope": "driver process; combined with executors in local mode; includes validation"
+            },
+            "outer_iterations": null,
+            "provenance": {
+              "line": 3,
+              "source_path": "scaling-wide-20000-10-20-seed-11--cholesky--e16-p64/records.jsonl",
+              "source_sha256": "9a695df39cfedc44bcac3bee1f17f7968f16b500d3a6d910098e46a8171189f2"
+            },
+            "rank_escalations": null,
+            "raw": {},
+            "repetition": 2,
+            "residuals": {
+              "dual": null,
+              "gap": null,
+              "min_s": null,
+              "min_x": null,
+              "objective": null,
+              "objective_error": null,
+              "primal": null
+            },
+            "run_id": "benchmark-scaling-distributed-a0f2da3cc3df/scaling-wide-20000-10-20-seed-11/cfg-4a2fe36d451728fe/rep-002",
+            "solve_seconds": null,
+            "spark_jobs": null,
+            "status": "ResourceExcluded",
+            "stop_reason": null,
+            "warmup": false
+          },
+          {
+            "accuracy_basis": "independent-original-lp",
+            "algorithm": "Cholesky",
+            "application_id": null,
+            "attempt_id": "benchmark-scaling-distributed-a0f2da3cc3df/scaling-wide-20000-10-20-seed-11/cfg-4a2fe36d451728fe/rep-003/attempt-001",
+            "attempt_number": 1,
+            "campaign_id": "benchmark-scaling-distributed-a0f2da3cc3df",
+            "case_id": "scaling-wide-20000-10-20-seed-11",
+            "cg_restarts": null,
+            "cg_steps": null,
+            "configuration_id": "cfg-4a2fe36d451728fe",
+            "maximum_rank": null,
+            "memory": {
+              "peak_heap_bytes": null,
+              "peak_rss_bytes": null,
+              "scope": "driver process; combined with executors in local mode; includes validation"
+            },
+            "outer_iterations": null,
+            "provenance": {
+              "line": 4,
+              "source_path": "scaling-wide-20000-10-20-seed-11--cholesky--e16-p64/records.jsonl",
+              "source_sha256": "9a695df39cfedc44bcac3bee1f17f7968f16b500d3a6d910098e46a8171189f2"
+            },
+            "rank_escalations": null,
+            "raw": {},
+            "repetition": 3,
+            "residuals": {
+              "dual": null,
+              "gap": null,
+              "min_s": null,
+              "min_x": null,
+              "objective": null,
+              "objective_error": null,
+              "primal": null
+            },
+            "run_id": "benchmark-scaling-distributed-a0f2da3cc3df/scaling-wide-20000-10-20-seed-11/cfg-4a2fe36d451728fe/rep-003",
+            "solve_seconds": null,
+            "spark_jobs": null,
+            "status": "ResourceExcluded",
+            "stop_reason": null,
+            "warmup": false
+          },
+          {
+            "accuracy_basis": "independent-original-lp",
+            "algorithm": "Cholesky",
+            "application_id": null,
+            "attempt_id": "benchmark-scaling-distributed-a0f2da3cc3df/scaling-wide-20000-10-20-seed-11/cfg-4a2fe36d451728fe/rep-004/attempt-001",
+            "attempt_number": 1,
+            "campaign_id": "benchmark-scaling-distributed-a0f2da3cc3df",
+            "case_id": "scaling-wide-20000-10-20-seed-11",
+            "cg_restarts": null,
+            "cg_steps": null,
+            "configuration_id": "cfg-4a2fe36d451728fe",
+            "maximum_rank": null,
+            "memory": {
+              "peak_heap_bytes": null,
+              "peak_rss_bytes": null,
+              "scope": "driver process; combined with executors in local mode; includes validation"
+            },
+            "outer_iterations": null,
+            "provenance": {
+              "line": 5,
+              "source_path": "scaling-wide-20000-10-20-seed-11--cholesky--e16-p64/records.jsonl",
+              "source_sha256": "9a695df39cfedc44bcac3bee1f17f7968f16b500d3a6d910098e46a8171189f2"
+            },
+            "rank_escalations": null,
+            "raw": {},
+            "repetition": 4,
+            "residuals": {
+              "dual": null,
+              "gap": null,
+              "min_s": null,
+              "min_x": null,
+              "objective": null,
+              "objective_error": null,
+              "primal": null
+            },
+            "run_id": "benchmark-scaling-distributed-a0f2da3cc3df/scaling-wide-20000-10-20-seed-11/cfg-4a2fe36d451728fe/rep-004",
+            "solve_seconds": null,
+            "spark_jobs": null,
+            "status": "ResourceExcluded",
+            "stop_reason": null,
+            "warmup": false
+          },
+          {
+            "accuracy_basis": "independent-original-lp",
+            "algorithm": "Cholesky",
+            "application_id": null,
+            "attempt_id": "benchmark-scaling-distributed-a0f2da3cc3df/scaling-wide-20000-10-20-seed-11/cfg-4a2fe36d451728fe/rep-005/attempt-001",
+            "attempt_number": 1,
+            "campaign_id": "benchmark-scaling-distributed-a0f2da3cc3df",
+            "case_id": "scaling-wide-20000-10-20-seed-11",
+            "cg_restarts": null,
+            "cg_steps": null,
+            "configuration_id": "cfg-4a2fe36d451728fe",
+            "maximum_rank": null,
+            "memory": {
+              "peak_heap_bytes": null,
+              "peak_rss_bytes": null,
+              "scope": "driver process; combined with executors in local mode; includes validation"
+            },
+            "outer_iterations": null,
+            "provenance": {
+              "line": 6,
+              "source_path": "scaling-wide-20000-10-20-seed-11--cholesky--e16-p64/records.jsonl",
+              "source_sha256": "9a695df39cfedc44bcac3bee1f17f7968f16b500d3a6d910098e46a8171189f2"
+            },
+            "rank_escalations": null,
+            "raw": {},
+            "repetition": 5,
+            "residuals": {
+              "dual": null,
+              "gap": null,
+              "min_s": null,
+              "min_x": null,
+              "objective": null,
+              "objective_error": null,
+              "primal": null
+            },
+            "run_id": "benchmark-scaling-distributed-a0f2da3cc3df/scaling-wide-20000-10-20-seed-11/cfg-4a2fe36d451728fe/rep-005",
+            "solve_seconds": null,
+            "spark_jobs": null,
+            "status": "ResourceExcluded",
+            "stop_reason": null,
+            "warmup": false
+          }
+        ],
+        "schema_version": 1,
+        "sources": [
+          {
+            "path": "scaling-wide-20000-10-20-seed-11--cholesky--e16-p64/records.jsonl",
+            "revision": null,
+            "sha256": "9a695df39cfedc44bcac3bee1f17f7968f16b500d3a6d910098e46a8171189f2",
+            "uri": null
+          }
+        ]
+      },
+      "value": 5
+    },
+    "measured-unknown-count": {
+      "value": 0
+    },
+    "measured-unrun-count": {
+      "value": 0
+    },
+    "warmup-attempted-count": {
+      "value": 0
+    },
+    "warmup-converged-count": {
+      "value": 0
+    },
+    "warmup-excluded-count": {
+      "value": 1
+    },
+    "warmup-failed-count": {
+      "value": 0
+    },
+    "warmup-records-count": {
+      "value": 1
+    },
+    "warmup-unknown-count": {
+      "value": 0
+    },
+    "warmup-unrun-count": {
+      "value": 0
+    }
+  }
+}

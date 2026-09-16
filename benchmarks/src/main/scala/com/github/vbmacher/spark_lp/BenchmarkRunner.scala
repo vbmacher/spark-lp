@@ -105,6 +105,8 @@ object BenchmarkRunner {
         write(identity ++ Map("status" -> "Timeout", "solve_seconds" -> 1800.0))
       }
       var residuals = Map.empty[String, Double]
+      var pendingRecord = Option.empty[Map[String, Any]]
+      var releaseSolution = () => ()
       try {
         val result = benchmark.solve(costs, rows, rhs, spec.tolerance, metrics.progress, (x, y, s) => {
             metrics.validate {
@@ -114,26 +116,30 @@ object BenchmarkRunner {
             }
           })
         val elapsed = metrics.solveSeconds
-        try {
-          val status = if (result.termination == LP.Termination.Converged) {
-            if (DataGenerator.passes(residuals, spec.tolerance)) "Success" else "AccuracyFailure"
-          } else result.termination.toString
-          write(identity ++ metrics.snapshot(elapsed) ++ sampler.snapshot ++ Map(
-            "status" -> status, "residuals" -> residuals, "preparation_seconds" -> preparation,
-            "outer_iterations" -> result.iterations, "cg_steps" -> result.innerIterations,
-            "cg_restarts" -> result.innerRestarts,
-            "maximum_rank" -> result.preconditionerRank))
-          println(s"BENCHMARK $group $status ${elapsed}s")
-        } finally result.x.unpersist(blocking = true)
+        val status = if (result.termination == LP.Termination.Converged) {
+          if (DataGenerator.passes(residuals, spec.tolerance)) "Success" else "AccuracyFailure"
+        } else result.termination.toString
+        pendingRecord = Some(identity ++ metrics.snapshot(elapsed) ++ sampler.snapshot ++ Map(
+          "status" -> status, "residuals" -> residuals, "preparation_seconds" -> preparation,
+          "outer_iterations" -> result.iterations, "cg_steps" -> result.innerIterations,
+          "cg_restarts" -> result.innerRestarts,
+          "maximum_rank" -> result.preconditionerRank))
+        releaseSolution = () => { result.x.unpersist(blocking = true); () }
+        println(s"BENCHMARK $group $status ${elapsed}s")
       } catch {
-        case error: LpNumericalException => write(identity ++ Map("status" -> "NumericalFailure",
+        case error: LpNumericalException => pendingRecord = Some(identity ++ Map("status" -> "NumericalFailure",
           "error" -> error.getMessage, "outer_iterations" -> error.completedIterations,
           "solve_seconds" -> metrics.solveSeconds))
       } finally {
         timeout.close()
         sc.clearJobGroup()
-        // Keep immutable distributed fixture caches across repetitions; release solve work only.
-        sc.getPersistentRDDs.values.filterNot(rdd => fixtureCaches.contains(rdd.id)).foreach(_.unpersist(blocking = true))
+        val releaseClock = new Stopwatch
+        try releaseSolution()
+        finally {
+          // Keep immutable distributed fixture caches across repetitions; release solve work only.
+          try sc.getPersistentRDDs.values.filterNot(rdd => fixtureCaches.contains(rdd.id)).foreach(_.unpersist(blocking = true))
+          finally pendingRecord.foreach(record => write(record ++ Map("release_seconds" -> releaseClock.seconds)))
+        }
       }
     } } finally {
       sampler.close(); data.close(); writer.close(); spark.stop()

@@ -144,7 +144,7 @@ and deadline controls; `MipConfig.search` configures cuts, probing and concurren
   bounded local Python process; it does not make HiGHS a distributed solver.
 - **Production GPU acceleration is not included.** The optional OpenCL prototype
   has no hardware FP64 support on the documented Apple GPU configuration; FP32
-  results exceed the accuracy target. The [GPU report](benchmarks/gpu/README.md) describes the validation
+  results exceed the accuracy target. The [GPU report](benchmarks/reports/gpu.md) describes the validation
   status and a proposed multi-vendor approach with optional backends and CPU
   fallback. This local result does not rule out other GPUs; ND4J, CUDA and OpenCL
   are not core dependencies.
@@ -154,10 +154,10 @@ and deadline controls; `MipConfig.search` configures cuts, probing and concurren
 - [Usage, installation and API vocabulary](docs/usage.adoc)
 - [Algorithm, backend selection, scaling limits and certificate verification](docs/algorithm.adoc)
 - [Runnable examples](examples/README.md)
-- [CPU benchmarks](benchmarks/README.md), [QP comparisons](benchmarks/quadratic/README.md)
-  and [GPU investigation](benchmarks/gpu/README.md)
-- [Presolve](benchmarks/presolve/README.md), [warm starts](benchmarks/starts/README.md)
-  and [MIP search](benchmarks/mip-search/README.md) benchmarks
+- [CPU benchmarks](benchmarks/README.md), [QP comparisons](benchmarks/reports/quadratic.md)
+  and [GPU investigation](benchmarks/reports/gpu.md)
+- [Presolve](benchmarks/reports/presolve.md), [warm starts](benchmarks/reports/warm-starts.md)
+  and [MIP search](benchmarks/reports/mip-search.md) benchmarks
 
 Run the supported Spark matrix with `sbt +test`, or Spark 3.5 only:
 

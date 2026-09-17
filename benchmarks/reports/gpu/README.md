@@ -104,8 +104,8 @@ From the repository root, with a working OpenCL ICD:
 
 ```sh
 python3 -m venv .venv-gpu
-.venv-gpu/bin/pip install -r benchmarks/gpu/requirements.txt
-.venv-gpu/bin/python benchmarks/gpu/prototype.py --output /tmp/new-gpu-run.jsonl
+.venv-gpu/bin/pip install -r benchmarks/reports/gpu/requirements.txt
+.venv-gpu/bin/python benchmarks/reports/gpu/prototype.py --output /tmp/new-gpu-run.jsonl
 ```
 
 The prototype selects a hardware GPU, records its capabilities, tests FP64
@@ -114,9 +114,9 @@ buffers after synchronization even when a case fails. Use a new output path to
 preserve existing records.
 
 CPU profiling uses `cpu-cases.csv` and `BenchmarkRunner` (see the
-[parent benchmark README](../README.md)). For each backend `cholesky`/`cg` and
+[parent benchmark README](../../README.md)). For each backend `cholesky`/`cg` and
 case `sparse`/`dense`, use a fresh absolute output directory:
 
 ```text
-sbt 'benchmarksSpark_3_52_12/Test/runMain com.github.vbmacher.spark_lp.BenchmarkRunner BACKEND ABS_OUTPUT ABS_WORKTREE/benchmarks/gpu/cpu-cases.csv CASE 4 2 1'
+sbt 'benchmarksSpark_3_52_12/Test/runMain com.github.vbmacher.spark_lp.BenchmarkRunner BACKEND ABS_OUTPUT ABS_WORKTREE/benchmarks/reports/gpu/cpu-cases.csv CASE 4 2 1'
 ```

@@ -1,5 +1,10 @@
 # MIP search benchmark
 
+[All benchmark reports](README.md) · [Study source](mip-search/README.md)
+
+Evidence coverage: **64 samples and 562 progress events**.
+
+
 All 64 samples reach the independently enumerated original-model optima and pass independent candidate validation. All recorded global bounds bound those optima, and incumbent progress is monotonic. The campaign covers the serial baseline, binary cover cuts, bounded strong branching, two concurrent nodes, and all combinations.
 
 
@@ -57,7 +62,7 @@ Memory is sampled every 50 ms and can miss shorter peaks. Heap and RSS are absol
 
 Cut generation, strong branching and concurrency each have distinct unit/integration coverage in `MipCoverCutsSuite` and `MipSearchSuite`: exhaustive cut validity, local-domain rejection, numerical rejection, incomplete probes, coordinated bounds/incumbents, node/memory caps, cancellation with a retained start, callback failures and worker/cache cleanup. The benchmark demonstrates all eight combinations; the raw measurements include regressions and do not establish a universal speedup.
 
-[Records](results/records.csv), [bound/incumbent progress](results/progress.csv), [environment](results/environment.txt) and [source hashes](results/source-provenance.json) preserve the evidence. The campaign runs alone, with unchanged compiled classes and no simultaneous tests or builds. Source hashes identify the complete library implementation and runner used for measurement.
+[Records](mip-search/results/records.csv), [bound/incumbent progress](mip-search/results/progress.csv), [environment](mip-search/results/environment.txt) and [source hashes](mip-search/results/source-provenance.json) preserve the evidence. The campaign runs alone, with unchanged compiled classes and no simultaneous tests or builds. Source hashes identify the complete library implementation and runner used for measurement.
 
 Reproduce from this worktree using a new absolute output directory:
 

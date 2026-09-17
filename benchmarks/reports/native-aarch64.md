@@ -1,5 +1,10 @@
 # AArch64 netlib package and factorization probe
 
+[All benchmark reports](README.md) · [Study source](../../native/netlib-aarch64/README.md)
+
+Evidence coverage: **10 factorization configurations and 24 solver records**.
+
+
 This directory contains the reproducible Linux AArch64 JNI package used to test
 native BLAS/LAPACK for issue #72. The package wraps the system pthread OpenBLAS;
 it does not bundle OpenBLAS itself.
@@ -13,7 +18,7 @@ JDK-11 build compatibility substitutions, generates the JNI wrappers, and emits
 a JAR containing `netlib-native_system-linux-aarch64.so`.
 
 ```sh
-cd benchmarks/native
+cd native/netlib-aarch64
 ./build-netlib-aarch64.sh
 ```
 
@@ -39,7 +44,7 @@ the failed native load and retains its existing Java fallback.
 export OPENBLAS_NUM_THREADS=4
 export OMP_NUM_THREADS=4
 spark-submit \
-  --jars benchmarks/native/dist/netlib-native_system-linux-aarch64-1.1-openblas-pthreads.jar \
+  --jars native/netlib-aarch64/dist/netlib-native_system-linux-aarch64-1.1-openblas-pthreads.jar \
   --driver-java-options '-Dcom.github.fommil.netlib.NativeSystemBLAS.natives=netlib-native_system-linux-aarch64.so -Dcom.github.fommil.netlib.NativeSystemLAPACK.natives=netlib-native_system-linux-aarch64.so' \
   --conf 'spark.executor.extraJavaOptions=-Dcom.github.fommil.netlib.NativeSystemBLAS.natives=netlib-native_system-linux-aarch64.so -Dcom.github.fommil.netlib.NativeSystemLAPACK.natives=netlib-native_system-linux-aarch64.so' \
   # remaining application arguments
@@ -65,7 +70,7 @@ and both executors reported the intended default: `F2jBLAS` and
 The probe uses a deterministic, strictly diagonally dominant 5,000 × 5,000 SPD
 matrix, one warmup and five measured repetitions in a fresh JVM. The local host
 was Linux AArch64 with JDK 11 and OpenBLAS 0.3.29. All runs returned `info=0`.
-The raw aggregate rows are in [aarch64-factorization.csv](results/aarch64-factorization.csv).
+The raw aggregate rows are in [aarch64-factorization.csv](native-aarch64/results/aarch64-factorization.csv).
 
 | Backend / storage | Threads | Factor median (s) | Range (s) | Speedup vs Java full |
 |---|---:|---:|---:|---:|
@@ -98,7 +103,7 @@ resources; captured runtime classes confirmed `F2jBLAS`/`F2jLAPACK` versus
 
 Every attempt converged in nine Newton iterations and passed independent
 primal, dual, gap and objective validation. The retained attempt rows are in
-[aarch64-solver.csv](results/aarch64-solver.csv).
+[aarch64-solver.csv](native-aarch64/results/aarch64-solver.csv).
 
 ## CG recheck
 
@@ -108,12 +113,13 @@ CG path. Both variants passed 5/5 attempts with the same nine outer iterations,
 307 CG steps and residuals. `spark-lp` consequently auto-selects only native
 LAPACK; native BLAS remains available through the documented property when a
 different workload supports it. Retained rows are in
-[aarch64-cg.csv](results/aarch64-cg.csv).
+[aarch64-cg.csv](native-aarch64/results/aarch64-cg.csv).
 
 Compile the probe against the same netlib-java 1.1 dependencies used by the
 project, then run it with the properties above:
 
 ```sh
+cd native/netlib-aarch64
 javac -cp "$NETLIB_CLASSPATH" FactorizationProbe.java
 OPENBLAS_NUM_THREADS=4 OMP_NUM_THREADS=4 java \
   -Dcom.github.fommil.netlib.NativeSystemBLAS.natives=netlib-native_system-linux-aarch64.so \

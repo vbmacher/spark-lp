@@ -164,7 +164,6 @@ object LpMpsImport {
         .foreach { case (requested, found, label) => requested.foreach(n => if (!found(n)) fail(s"Requested $label set '$n' does not exist")) }
       val model = LpProblem(modelName, options.objectiveSense.getOrElse(sense))
       val variables = columns.map { case (name, b) =>
-        if (!b.explicitLower && b.upper.exists(_ < 0.0)) b.lower = Double.NegativeInfinity
         if (b.category == Integer && !b.explicitUpper) b.upper = Some(1.0)
         if (b.upper.exists(_ < b.lower)) fail(s"Inconsistent bounds for '$name'")
         name -> model.variable(name, b.lower, b.upper, b.category)

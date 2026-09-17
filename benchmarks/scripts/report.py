@@ -14,6 +14,12 @@ import statistics
 ROOT = Path(__file__).resolve().parents[2]
 RESULTS = ROOT / 'benchmarks/src/results'
 DATA = RESULTS / 'data'
+REPORTS = ROOT / 'benchmarks/reports'
+LEGACY_REPORT = RESULTS / 'REPORT.md'
+# Relative links resolved from the published report at benchmarks/reports/.
+DATA_HREF = '../src/results/data'
+SCALA_HREF = '../src/main/scala/com/github/vbmacher/spark_lp/Benchmark.scala'
+MEMORY_HREF = '../README.md#memory'
 SUCCESS = {'Converged', 'Optimal', 'Success'}
 NOT_ATTEMPTED = {'Unrun', 'ResourceExcluded', 'MissingEvidence', 'Pending'}
 def digest(value):
@@ -337,6 +343,14 @@ def experiment_key(campaign_id):
     return re.sub(r'-(cg|cholesky)$', '', campaign_id)
 
 
+def comparison_key(cfg):
+    """Keep runs separate when a backend-independent execution setting changes."""
+    return canonical({key: cfg.get(key) for key in (
+        'source_hash', 'environment', 'partitions', 'heap_gib', 'memory_topology',
+        'tolerance', 'outer_limit', 'eta', 'control', 'scenario', 'timing_scope',
+        'warmups', 'warmup_case')})
+
+
 def parameter(value):
     if value is None:
         return 'unrecorded'
@@ -388,7 +402,7 @@ def algorithm_summary(records, cfg, case):
     if mem:
         payload = mib(mem['cholesky_executor' if direct else 'cg_executor'])
         workspace = mib(mem['cholesky_driver' if direct else 'cg_driver'])
-        memory = f'exec {e} [≈{payload}](../../README.md#memory); driver {d} ≈{workspace}'
+        memory = f'exec {e} [≈{payload}]({MEMORY_HREF}); driver {d} ≈{workspace}'
     else:
         memory = f'exec {e}; driver {d}; estimate unavailable'
     peak = [r['memory']['peak_rss_bytes'] for r in body if r['memory'].get('peak_rss_bytes')]
@@ -423,7 +437,27 @@ PARTITION_NOTES = (
     '`_evidence`.')
 
 
-def render_tables(campaigns):
+SCALING_NOTES = (
+    '**Fixed-wide executor sweep:** The identical 5,000 × 50,000 seed-11 fixture used '
+    '4×4/16, 8×4/32 and 16×4/64 executor/partition configurations, each with one warmup and '
+    'five measured attempts per backend. Cholesky medians were 202.785, 208.440 and 224.481 '
+    'seconds respectively; all attempts passed independent `1e-8` validation. CG reached its '
+    'iteration limit in every measured attempt, so unsuccessful durations are not speedups. '
+    'This fixed-input sweep does not show a benefit from adding executors.\n\n'
+    '**Proportional scaling:** The 5,000/4-executor, 10,000/8-executor and '
+    '20,000/16-executor cases remain separate. Outcomes change with problem size: Cholesky alone '
+    'succeeded at 5,000 rows, both backends succeeded at 10,000 rows, and at 20,000 rows Cholesky '
+    'was resource-excluded while CG reached its iteration limit. These results do not support a '
+    'monotonic scaling claim.')
+
+
+ACCURACY_NOTES = (
+    '**Accuracy protocols:** `primary-*`, `difficulty-*`, `shape-*`, `memory-*` and `scale-*` '
+    'cases use the primary `1e-8` protocol. The `accuracy-*` cases are the separate near-crossover '
+    '`1e-6` sweep; timings and validation counts are never pooled across tolerances.')
+
+
+def render_tables(campaigns, media=None):
     from bencher_export import result_filename
     columns = ['ID', 'Case', 'Rows m', 'Variables n', 'Nonzeros', 'Density (%)', 'Nonzeros / row',
                'Fixture family', 'Seed', 'Partitions', 'Heap (GiB)', 'Executor topology', 'Environment',
@@ -441,14 +475,20 @@ def render_tables(campaigns):
         configs = {x['configuration_id']: x for x in c['configurations']}
         for row in c['records']:
             case, cfg = cases[row['case_id']], configs[row['configuration_id']]
-            gkey = (section[0], section[2], ekey, row['case_id'])
+            gkey = (section[0], section[2], ekey, row['case_id'], comparison_key(cfg))
             group = groups.setdefault(gkey, dict(section=section, ekey=ekey, case=case,
                                                  records=[], cfgs={}, files=set()))
             group['records'].append(row)
             group['cfgs'][cfg['algorithm']] = cfg
             group['files'].add(result_filename(c['campaign_id'], cfg))
-    ordered = sorted(groups.items(),
-                     key=lambda kv: (kv[1]['section'][0], kv[1]['case']['m'], kv[1]['case']['n'], kv[0][3], kv[0][2]))
+    def group_order(item):
+        gkey, group = item
+        cfg = next(iter(group['cfgs'].values()))
+        topology = cfg.get('memory_topology') or {}
+        return (group['section'][0], group['case']['m'], group['case']['n'], gkey[3], gkey[2],
+                topology.get('executors', 0), cfg.get('partitions') or 0)
+
+    ordered = sorted(groups.items(), key=group_order)
     environments, environment_ids, failures = [], {}, []
     sections = collections.OrderedDict()
     counters = collections.Counter()
@@ -503,10 +543,10 @@ def render_tables(campaigns):
     out = ['## Environment\n\n' + render_table(
         ['ID', 'Computer', 'OS', 'Spark version', 'Java version', 'Spark master'], environments, extract_shared=False),
         '## Results\n\nAll runs use the `CholeskyBenchmark` / `CGBenchmark` instances in '
-        '[Benchmark.scala](../main/scala/com/github/vbmacher/spark_lp/Benchmark.scala); '
+        f'[Benchmark.scala]({SCALA_HREF}); '
         'each row pairs the two backends on one case. Memory payloads are computed estimates; '
         'RSS is sampled. Timing scope is core solve excluding independent validation; '
-        'tolerance 1e-08; no CG restarts or rank escalations were recorded.']
+        'the tolerance is recorded per case; no CG restarts or rank escalations were recorded.']
     for (_, title), entry in sorted(sections.items()):
         # Add the campaign qualifier only when a case id appears more than once in the section.
         repeated = {cid for cid, count in collections.Counter(cid for _, cid, _ in entry['rows']).items() if count > 1}
@@ -514,11 +554,27 @@ def render_tables(campaigns):
         for cells, case_id, ekey in entry['rows']:
             cells[1] = f'{case_id} ({ekey})' if case_id in repeated else case_id
             rows.append(cells)
-        files = ', '.join(f'[{name}](data/{name})' for name in sorted(entry['files']))
-        block = f'### {title}\n\n{entry["purpose"]}. Data: {files}.\n\n' + render_table(columns, rows)
+        files = ', '.join(f'[{name}]({DATA_HREF}/{name})' for name in sorted(entry['files']))
+        notes = ''
         if title == 'CG partition tuning':
-            block += '\n\n' + PARTITION_NOTES
-        out.append(block)
+            notes = PARTITION_NOTES
+        elif title.startswith('Benchmark scaling distributed'):
+            notes = SCALING_NOTES
+        elif title.startswith('Sparsity and conditioning distributed'):
+            notes = ACCURACY_NOTES
+        parts = [f'### {title}\n\n{entry["purpose"]}.']
+        media_md = (media or {}).get(title)
+        if media_md:
+            parts.append(media_md)
+        table_body = render_table(columns, rows)
+        if notes:
+            table_body += '\n\n' + notes
+        if media is None:
+            parts.append(f'Data: {files}.\n\n{table_body}')
+        else:
+            parts.append(f'<details>\n<summary>Full measurements ({len(rows)} cases) '
+                         f'&mdash; data: {files}</summary>\n\n{table_body}\n\n</details>')
+        out.append('\n\n'.join(parts))
     if failures:
         out.append('### Failures and resource exclusions\n\n'
                    'Cases with no attempted solve on any backend:\n\n' + '\n'.join(failures))
@@ -579,21 +635,38 @@ BACKEND_RECOMMENDATION = (
     'heap; the matched 10,000-row, 16 GiB runs also show a large CG advantage. Do not silently fall back '
     'to CG for difficult large dependent or wide fixtures: numerical failures, timeouts and iteration '
     'limits occurred, so require the independent residual/objective validation and surface failure. '
-    'Treat this as workload- and configuration-specific: one 5,000-row scaling configuration reached '
-    'the CG iteration limit while Cholesky succeeded.'
+    'Treat this as workload- and configuration-specific: all three fixed-wide 5,000-row executor '
+    'configurations reached the CG iteration limit while Cholesky succeeded. Row count alone does not '
+    'establish a universal crossover, so `Auto` keeps the documented 10,000-row conservative heuristic '
+    'and memory gate; callers can lower the gate or explicitly select either backend.'
 )
 
 
-def render_report(campaigns, executor_memory=()):
+def _fold(section_md):
+    """Wrap a `## Heading\n\n...` block in a collapsed <details> element."""
+    lines = section_md.split('\n')
+    heading = lines[0].removeprefix('## ').removeprefix('# ').strip()
+    body = '\n'.join(lines[1:]).strip()
+    return (f'<details>\n<summary><b>{heading}</b></summary>\n\n{body}\n\n</details>')
+
+
+def render_report(campaigns, executor_memory=(), media=None):
     measured = [r for c in campaigns for r in c['records'] if not r['warmup']]
     warmups = sum(r['warmup'] for c in campaigns for r in c['records'])
-    report = (f'# Benchmarks\n\nCaptured evidence: {len(campaigns)} campaigns, '
-              f'{len(measured)} measured slots and {warmups} warmup records. '
-              'Tables include partial batches, failures and resource exclusions. '
-              'Warmups are shown separately and excluded from solve statistics; '
-              'missing records are not inferred.\n\n' + render_tables(campaigns) + '\n\n' +
-              PHASE_TIMING_SUMMARY + '\n\n' + WIDEST_RUN_TELEMETRY + '\n\n' +
-              BACKEND_RECOMMENDATION + '\n')
+    intro = (f'# Benchmarks\n\nCholesky (direct) vs CG (matrix-free) linear-program solvers on '
+             f'Apache Spark. Captured evidence: {len(campaigns)} campaigns, {len(measured)} measured '
+             f'slots and {warmups} warmup records. Warmups are excluded from solve statistics and '
+             f'failed runs never contribute timing; missing records are not inferred.\n')
+    if media is not None:
+        # Published human report: hero summary, chunked sections, folded appendices.
+        report = (intro + '\n' + media['at_a_glance'] + '\n\n' +
+                  render_tables(campaigns, media['section_media']) + '\n\n' +
+                  _fold(PHASE_TIMING_SUMMARY) + '\n\n' + _fold(WIDEST_RUN_TELEMETRY) + '\n\n' +
+                  _fold(BACKEND_RECOMMENDATION) + '\n')
+    else:
+        report = (intro + '\n' + render_tables(campaigns) + '\n\n' +
+                  PHASE_TIMING_SUMMARY + '\n\n' + WIDEST_RUN_TELEMETRY + '\n\n' +
+                  BACKEND_RECOMMENDATION + '\n')
     if executor_memory:
         recovered = [row for row in executor_memory if row['variant'].endswith('event-449cb674ed47')]
         groups = collections.defaultdict(list)
@@ -607,7 +680,8 @@ def render_report(campaigns, executor_memory=()):
             rows.append([len({row['case'] for row in observations}), backend, variant,
                          len(observations), memory_range('peak_heap_bytes'),
                          memory_range('peak_rss_bytes'), memory_range('peak_jvm_nonheap_bytes'), scope])
-        report += ('\n## Executor memory observations\n\n'
+        report += ('\n' + (_fold if media is not None else (lambda s: s))(
+                   '## Executor memory observations\n\n'
                    'Whole-application peaks include generation, warmup, preparation, solve and validation, '
                    'with 1,000 ms polling and per-stage peak logging. Rows aggregate exact per-executor '
                    'observations by backend, variant and scope; JVM non-heap does not cover all native memory. '
@@ -615,14 +689,35 @@ def render_report(campaigns, executor_memory=()):
                    f'{len({(row["case"], row["backend"], row["variant"]) for row in recovered})} runs. '
                    'Fifteen failed submitted jobs (12 early OOMs and three capped difficult-CG failures) '
                    'retained no application event log, so no executor peak is inferred for them. '
-                   'Source: [executor-memory.bmf.json](data/executor-memory.bmf.json).\n\n'
+                   f'Source: [executor-memory.bmf.json]({DATA_HREF}/executor-memory.bmf.json).\n\n'
                    + render_table(['Cases', 'Backend', 'Variant', 'Executor observations', 'Peak heap', 'Peak RSS',
                                    'Peak JVM non-heap', 'Scope'],
-                       rows) + '\n')
+                       rows)) + '\n')
     return report
 
 
-# Flattened public evidence fields used to sanitize imported attempts. Empty values mean unavailable.
+POINTER_STUB = (
+    '# Benchmarks\n\n'
+    'The benchmark report has moved to a chunked, chart-driven layout under '
+    '[`benchmarks/reports/`](../../reports/README.md).\n\n'
+    '- Human report: [`benchmarks/reports/README.md`](../../reports/README.md)\n'
+    '- Interactive dashboard: [`benchmarks/reports/index.html`](../../reports/index.html)\n'
+    '- Raw evidence (unchanged): [`benchmarks/src/results/data/`](data/)\n\n'
+    'This file is generated by `report.py render`; edit the generator, not the output.\n')
+
+
+def artifacts(campaigns, executor_memory=()):
+    """Map every generated file to its exact bytes. Single source of truth used by
+    both `render` (write) and `check` (byte-compare), so nothing can drift."""
+    import visualize
+    built = visualize.build(campaigns)
+    files = {}
+    files[REPORTS / 'README.md'] = render_report(campaigns, executor_memory, media=built)
+    files[REPORTS / 'index.html'] = built['dashboard']
+    for rel, svg in built['charts'].items():
+        files[REPORTS / rel] = svg
+    files[LEGACY_REPORT] = POINTER_STUB
+    return files
 CASE_FIELDS = 'case_id,m,n,nnz,fixture_family,seed,nonzeros_per_column,nonzeros_per_row,row_scale_ratio,blocks,fixture_hash'.split(',')
 ENV_FIELDS = 'computer,os,spark_version,java_version,blas,spark_master'.split(',')
 CONFIG_FIELDS = ('source_configuration_id,suite,algorithm,implementation,scenario,control,tolerance,outer_limit,eta,cg_tolerance,'
@@ -766,7 +861,6 @@ def main():
     for cmd in ['render', 'check']:
         p = sub.add_parser(cmd)
         p.add_argument('--data', type=Path, default=DATA)
-        p.add_argument('--report', type=Path, default=RESULTS / 'REPORT.md')
     args = parser.parse_args()
     if args.command == 'import-jsonl':
         if not re.fullmatch(r'[a-z0-9][a-z0-9-]*', args.campaign):
@@ -775,12 +869,27 @@ def main():
     else:
         from bencher_export import read_bundle
         campaigns, executor_memory = read_bundle(args.data)
-        generated = render_report(campaigns, executor_memory)
-        if args.command == 'check' and args.report.read_text() != generated:
-            raise ValueError('REPORT.md is stale; run report.py render')
-        if args.command == 'render':
-            args.report.write_text(generated)
-        print(f'{len(campaigns)} campaigns; {sum(len(c["records"]) for c in campaigns)} evidence records; report {args.command} OK')
+        outputs = artifacts(campaigns, executor_memory)
+        expected = set(outputs)
+        orphans = sorted(p for p in REPORTS.rglob('*') if p.is_file() and p not in expected)
+        if args.command == 'check':
+            stale = []
+            for path, content in sorted(outputs.items()):
+                current = path.read_text(encoding='utf-8') if path.exists() else None
+                if current != content:
+                    stale.append(path.relative_to(ROOT).as_posix())
+            stale += [p.relative_to(ROOT).as_posix() + ' (orphan)' for p in orphans]
+            if stale:
+                raise ValueError('Published benchmark report is stale; run report.py render. '
+                                 'Affected: ' + ', '.join(stale))
+        else:
+            for path in orphans:
+                path.unlink()
+            for path, content in outputs.items():
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text(content, encoding='utf-8')
+        print(f'{len(campaigns)} campaigns; {sum(len(c["records"]) for c in campaigns)} '
+              f'evidence records; {len(outputs)} artifacts {args.command} OK')
 
 
 if __name__ == '__main__':

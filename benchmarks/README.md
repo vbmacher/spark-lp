@@ -2,10 +2,11 @@
 
 This module measures Cholesky and CG on reproducible linear programs generated with Spark DataFrames. Campaigns are CSV case inventories; all algorithm suites share the same generation, execution and validation code.
 
-- [Measured results](src/results/REPORT.md)
-- [CG partition performance and recommended settings](src/results/REPORT.md#cg-partition-tuning)
+- [Benchmark report (charts + tables)](reports/README.md)
+- [Interactive dashboard](reports/index.html)
+- [CG partition performance and recommended settings](reports/README.md#cg-partition-tuning)
+- [AArch64 native netlib package and factorization comparison](native/README.md)
 - [Bencher data format](#bencher-data-format)
-- [Remaining runs and EMR plan](src/results/TODO.md)
 - [Case inventories](src/main/resources/)
 
 ## Structure
@@ -19,6 +20,7 @@ This module measures Cholesky and CG on reproducible linear programs generated w
 | [support/JvmSampler.scala](src/main/scala/com/github/vbmacher/spark_lp/support/JvmSampler.scala), [SolveMeasurements.scala](src/main/scala/com/github/vbmacher/spark_lp/support/SolveMeasurements.scala), [RuntimeEnvironment.scala](src/main/scala/com/github/vbmacher/spark_lp/support/RuntimeEnvironment.scala) | JVM sampling, timing, progress phases, environment capture and watchdog |
 | `src/main/resources/*.csv` | Inputs for local and EMR runs, all one schema |
 | `src/results/data/*.bmf.json` | Bencher metrics per campaign and testbed, with failure and exclusion counts |
+| [`reports/`](reports/README.md) | Generated human report, interactive dashboard and SVG charts |
 | `scripts/` | Campaign launch, artifact analysis, normalization and report generation |
 
 Benchmarks explicitly select Cholesky or CG (not the `Auto` policy) so comparisons identify the algorithm used. Adding an algorithm needs a `Benchmark` implementation and a registry entry; the generator and campaigns stay shared.
@@ -60,7 +62,7 @@ Generation uses `spark.range`, SQL expressions, joins and aggregations. Coeffici
 |---|---|
 | `solver-scaling.csv` | How do solve time and memory change as rows, variables and support grow? |
 | `sparsity-and-conditioning.csv` | How do density, scaling, near dependence and degeneracy affect convergence and cost? |
-| `emr-scaling.csv` | How do the algorithms behave on larger distributed problems? Validation status: pending; see the campaign plan. |
+| `emr-scaling.csv` | How do the algorithms behave on larger distributed problems? See the distributed results and widest-run telemetry in the measured report. |
 
 ## Build and run
 
@@ -89,7 +91,7 @@ The launcher refuses to overwrite a run, pins BLAS to one thread, alternates bac
 
 Use AWS CLI credentials with access to the cluster and S3 prefix. The primary node needs AWS CLI, Bash, Python 3, `timeout`, `sha256sum` and `spark-submit`, and its instance role needs read/write on the artifact prefix. The local launcher needs `jq` and sbt, or a prebuilt assembly via `--jar`.
 
-Create a dedicated cluster with `aws emr create-cluster` or reuse an idle one. This example uses existing IAM roles, a chosen subnet and EMR 7.6.0; replace the parameters and size instances for the [campaign plan](src/results/TODO.md). See [AWS CLI cluster creation](https://docs.aws.amazon.com/cli/latest/reference/emr/create-cluster.html).
+Create a dedicated cluster with `aws emr create-cluster` or reuse an idle one. This example uses existing IAM roles, a chosen subnet and EMR 7.6.0; replace the parameters and size instances for the intended campaign. See [AWS CLI cluster creation](https://docs.aws.amazon.com/cli/latest/reference/emr/create-cluster.html).
 
 ```sh
 export AWS_DEFAULT_REGION=us-east-1
@@ -128,7 +130,7 @@ aws emr terminate-clusters --cluster-ids "$BENCHMARK_CLUSTER_ID"
 
 Reliable solver checkpoints use `checkpoints/` under the local output directory or the EMR run prefix. For a custom cluster, set `--conf spark.checkpoint.dir=<distributed-uri>`; the runner passes it to `SparkContext.setCheckpointDir`. Retain checkpoints until the run finishes.
 
-Raw measurements, environment, command, application log and exit status upload under `results/`; Spark event logs under `events/`, submission inputs under `input/`. The step fills missing repetitions with the process failure followed by `Unrun` slots, preserves an existing watchdog failure and a nonzero exit, and attempts the upload on failure too. A whole-application timeout bounds work to `(warmups + repetitions) × 30 minutes + 10 minutes`. Node loss or forced termination can prevent uploads — reconcile missing attempts against step/container logs before importing. Per-executor memory sampling is [pending](src/results/TODO.md).
+Raw measurements, environment, command, application log and exit status upload under `results/`; Spark event logs under `events/`, submission inputs under `input/`. The step fills missing repetitions with the process failure followed by `Unrun` slots, preserves an existing watchdog failure and a nonzero exit, and attempts the upload on failure too. A whole-application timeout bounds work to `(warmups + repetitions) × 30 minutes + 10 minutes`. Node loss or forced termination can prevent uploads — reconcile missing attempts against step/container logs before importing. The measured report includes per-executor memory observations derived from Spark event logs.
 
 ## Results and environments
 
@@ -136,7 +138,7 @@ For the measured seed-11, width-32 CG fixtures (1,000 × 100,000 well-conditione
 and near-dependent; 5,000 × 1,000,000 well-conditioned), use `--partitions 16`
 with four four-core executors. Both comparison orders showed 1.44–2.16× median
 paired speedups against 64 partitions at the same `1e-8` accuracy. See the
-[CG partition tuning](src/results/REPORT.md#cg-partition-tuning) section for the
+[CG partition tuning](reports/README.md#cg-partition-tuning) section for the
 recommendation, method, paired speedups and limits; other workloads and executor counts need their own measurements.
 
 ```sh
@@ -162,7 +164,7 @@ python3 benchmarks/scripts/bencher_export.py --check
 python3 benchmarks/scripts/bencher_export.py
 ```
 
-Use `--data DIRECTORY` to read another bundle, or `--output DIRECTORY` to write a copy containing `data/`. `--check` detects missing/unexpected files and verifies every BMF value against the evidence. File links are in [REPORT.md](src/results/REPORT.md).
+Use `--data DIRECTORY` to read another bundle, or `--output DIRECTORY` to write a copy containing `data/`. `--check` detects missing/unexpected files and verifies every BMF value against the evidence. File links are in the [report](reports/README.md).
 
 | Exported measures | Meaning |
 |---|---|
@@ -202,4 +204,4 @@ CG driver         = 64*m + 32*m*r       O(m + m*r)
 
 Local Spark shares one JVM for driver and executor, so RSS samples cover both; distributed runs measure each executor and the driver separately. The generator adds distributed DataFrame/cache/shuffle costs and `O(m)` driver vectors but does not collect the full matrix or `n`-length solutions. Both driver and executor allowances must fit with headroom before a large direct run.
 
-The EMR launcher enables Spark executor metrics polling every 1,000 ms, process-tree RSS metrics and per-stage executor peak logging, retained in Spark event logs separately from the runner's driver samples. The [report](src/results/REPORT.md#executor-memory-observations) includes derived executor observations and documents their timing scope.
+The EMR launcher enables Spark executor metrics polling every 1,000 ms, process-tree RSS metrics and per-stage executor peak logging, retained in Spark event logs separately from the runner's driver samples. The [report](reports/README.md) includes derived executor observations and documents their timing scope.

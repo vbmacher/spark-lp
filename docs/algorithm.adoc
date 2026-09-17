@@ -5,13 +5,12 @@
 See link:usage.adoc[the usage guide] for the DSL, result ownership, progress callbacks and
 cooperative stopping.
 
-== Compile to equality form
+The linear solver minimizes `c^T x` subject to `A x = b`, `x >= 0`; continuous convex QP adds a
+quadratic objective. The compiler stores columns of `A` as sparse rows of `AT = A^T`, with variable
+order `(declaration order, encoded key)` and row order following constraint declaration and group
+keys.
 
-The linear solver minimizes `c^T x` subject to `A x = b`, `x >= 0`. Continuous convex QP adds a
-quadratic objective; diagonal curvature and sparse coupled factors are handled as described below.
-The compiler stores columns of `A` as sparse rows of `AT = A^T`; variable order is
-`(declaration order, encoded key)` and row order follows constraint declaration and group keys,
-with no wide pivot.
+== Compile to equality form
 
 [mermaid]
 ----
@@ -38,13 +37,13 @@ flowchart LR
 
 Example: minimize `2*x + 7` with `5 <= x <= 10` becomes minimize `2*y + 17` with `y + slack = 5`;
 `y = 0` reconstructs `x = 5`, cost `17`. Duplicate detection hashes candidates, then compares
-normalized coefficients before merging — distinct rows are never merged on a hash collision alone.
+normalized coefficients before merging, so distinct rows are never merged on a hash collision alone.
 
 == Predictor-corrector interior point
 
 `x` is the primal vector, `lambda` the equality multiplier, `s` the nonnegative dual slack.
 Initialization solves two unweighted normal systems, then shifts `x` and `s` strictly positive
-(including zero-cost / zero-complementarity starts).
+(including zero-cost or zero-complementarity starts).
 
 [mermaid]
 ----
@@ -80,9 +79,9 @@ gap    = |c^T*x - b^T*lambda| / (1 + |b^T*lambda|)
 
 Infeasibility tests `y = lambda/(b^T lambda)` when the denominator is positive:
 `A^T y <= infeasibilityTolerance`, `b^T y = 1`. Dual infeasibility tests `z = x/|c^T x|` when
-`c^T x < 0`: `||A z||_inf <= infeasibilityTolerance`, `c^T z = -1`, `z >= 0` — unboundedness only when
-a primal-feasible point is also known. These are floating-point certificate tests; a numerical
-failure retries them on the last completed iterate before raising.
+`c^T x < 0`: `||A z||_inf <= infeasibilityTolerance`, `c^T z = -1`, `z >= 0`; unboundedness is
+declared only when a primal-feasible point is also known. These floating-point certificate tests
+retry on the last completed iterate before raising.
 
 == Newton solver: Cholesky, CG, Auto
 
@@ -94,27 +93,27 @@ failure retries them on the last completed iterate before raising.
 |`Auto` |Cholesky through 10000 equality-form rows (or a lower `maxLocalConstraints` cap); CG above it. |Follows the selected strategy.
 |===
 
-The 10000-row cutoff is an unmeasured heuristic to limit long CG sequences on medium models; the
-link:../benchmarks/src/results/TODO.md[pending benchmark campaign] will evaluate it.
+The 10000-row cutoff is a conservative heuristic, not a universal crossover; the
+link:../benchmarks/src/results/REPORT.md[benchmark report] documents the workload-dependent tradeoff.
 `maxLocalConstraints` (default 10000) is a separate resource cap: lowering it can switch Auto
-earlier; raising it does not raise the cutoff. To use Cholesky above 10000 rows, select it explicitly
+earlier, raising it does not raise the cutoff. To run Cholesky above 10000 rows, select it explicitly
 and raise that cap.
 
 Here `m` counts emitted user constraints and upper-bound rows; `n` counts split variables and slacks.
-Allow roughly `16*m*m` bytes for Gramian allocations (about 1.6 GB at `m = 10000`), plus ~400 MB
-executor aggregation buffers. Explicit Cholesky rejects models above `maxLocalConstraints` and caps
-packed arrays at 65535 rows. CG avoids the Gramian limit, but row metadata, RHS, residuals and group
-keys stay on the driver and matrix indices are `Int`. The matrix-free operator streams each stored
-row once per application (dot product, weight, accumulate into a partition sum); initialization applies
-a scalar uniform weight.
+Gramian allocations need roughly `16*m*m` bytes (about 1.6 GB at `m = 10000`) plus ~400 MB executor
+aggregation buffers. Explicit Cholesky rejects models above `maxLocalConstraints` and caps packed
+arrays at 65535 rows. CG avoids the Gramian limit but keeps row metadata, RHS, residuals and group
+keys on the driver with `Int` matrix indices; its matrix-free operator streams each stored row once
+per application (dot product, weight, accumulate into a partition sum), and initialization applies a
+scalar uniform weight.
 
 == Matrix-free CG equations and regularization
 
-`A` is the original constraint matrix (the code stores `AT`). Let `rb = A*x-b`, `rc = A^T*y+s-c`, and
-`q` the complementarity right-hand side. The CG backend uses primal/dual proximal regularization
+`A` is the original constraint matrix (the code stores `AT`). With `rb = A*x-b`, `rc = A^T*y+s-c` and
+`q` the complementarity right-hand side, the CG backend uses primal/dual proximal regularization
 following https://webhomes.maths.ed.ac.uk/~jgondzio/reports/mtxFree.pdf[Gondzio, sections 3–6]; both
-proximal reference points reset to the current iterate, so `rb`/`rc` are original-LP residuals with no
-fixed offsets.
+proximal reference points reset to the current iterate, so `rb`/`rc` stay original-LP residuals with
+no fixed offsets.
 
 [source,text]
 ----
@@ -133,97 +132,153 @@ The affine predictor uses `q = -x*s`; the corrector uses `q = -x*s-dxAff*dsAff+s
 the operator and preconditioner. Initialization uses `W0 = I/(1+Rp)`, `G0 = A*W0*A^T+Rd`,
 `xTilde = W0*A^T*G0^(-1)*b`, `yTilde = G0^(-1)*A*W0*c`, then strictly positive shifts. Cholesky is the
 unregularized reference with an inverse-slack cap; its exact zero-separated blocks are factored
-independently by the same LAPACK routine (no coupling dropped by tolerance). See
-link:../benchmarks/src/results/REPORT.md[benchmark results] for measured times and memory.
+independently by the same LAPACK routine, dropping no coupling by tolerance. See
+link:../benchmarks/reports/README.md[benchmark results] for measured times and memory.
 
-`CgConfig` defaults `Rp = 1e-8` and `Rd = 1e-8` (entries, not square roots), positive throughout a
-solve. Larger values improve conditioning but need more outer iterations; very small values lose their
-effect to roundoff — scale the LP before using extreme coefficients. CG weights are `1/(s/x+Rp)` with
-no inverse-slack cap; nonpositive, nonfinite or underflowed weights fail explicitly. CG's regularized
-operator supports dependent feasible equality rows; the direct backend requires full row rank.
-
-The driver-local `org.apache.spark.wrappers.ConjugateGradient` wrapper owns the PCG iteration,
-warm-start state, restarts and true-residual replacement, using netlib BLAS (`ddot`, `dnrm2`,
-`dscal`, `daxpy`). `CgFactory` supplies the distributed operator and partial-Cholesky preconditioner
-and retains rank escalation, monitoring and the bounded-inexact acceptance policy. Retrying with a
-stronger preconditioner preserves the current solution and cumulative counts without forming a Gramian.
+`CgConfig` defaults `Rp = Rd = 1e-8` (entries, not square roots), positive throughout a solve. Larger
+values improve conditioning but need more outer iterations; very small values lose their effect to
+roundoff, so scale the LP before using extreme coefficients. CG weights are `1/(s/x+Rp)` with no
+inverse-slack cap; nonpositive, nonfinite or underflowed weights fail explicitly. The regularized CG
+operator supports dependent feasible equality rows, while the direct backend requires full row rank.
+Retrying with a stronger preconditioner preserves the current solution and cumulative counts without
+forming a Gramian.
 
 == Preconditioner and inexact solves
 
 The adaptive preconditioner starts as the regularized diagonal (Jacobi). If an inner solve misses its
 tolerance it builds up to 50 partial-Cholesky columns, then doubles the rank on further failures.
-Within one weighted system, escalation extends existing factors and the Schur diagonal, fetching only
+Escalation within one weighted system extends the existing factors and Schur diagonal, fetching only
 new columns; later outer iterations inherit the rank but rebuild factors for changed weights. Each
-pivot is the largest updated Schur-complement diagonal (ties by row index); only that column is fetched
-before the next pivot, and the remaining Schur block is approximated by its diagonal — no full Gramian
-is collected.
+pivot is the largest updated Schur-complement diagonal (ties by row index), only that column is
+fetched before the next pivot, and the remaining Schur block is approximated by its diagonal, so no
+full Gramian is collected.
 
-A pivot at or below `max(Rd, 64*ulp(max(diag(G))))` stops factorization; the preconditioner diagonal
-is floored there, and nonfinite values or a Schur diagonal below its negative fail numerically. This
-guard affects the preconditioner only — there is no hidden ridge retry after the Newton RHS is built.
+A pivot at or below `max(Rd, 64*ulp(max(diag(G))))` stops factorization and floors the preconditioner
+diagonal; nonfinite values or a Schur diagonal below its negative fail numerically. This guard
+affects the preconditioner only; there is no hidden ridge retry after the Newton RHS is built.
 
-The factor budget defaults to 256 MiB (~`32*m*rank` bytes); a driver work cap also limits rank via
-`m*rank^2 <= 2e10`. Explicit `preconditionerRank` is clipped to both; rank 0 selects adaptive behavior,
-a zero byte budget forces Jacobi. Sequential pivoting costs one distributed column pass per pivot, so
-starting from Jacobi avoids paying for pivots on easy systems.
+The factor budget defaults to 256 MiB (~`32*m*rank` bytes), and a driver work cap also limits rank
+via `m*rank^2 <= 2e10`. Explicit `preconditionerRank` is clipped to both; rank 0 selects adaptive
+behavior and a zero byte budget forces Jacobi. Sequential pivoting costs one distributed column pass
+per pivot, so starting from Jacobi avoids paying for pivots on easy systems.
 
 `cgTolerance` (default `1e-10`) and `cgMaxIterations` control the inner solve; its requested residual
 is `max(cgTolerance*norm(rhs), 0.1*tolerance*(1+norm(b)))` (initialization uses only the relative
-term). Warm starts reuse the predictor solution for the corrector. After exhausting rank and step
+term), and warm starts reuse the predictor solution for the corrector. After exhausting rank and step
 budgets, a finite true residual no larger than `max(target, 1e-3*norm(rhs))` may be returned as an
 inexact direction; a larger defect, nonfinite residual or nonpositive curvature raises a numerical
 failure unless an original-LP certificate holds on the last completed iterate. The outer primal, dual
-and gap residuals are always recomputed from the original LP, so solving only the regularized equations
-cannot yield `Optimal`. The implementation uses Mehrotra predictor-corrector steps instead of the
-paper's fixed barrier reduction, uniform configurable regularization instead of dynamically adjusting
-individual diagonal entries, and Jacobi before partial Cholesky. Continuous convex quadratic objectives
-extend these equations below; nonconvex, mixed-integer quadratic and quadratically constrained models
-are unsupported.
+and gap residuals are always recomputed from the original LP, so solving only the regularized
+equations cannot yield `Optimal`.
 
-[source,scala]
-----
-import com.github.vbmacher.spark_lp.newton.CgConfig
+Relative to the reference papers, the implementation uses Mehrotra predictor-corrector steps instead
+of a fixed barrier reduction, uniform configurable regularization instead of per-entry adjustment,
+and Jacobi before partial Cholesky. `CgConfig` tunes the matrix-free backend only; Cholesky ignores
+it. Continuous convex quadratic objectives extend these equations below; nonconvex, mixed-integer and
+quadratically constrained models are unsupported.
 
-val config = SolveConfig(
-  newtonSolver = NewtonSolver.ConjugateGradient,
-  cgTolerance = 1e-10,
-  cgMaxIterations = 1000,
-  cgConfig = CgConfig(
-    primalRegularization = 1e-8,
-    dualRegularization = 1e-8,
-    preconditionerRank = 50,
-    preconditionerMemoryBytes = 128L * 1024 * 1024))
-----
+== Convex quadratic objectives
 
-`CgConfig` configures the matrix-free backend only; Cholesky is the direct alternative selected through
-`newtonSolver` and ignores CG tuning. Pass `CgConfig` through the `cgConfig` argument. Import core solver choices from
-`com.github.vbmacher.spark_lp.newton`; the DSL re-exports `NewtonSolver` through its wildcard import.
+Continuous models support `0.5 * sum(q_i * x_i^2) + c^T x + k` and use only the core runtime
+dependencies. Minimization needs each aggregated `q_i >= 0`; maximization needs a concave
+(nonpositive-curvature) objective. Build objectives with `QpObjective`
+(see link:usage.adoc#_convex_quadratic_objectives[the usage guide]); they add, combine with linear
+expressions, and scale, and `setObjective` restores the linear path.
 
-== Convex quadratic extension
+Diagonal curvature specifies curvature, not linear cost, and cannot carry a constant. Repeated terms
+sum, missing keys contribute zero, and invalid or duplicate source keys are rejected. Bound shifts
+preserve `c' = c + Q*l` and `k' = k + c^T*l + 0.5*l^T Q*l`; fixed variables fold into the constant and
+all-fixed objectives are evaluated directly. Curved free variables are rejected because splitting them
+introduces coupled curvature; zero-curvature free variables keep the LP behavior. An all-zero-curvature
+objective uses the LP path and its restrictions, while an unconstrained nonzero-curvature objective
+adds an independent dummy equality to satisfy the initialization contract. Invalid curvature and
+nonfinite coefficients raise `LpModelException`. Integer and binary categories and quadratic
+constraints are unsupported throughout.
 
-For `0.5*x^T Q*x + c^T*x`, diagonal `Q` changes the Newton weights to
-`W = (S/X + Q + Rp)^(-1)` and direction recovery includes `Q*dx`.
-Stationarity uses `A^T*lambda + s - c - Q*x`; the objective gap compares
-`0.5*x^T Q*x + c^T*x` with `b^T*lambda - 0.5*x^T Q*x`.
-Recession certificates additionally require `Q*d = 0` within tolerance.
-Bound shifts preserve both the induced linear term and objective constant.
+=== Solver equations and optimality
 
-Sparse coupled objectives use PSD factors `sum(w*(a^T*x+t)^2)`.
-Each factor adds nonnegative `u,v`, an equality `a^T*x+t = u-v`, and diagonal
-penalty `w*(u^2+v^2)`. Minimizing over `u,v` recovers the exact original penalty.
-The solver therefore applies the distributed weighted normal operator to
-an enlarged sparse matrix, without collecting a dense Hessian or forming its inverse.
-Rows include factor equalities; columns include their two auxiliary variables.
+For `0.5*x^T Q*x + c^T*x`, diagonal `Q` changes the Newton weights to `W = (S/X + Q + Rp)^(-1)` and
+direction recovery includes `Q*dx`; the diagonal is partitioned with the sparse columns. Stationarity
+uses `A^T*lambda + s - c - Q*x`, the primal objective is `0.5*x^T Q*x + c^T*x`, and the dual
+expression is `b^T*lambda - 0.5*x^T Q*x`. Convergence requires the primal, stationarity and quadratic
+objective-gap tolerances (defaults `1e-8`, with `1e-10` CG inner tolerance); see
+https://osqp.org/docs/solver/[OSQP's QP optimality conditions]. A candidate unbounded direction must
+also satisfy `Q*d = 0` within tolerance, and classifying unboundedness needs a feasible point. At
+degenerate bounds a small objective gap can coexist with larger variable error, so check stationarity
+through bound multipliers and complementary products rather than raw gradients.
 
-Free-variable splits can make coupled Cholesky systems numerically singular near
-convergence. `Auto` selects regularized CG for coupled models containing free
-variables; explicit Cholesky is rejected. Separable objectives reject curved free
-variables. See link:quadratic-programming.md[representations and restrictions] and
-link:../benchmarks/quadratic/README.md[the measured strategy comparison].
+=== Coupled objectives: sparse factors
 
-Public evidence retains original unshifted costs and curvature. For coupled QP,
-the equivalent factor-expanded model is exposed explicitly; see
-link:certificates.md[independent certificate verification].
+Sparse cross-variable terms are supplied as PSD factors `sum_k w_k * (a_k^T x + t_k)^2`, so under the
+`0.5*x^T Q*x + c^T*x + k` convention `Q = 2*sum_k w_k*a_k*a_k^T`. Every pair of keys in a factor
+produces the matching symmetric cross term; repeated coefficients within a factor sum, and repeated
+factors add their penalties. Nonnegative weights prove the PSD structure (including rank deficiency);
+negative weights are rejected in a minimization objective, so negate the whole objective for concave
+maximization. Arbitrary raw Hessian entries are deliberately not accepted: the caller supplies a PSD
+factorization rather than relying on diagonal checks or random probes. No dense Hessian or explicit
+inverse is formed.
+
+Per factor, compilation introduces `u, v >= 0`, the equality `a^T*x+t = u-v`, and the diagonal
+penalty `w*(u^2+v^2)`. For a fixed residual the minimum sets one of `u,v` to zero and equals
+`w*(a^T*x+t)^2` -- an exact convex reduction whose lifted stationarity equations recover the original
+gradient through the factor-row multipliers. The reduction adds two columns and one row per factor and
+applies the weighted normal operator to the enlarged sparse matrix; CG solves a positive-definite
+regularized normal system and is never applied to the indefinite KKT matrix directly. Cholesky storage
+is quadratic in the enlarged row count, while CG keeps distributed sparse columns and bounded
+preconditioner storage. Because free-variable splitting can make the coupled Cholesky system singular
+near convergence, `Auto` selects regularized CG for coupled models with free variables and explicit
+Cholesky is rejected (see the link:../benchmarks/quadratic/failed-cholesky-free.txt[conditioning
+evidence]).
+
+Factor lifting supports free, shifted and fixed original variables, and the auxiliary variables are
+created per compilation without mutating the user problem: diagnostics expose `__qp_factor_*` rows (a
+reserved prefix), internal snapshots include the auxiliary columns, and `value`/`values` reconstruct
+the user variables in original units. Replacing an objective or solving repeatedly does not accumulate
+variables or constraints. Use separable objectives for diagonal Hessians; sparse factors add cross
+terms and a structural convexity contract, not a performance advantage over the diagonal path. The
+link:../benchmarks/quadratic/README.md[QP validation report] covers lifted-system validation, analytic
+solves and accuracy/memory records.
+
+== Verifying solve evidence
+
+Continuous solve results expose `solution.evidence: Option[LpEvidence]`; `None` means evidence is
+unavailable, including optimal, stopped and integer solves. Presolve validation errors (contradictory
+declared bounds, inconsistent duplicate equalities, impossible constant rows) raise exceptions instead
+of returning a result. `LpEvidenceVerifier` recomputes every condition against the materialised
+original-model snapshot -- including eliminated variables and rows -- checking missing or duplicate
+keys, nonfinite values, signs, stationarity, feasibility and normalization without trusting solver
+status or internal residuals. Residuals use absolute original units, so large scales or cancellation
+can fail a tight tolerance even for a correctly classified result; these are numerical witnesses, not
+exact-arithmetic proofs, and the caller chooses the tolerance. `solution.close()` releases the
+snapshots, so finish Spark actions first. No IIS or MIP proof is implied.
+
+=== Infeasibility certificate
+
+`InfeasibilityCertificate` exposes original row multipliers (with names and group labels) and
+distributed bound multipliers keyed by `(setIndex, encodedKey) -> (lower, upper)`; `model.variables`
+carries display names, declared bounds and the original sparse coefficients, and fixed variables are
+retained. Merged or presolved rows have zero multipliers, rows are never rescaled (multipliers keep
+original row units), bound shifts change only the right-hand side, and free-variable splits are
+recombined. The sign convention is `A^T y + lower + upper = 0` with `b^T y + l^T lower + u^T upper = 1`:
+a `<=` or upper-bound multiplier is nonpositive, a `>=` or lower-bound multiplier is nonnegative,
+equality multipliers are unrestricted, and absent-bound multipliers must be zero.
+
+=== Unbounded direction
+
+`UnboundedDirection` exposes an original-unit direction and, when the solver proved primal
+feasibility, a point. The direction is zero on fixed variables, omits bound shifts, normalizes its
+objective improvement to one in the model's objective sense, and obeys homogeneous row and bound
+recession conditions. Without a point, `verify` returns `valid=false`, because a direction alone
+cannot separate infeasibility from unboundedness; to verify a separately obtained original-model point
+use `proof.copy(point = Some(values))`.
+
+=== Quadratic models
+
+The snapshot keeps the original unshifted linear cost and diagonal curvature, and a recession
+direction must additionally satisfy `Q*d = 0`. Coupled objectives expose the factor-expanded model
+with its named auxiliary rows and variables; verifying that equivalent formulation certifies the
+original problem after projection onto the user variables. These auxiliary fields are explicit, never
+silently discarded.
 
 == Opt-in progress policy
 
@@ -231,18 +286,19 @@ When stagnation detection is enabled, `StagnationConfig` adds separate outer and
 windows (defaults: 10 outer iterations patience, absolute improvement `1e-10` plus relative `1e-3`, 100
 inner steps patience, 2000-step inner cap). Outer progress compares original-model violation and the
 primal/dual/gap residuals before a feasible candidate appears, then objective improvement or improving
-residuals after; each component uses `absoluteImprovement + relativeImprovement * abs(best)`. Inner
-progress compares `norm(rhs-G*dy)/norm(rhs)` on true residuals across restarts and rank changes for one
-right-hand side. A stalled or capped inner solve requests `NoProgress` and discards its unfinished direction.
-With controls disabled, inner solves use the per-rank numerical recovery and inexact-acceptance policy.
+residuals afterward, each component using `absoluteImprovement + relativeImprovement * abs(best)`.
+Inner progress compares `norm(rhs-G*dy)/norm(rhs)` on true residuals across restarts and rank changes
+for one right-hand side; a stalled or capped inner solve requests `NoProgress` and discards its
+unfinished direction. With controls disabled, inner solves fall back to the per-rank numerical
+recovery and inexact-acceptance policy.
 
 See link:usage.adoc#_progress_and_cooperative_stopping_continuous_models[progress usage] for
 callbacks, metric groups, cancellation and candidate ownership.
 
 == Integer and binary models
 
-Compile once. Branch-and-bound reuses `AT` and `c`; tighter integer bounds change the RHS and objective
-offset. Integer bounds and column coefficients stay on the driver.
+Branch-and-bound compiles once and reuses `AT` and `c`; tighter integer bounds change only the RHS and
+objective offset, and integer bounds and column coefficients stay on the driver.
 
 [mermaid]
 ----
@@ -260,13 +316,14 @@ flowchart TD
   E -->|Yes| R[Report incumbent and search status]
 ----
 
-For minimization, the relaxation's dual objective is the node lower bound and its primal objective a
-candidate upper bound. Discard a branch with contradictory row bounds or an infeasibility certificate. A
-fractional value `v` splits into `x <= floor(v)` and `x >= floor(v)+1`; near-integer candidates are
-rounded only after checking the constraint residual, and the objective includes the rounding change.
-
-Example: maximize integer `x+y` with `2*x+2*y <= 3`. The relaxation reaches `1.5`; branching finds the
-integer optimum `1`. Exhausting the search proves optimality within `mip.gapTolerance`; unresolved
-branches or `mip.maxNodes` exhaustion give `IterationLimit`. Defaults: 1000 LP nodes, integrality
-tolerance `1e-6`, relative gap tolerance `1e-9`. Search is sequential on the driver and can grow
+For minimization the relaxation's dual objective is the node lower bound and its primal objective a
+candidate upper bound. A branch is discarded on contradictory row bounds or an infeasibility
+certificate. A fractional value `v` splits into `x <= floor(v)` and `x >= floor(v)+1`; near-integer
+candidates are rounded only after checking the constraint residual, and the objective includes the
+rounding change. Exhausting the search proves optimality within `mip.gapTolerance`, while unresolved
+branches or `mip.maxNodes` exhaustion give `IterationLimit`. Defaults are 1000 LP nodes, integrality
+tolerance `1e-6` and relative gap tolerance `1e-9`; search is sequential on the driver and can grow
 exponentially.
+
+Example: maximizing integer `x+y` with `2*x+2*y <= 3` relaxes to `1.5`, and branching finds the
+integer optimum `1`.

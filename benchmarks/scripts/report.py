@@ -14,6 +14,12 @@ import statistics
 ROOT = Path(__file__).resolve().parents[2]
 RESULTS = ROOT / 'benchmarks/src/results'
 DATA = RESULTS / 'data'
+REPORTS = ROOT / 'benchmarks/reports'
+LEGACY_REPORT = RESULTS / 'REPORT.md'
+# Relative links resolved from the published report at benchmarks/reports/.
+DATA_HREF = '../src/results/data'
+SCALA_HREF = '../src/main/scala/com/github/vbmacher/spark_lp/Benchmark.scala'
+MEMORY_HREF = '../README.md#memory'
 SUCCESS = {'Converged', 'Optimal', 'Success'}
 NOT_ATTEMPTED = {'Unrun', 'ResourceExcluded', 'MissingEvidence', 'Pending'}
 def digest(value):
@@ -396,7 +402,7 @@ def algorithm_summary(records, cfg, case):
     if mem:
         payload = mib(mem['cholesky_executor' if direct else 'cg_executor'])
         workspace = mib(mem['cholesky_driver' if direct else 'cg_driver'])
-        memory = f'exec {e} [≈{payload}](../../README.md#memory); driver {d} ≈{workspace}'
+        memory = f'exec {e} [≈{payload}]({MEMORY_HREF}); driver {d} ≈{workspace}'
     else:
         memory = f'exec {e}; driver {d}; estimate unavailable'
     peak = [r['memory']['peak_rss_bytes'] for r in body if r['memory'].get('peak_rss_bytes')]
@@ -451,7 +457,7 @@ ACCURACY_NOTES = (
     '`1e-6` sweep; timings and validation counts are never pooled across tolerances.')
 
 
-def render_tables(campaigns):
+def render_tables(campaigns, media=None):
     from bencher_export import result_filename
     columns = ['ID', 'Case', 'Rows m', 'Variables n', 'Nonzeros', 'Density (%)', 'Nonzeros / row',
                'Fixture family', 'Seed', 'Partitions', 'Heap (GiB)', 'Executor topology', 'Environment',
@@ -537,7 +543,7 @@ def render_tables(campaigns):
     out = ['## Environment\n\n' + render_table(
         ['ID', 'Computer', 'OS', 'Spark version', 'Java version', 'Spark master'], environments, extract_shared=False),
         '## Results\n\nAll runs use the `CholeskyBenchmark` / `CGBenchmark` instances in '
-        '[Benchmark.scala](../main/scala/com/github/vbmacher/spark_lp/Benchmark.scala); '
+        f'[Benchmark.scala]({SCALA_HREF}); '
         'each row pairs the two backends on one case. Memory payloads are computed estimates; '
         'RSS is sampled. Timing scope is core solve excluding independent validation; '
         'the tolerance is recorded per case; no CG restarts or rank escalations were recorded.']
@@ -548,15 +554,27 @@ def render_tables(campaigns):
         for cells, case_id, ekey in entry['rows']:
             cells[1] = f'{case_id} ({ekey})' if case_id in repeated else case_id
             rows.append(cells)
-        files = ', '.join(f'[{name}](data/{name})' for name in sorted(entry['files']))
-        block = f'### {title}\n\n{entry["purpose"]}. Data: {files}.\n\n' + render_table(columns, rows)
+        files = ', '.join(f'[{name}]({DATA_HREF}/{name})' for name in sorted(entry['files']))
+        notes = ''
         if title == 'CG partition tuning':
-            block += '\n\n' + PARTITION_NOTES
+            notes = PARTITION_NOTES
         elif title.startswith('Benchmark scaling distributed'):
-            block += '\n\n' + SCALING_NOTES
+            notes = SCALING_NOTES
         elif title.startswith('Sparsity and conditioning distributed'):
-            block += '\n\n' + ACCURACY_NOTES
-        out.append(block)
+            notes = ACCURACY_NOTES
+        parts = [f'### {title}\n\n{entry["purpose"]}.']
+        media_md = (media or {}).get(title)
+        if media_md:
+            parts.append(media_md)
+        table_body = render_table(columns, rows)
+        if notes:
+            table_body += '\n\n' + notes
+        if media is None:
+            parts.append(f'Data: {files}.\n\n{table_body}')
+        else:
+            parts.append(f'<details>\n<summary>Full measurements ({len(rows)} cases) '
+                         f'&mdash; data: {files}</summary>\n\n{table_body}\n\n</details>')
+        out.append('\n\n'.join(parts))
     if failures:
         out.append('### Failures and resource exclusions\n\n'
                    'Cases with no attempted solve on any backend:\n\n' + '\n'.join(failures))
@@ -624,16 +642,31 @@ BACKEND_RECOMMENDATION = (
 )
 
 
-def render_report(campaigns, executor_memory=()):
+def _fold(section_md):
+    """Wrap a `## Heading\n\n...` block in a collapsed <details> element."""
+    lines = section_md.split('\n')
+    heading = lines[0].removeprefix('## ').removeprefix('# ').strip()
+    body = '\n'.join(lines[1:]).strip()
+    return (f'<details>\n<summary><b>{heading}</b></summary>\n\n{body}\n\n</details>')
+
+
+def render_report(campaigns, executor_memory=(), media=None):
     measured = [r for c in campaigns for r in c['records'] if not r['warmup']]
     warmups = sum(r['warmup'] for c in campaigns for r in c['records'])
-    report = (f'# Benchmarks\n\nCaptured evidence: {len(campaigns)} campaigns, '
-              f'{len(measured)} measured slots and {warmups} warmup records. '
-              'Tables include partial batches, failures and resource exclusions. '
-              'Warmups are shown separately and excluded from solve statistics; '
-              'missing records are not inferred.\n\n' + render_tables(campaigns) + '\n\n' +
-              PHASE_TIMING_SUMMARY + '\n\n' + WIDEST_RUN_TELEMETRY + '\n\n' +
-              BACKEND_RECOMMENDATION + '\n')
+    intro = (f'# Benchmarks\n\nCholesky (direct) vs CG (matrix-free) linear-program solvers on '
+             f'Apache Spark. Captured evidence: {len(campaigns)} campaigns, {len(measured)} measured '
+             f'slots and {warmups} warmup records. Warmups are excluded from solve statistics and '
+             f'failed runs never contribute timing; missing records are not inferred.\n')
+    if media is not None:
+        # Published human report: hero summary, chunked sections, folded appendices.
+        report = (intro + '\n' + media['at_a_glance'] + '\n\n' +
+                  render_tables(campaigns, media['section_media']) + '\n\n' +
+                  _fold(PHASE_TIMING_SUMMARY) + '\n\n' + _fold(WIDEST_RUN_TELEMETRY) + '\n\n' +
+                  _fold(BACKEND_RECOMMENDATION) + '\n')
+    else:
+        report = (intro + '\n' + render_tables(campaigns) + '\n\n' +
+                  PHASE_TIMING_SUMMARY + '\n\n' + WIDEST_RUN_TELEMETRY + '\n\n' +
+                  BACKEND_RECOMMENDATION + '\n')
     if executor_memory:
         recovered = [row for row in executor_memory if row['variant'].endswith('event-449cb674ed47')]
         groups = collections.defaultdict(list)
@@ -647,7 +680,8 @@ def render_report(campaigns, executor_memory=()):
             rows.append([len({row['case'] for row in observations}), backend, variant,
                          len(observations), memory_range('peak_heap_bytes'),
                          memory_range('peak_rss_bytes'), memory_range('peak_jvm_nonheap_bytes'), scope])
-        report += ('\n## Executor memory observations\n\n'
+        report += ('\n' + (_fold if media is not None else (lambda s: s))(
+                   '## Executor memory observations\n\n'
                    'Whole-application peaks include generation, warmup, preparation, solve and validation, '
                    'with 1,000 ms polling and per-stage peak logging. Rows aggregate exact per-executor '
                    'observations by backend, variant and scope; JVM non-heap does not cover all native memory. '
@@ -655,14 +689,35 @@ def render_report(campaigns, executor_memory=()):
                    f'{len({(row["case"], row["backend"], row["variant"]) for row in recovered})} runs. '
                    'Fifteen failed submitted jobs (12 early OOMs and three capped difficult-CG failures) '
                    'retained no application event log, so no executor peak is inferred for them. '
-                   'Source: [executor-memory.bmf.json](data/executor-memory.bmf.json).\n\n'
+                   f'Source: [executor-memory.bmf.json]({DATA_HREF}/executor-memory.bmf.json).\n\n'
                    + render_table(['Cases', 'Backend', 'Variant', 'Executor observations', 'Peak heap', 'Peak RSS',
                                    'Peak JVM non-heap', 'Scope'],
-                       rows) + '\n')
+                       rows)) + '\n')
     return report
 
 
-# Flattened public evidence fields used to sanitize imported attempts. Empty values mean unavailable.
+POINTER_STUB = (
+    '# Benchmarks\n\n'
+    'The benchmark report has moved to a chunked, chart-driven layout under '
+    '[`benchmarks/reports/`](../../reports/README.md).\n\n'
+    '- Human report: [`benchmarks/reports/README.md`](../../reports/README.md)\n'
+    '- Interactive dashboard: [`benchmarks/reports/index.html`](../../reports/index.html)\n'
+    '- Raw evidence (unchanged): [`benchmarks/src/results/data/`](data/)\n\n'
+    'This file is generated by `report.py render`; edit the generator, not the output.\n')
+
+
+def artifacts(campaigns, executor_memory=()):
+    """Map every generated file to its exact bytes. Single source of truth used by
+    both `render` (write) and `check` (byte-compare), so nothing can drift."""
+    import visualize
+    built = visualize.build(campaigns)
+    files = {}
+    files[REPORTS / 'README.md'] = render_report(campaigns, executor_memory, media=built)
+    files[REPORTS / 'index.html'] = built['dashboard']
+    for rel, svg in built['charts'].items():
+        files[REPORTS / rel] = svg
+    files[LEGACY_REPORT] = POINTER_STUB
+    return files
 CASE_FIELDS = 'case_id,m,n,nnz,fixture_family,seed,nonzeros_per_column,nonzeros_per_row,row_scale_ratio,blocks,fixture_hash'.split(',')
 ENV_FIELDS = 'computer,os,spark_version,java_version,blas,spark_master'.split(',')
 CONFIG_FIELDS = ('source_configuration_id,suite,algorithm,implementation,scenario,control,tolerance,outer_limit,eta,cg_tolerance,'
@@ -806,7 +861,6 @@ def main():
     for cmd in ['render', 'check']:
         p = sub.add_parser(cmd)
         p.add_argument('--data', type=Path, default=DATA)
-        p.add_argument('--report', type=Path, default=RESULTS / 'REPORT.md')
     args = parser.parse_args()
     if args.command == 'import-jsonl':
         if not re.fullmatch(r'[a-z0-9][a-z0-9-]*', args.campaign):
@@ -815,12 +869,27 @@ def main():
     else:
         from bencher_export import read_bundle
         campaigns, executor_memory = read_bundle(args.data)
-        generated = render_report(campaigns, executor_memory)
-        if args.command == 'check' and args.report.read_text() != generated:
-            raise ValueError('REPORT.md is stale; run report.py render')
-        if args.command == 'render':
-            args.report.write_text(generated)
-        print(f'{len(campaigns)} campaigns; {sum(len(c["records"]) for c in campaigns)} evidence records; report {args.command} OK')
+        outputs = artifacts(campaigns, executor_memory)
+        expected = set(outputs)
+        orphans = sorted(p for p in REPORTS.rglob('*') if p.is_file() and p not in expected)
+        if args.command == 'check':
+            stale = []
+            for path, content in sorted(outputs.items()):
+                current = path.read_text(encoding='utf-8') if path.exists() else None
+                if current != content:
+                    stale.append(path.relative_to(ROOT).as_posix())
+            stale += [p.relative_to(ROOT).as_posix() + ' (orphan)' for p in orphans]
+            if stale:
+                raise ValueError('Published benchmark report is stale; run report.py render. '
+                                 'Affected: ' + ', '.join(stale))
+        else:
+            for path in orphans:
+                path.unlink()
+            for path, content in outputs.items():
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text(content, encoding='utf-8')
+        print(f'{len(campaigns)} campaigns; {sum(len(c["records"]) for c in campaigns)} '
+              f'evidence records; {len(outputs)} artifacts {args.command} OK')
 
 
 if __name__ == '__main__':

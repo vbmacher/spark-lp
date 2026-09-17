@@ -134,7 +134,7 @@ the operator and preconditioner. Initialization uses `W0 = I/(1+Rp)`, `G0 = A*W0
 `xTilde = W0*A^T*G0^(-1)*b`, `yTilde = G0^(-1)*A*W0*c`, then strictly positive shifts. Cholesky is the
 unregularized reference with an inverse-slack cap; its exact zero-separated blocks are factored
 independently by the same LAPACK routine (no coupling dropped by tolerance). See
-link:../benchmarks/src/results/REPORT.md[benchmark results] for measured times and memory.
+link:../benchmarks/reports/README.md[benchmark results] for measured times and memory.
 
 `CgConfig` defaults `Rp = 1e-8` and `Rd = 1e-8` (entries, not square roots), positive throughout a
 solve. Larger values improve conditioning but need more outer iterations; very small values lose their

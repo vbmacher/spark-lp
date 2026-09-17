@@ -98,8 +98,12 @@ private[spark_lp] final class CgFactory(
     override def solve(rhs: DenseVector, absTolerance: Double): DenseVector = {
       monitor.phase(SolvePhase.InnerSolve)
       require(rhs.size == m, "CG right-hand side must match the operator")
-      val cg = new ConjugateGradient(rhs.values, applyOperator, relTolerance, absTolerance,
+      val warmStarted = new ConjugateGradient(rhs.values, applyOperator, relTolerance, absTolerance,
         Option(lastSolution))
+      // Reuse a previous solution only when it improves on the new right-hand side's zero start.
+      val cg = if (lastSolution != null && warmStarted.residualNorm >= warmStarted.rhsNorm)
+        new ConjugateGradient(rhs.values, applyOperator, relTolerance, absTolerance)
+      else warmStarted
       if (cg.rhsNorm == 0.0) return new DenseVector(cg.solution)
 
       val progress = monitor.control.stagnation.map(c => new ProgressWindow(c, c.innerPatience))

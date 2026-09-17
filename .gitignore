@@ -123,6 +123,7 @@ python/test_coverage/coverage_data
 python/test_coverage/htmlcov
 python/pyspark/python
 reports/
+!benchmarks/reports/
 scalastyle-on-compile.generated.xml
 scalastyle-output.xml
 scalastyle.txt

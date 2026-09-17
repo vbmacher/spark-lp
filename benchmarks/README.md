@@ -2,8 +2,9 @@
 
 This module measures Cholesky and CG on reproducible linear programs generated with Spark DataFrames. Campaigns are CSV case inventories; all algorithm suites share the same generation, execution and validation code.
 
-- [Measured results](src/results/REPORT.md)
-- [CG partition performance and recommended settings](src/results/REPORT.md#cg-partition-tuning)
+- [Benchmark report (charts + tables)](reports/README.md)
+- [Interactive dashboard](reports/index.html)
+- [CG partition performance and recommended settings](reports/README.md#cg-partition-tuning)
 - [AArch64 native netlib package and factorization comparison](native/README.md)
 - [Bencher data format](#bencher-data-format)
 - [Case inventories](src/main/resources/)
@@ -19,6 +20,7 @@ This module measures Cholesky and CG on reproducible linear programs generated w
 | [support/JvmSampler.scala](src/main/scala/com/github/vbmacher/spark_lp/support/JvmSampler.scala), [SolveMeasurements.scala](src/main/scala/com/github/vbmacher/spark_lp/support/SolveMeasurements.scala), [RuntimeEnvironment.scala](src/main/scala/com/github/vbmacher/spark_lp/support/RuntimeEnvironment.scala) | JVM sampling, timing, progress phases, environment capture and watchdog |
 | `src/main/resources/*.csv` | Inputs for local and EMR runs, all one schema |
 | `src/results/data/*.bmf.json` | Bencher metrics per campaign and testbed, with failure and exclusion counts |
+| [`reports/`](reports/README.md) | Generated human report, interactive dashboard and SVG charts |
 | `scripts/` | Campaign launch, artifact analysis, normalization and report generation |
 
 Benchmarks explicitly select Cholesky or CG (not the `Auto` policy) so comparisons identify the algorithm used. Adding an algorithm needs a `Benchmark` implementation and a registry entry; the generator and campaigns stay shared.
@@ -136,7 +138,7 @@ For the measured seed-11, width-32 CG fixtures (1,000 × 100,000 well-conditione
 and near-dependent; 5,000 × 1,000,000 well-conditioned), use `--partitions 16`
 with four four-core executors. Both comparison orders showed 1.44–2.16× median
 paired speedups against 64 partitions at the same `1e-8` accuracy. See the
-[CG partition tuning](src/results/REPORT.md#cg-partition-tuning) section for the
+[CG partition tuning](reports/README.md#cg-partition-tuning) section for the
 recommendation, method, paired speedups and limits; other workloads and executor counts need their own measurements.
 
 ```sh
@@ -162,7 +164,7 @@ python3 benchmarks/scripts/bencher_export.py --check
 python3 benchmarks/scripts/bencher_export.py
 ```
 
-Use `--data DIRECTORY` to read another bundle, or `--output DIRECTORY` to write a copy containing `data/`. `--check` detects missing/unexpected files and verifies every BMF value against the evidence. File links are in [REPORT.md](src/results/REPORT.md).
+Use `--data DIRECTORY` to read another bundle, or `--output DIRECTORY` to write a copy containing `data/`. `--check` detects missing/unexpected files and verifies every BMF value against the evidence. File links are in the [report](reports/README.md).
 
 | Exported measures | Meaning |
 |---|---|
@@ -202,4 +204,4 @@ CG driver         = 64*m + 32*m*r       O(m + m*r)
 
 Local Spark shares one JVM for driver and executor, so RSS samples cover both; distributed runs measure each executor and the driver separately. The generator adds distributed DataFrame/cache/shuffle costs and `O(m)` driver vectors but does not collect the full matrix or `n`-length solutions. Both driver and executor allowances must fit with headroom before a large direct run.
 
-The EMR launcher enables Spark executor metrics polling every 1,000 ms, process-tree RSS metrics and per-stage executor peak logging, retained in Spark event logs separately from the runner's driver samples. The [report](src/results/REPORT.md#executor-memory-observations) includes derived executor observations and documents their timing scope.
+The EMR launcher enables Spark executor metrics polling every 1,000 ms, process-tree RSS metrics and per-stage executor peak logging, retained in Spark event logs separately from the runner's driver samples. The [report](reports/README.md) includes derived executor observations and documents their timing scope.

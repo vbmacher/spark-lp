@@ -30,8 +30,8 @@ object RuntimeEnvironment {
       "executors" -> (if (local) Some(1) else sc.getConf.getOption("spark.executor.instances").map(_.toInt)),
       "concurrent_tasks_per_executor" -> (if (local) Some(localCores / sc.getConf.getInt("spark.task.cpus", 1))
       else sc.getConf.getOption("spark.executor.cores").map(_.toInt / sc.getConf.getInt("spark.task.cpus", 1))),
-      "blas" -> com.github.fommil.netlib.BLAS.getInstance().getClass.getName,
-      "lapack" -> com.github.fommil.netlib.LAPACK.getInstance().getClass.getName,
+      "blas" -> org.apache.spark.wrappers.NativeNetlib.blas.getClass.getName,
+      "lapack" -> org.apache.spark.wrappers.NativeNetlib.lapack.getClass.getName,
       "jvm_args" -> ManagementFactory.getRuntimeMXBean.getInputArguments.toString,
       "driver_max_heap_bytes" -> Runtime.getRuntime.maxMemory(), "spark_conf" -> sc.getConf.getAll.toMap)
   }

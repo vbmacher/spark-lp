@@ -1,8 +1,8 @@
 package com.github.vbmacher.spark_lp.vectors
 
 import breeze.linalg.{svd, DenseMatrix => BDM}
-import com.github.fommil.netlib.LAPACK.{getInstance => lapack}
 import org.apache.spark.mllib.linalg.{Matrices, Matrix}
+import org.apache.spark.wrappers.NativeNetlib
 import org.netlib.util.intW
 
 object breeze_ops {
@@ -37,11 +37,11 @@ object breeze_ops {
     */
   def symPosDefInverse(B: Array[Double], m: Int): Unit = {
     val info1 = new intW(0)
-    lapack.dpptrf("U", m, B, info1) // cholesky decomposition of sym pos def packed format
+    NativeNetlib.lapack.dpptrf("U", m, B, info1) // cholesky decomposition of sym pos def packed format
     val code1 = info1.`val`
     assert(code1 == 0, s"lapack. returned $code1.")
     val info2 = new intW(0)
-    lapack.dpptri("U", m, B, info2) // input chol dec above packed output packed inv
+    NativeNetlib.lapack.dpptri("U", m, B, info2) // input chol dec above packed output packed inv
     val code2 = info2.`val`
     assert(code2 == 0, s"lapack. returned $code2.")
   }

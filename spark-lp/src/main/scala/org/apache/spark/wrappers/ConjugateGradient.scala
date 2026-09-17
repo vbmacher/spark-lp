@@ -1,7 +1,5 @@
 package org.apache.spark.wrappers
 
-import com.github.fommil.netlib.BLAS.{getInstance => blas}
-
 /** Matrix-free preconditioned CG for one symmetric positive-definite system.
   * Vector kernels use netlib BLAS; no dense matrix is formed. Inputs are copied.
   * The operator and preconditioner must leave their input unchanged and return a
@@ -23,6 +21,7 @@ final class ConjugateGradient(
   require(initialGuess.forall(x => x.length == rhs.length && x.forall(v => !v.isNaN && !v.isInfinite)),
     "CG initial guess must be finite and match the right-hand side")
 
+  private val blas = NativeNetlib.blas
   private val n = rhs.length
   private val b = rhs.clone()
   val rhsNorm: Double = blas.dnrm2(n, b, 1)

@@ -1538,7 +1538,7 @@ private[dsl] final class LpCompiler(problem: LpProblem, config: SolveConfig) ext
       val costs = compiled.originalCosts.getOrElse(sc.emptyRDD[((Int, String), Double)])
       val keys = sc.union(compiled.plans.map { p =>
         val si = p.handle.setIndex
-        val fixed = p.handle.upperBound.contains(p.handle.lowerBound)
+        val fixed = p.kind.isInstanceOf[FixedKind]
         p.keys.map { case (key, _) => ((si, key), fixed) }
       })
       val result = caches.checkpoint(keys.leftOuterJoin(costs).leftOuterJoin(effects).flatMap {

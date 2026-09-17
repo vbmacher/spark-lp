@@ -69,17 +69,20 @@ class LPSuite extends AnyFunSuite with DataFrameSuiteBase {
     assert(Vectors.dense(d.map(value => value * value)) ~== Vectors.dense(d2) absTol 1e-12)
   }
 
-  test("packed Cholesky factor serves multiple right-hand sides") {
-    val factor = CholeskyDecomposition.factor(Array(4.0, 1.0, 3.0), 2)
+  test("full Cholesky factor serves multiple right-hand sides") {
+    val packed = Array(4.0, 1.0, 3.0)
+    val factor = CholeskyDecomposition.factor(packed, 2)
 
     val first = CholeskyDecomposition.solveFactored(factor, 2, Array(1.0, 2.0))
     val second = CholeskyDecomposition.solveFactored(factor, 2, Array(4.0, 3.0))
 
+    assert(factor.length == 4)
+    assert(packed.sameElements(Array(4.0, 1.0, 3.0)))
     assert(Vectors.dense(first) ~== Vectors.dense(1.0 / 11.0, 7.0 / 11.0) absTol 1e-12)
     assert(Vectors.dense(second) ~== Vectors.dense(9.0 / 11.0, 8.0 / 11.0) absTol 1e-12)
   }
 
-  test("packed Cholesky identifies a non-positive-definite leading minor") {
+  test("full Cholesky identifies a non-positive-definite leading minor") {
     val e = intercept[IllegalArgumentException](
       CholeskyDecomposition.factor(Array(1.0, 0.0, -1.0), 2))
 

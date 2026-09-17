@@ -4,6 +4,7 @@ This module measures Cholesky and CG on reproducible linear programs generated w
 
 - [Measured results](src/results/REPORT.md)
 - [CG partition performance and recommended settings](src/results/REPORT.md#cg-partition-tuning)
+- [AArch64 native netlib package and factorization comparison](native/README.md)
 - [Bencher data format](#bencher-data-format)
 - [Case inventories](src/main/resources/)
 

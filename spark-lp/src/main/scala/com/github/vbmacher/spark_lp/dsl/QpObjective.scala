@@ -37,7 +37,7 @@ object QpObjective {
   def squaredDeviation(variable: LpVariable, target: Double, weight: Double = 1.0): QpObjective = {
     require(!target.isNaN && !target.isInfinite, "target must be finite")
     require(weight >= 0.0 && !weight.isInfinite, "weight must be finite and nonnegative")
-    new QpObjective(variable.handle.toExpr(2.0 * weight),
-      variable.handle.toExpr(-2.0 * weight * target).plusConstant(weight * target * target))
+    new QpObjective(variable.toExpr(2.0 * weight),
+      variable.toExpr(-2.0 * weight * target).plusConstant(weight * target * target))
   }
 }

@@ -15,18 +15,19 @@ import scala.language.implicitConversions
 object implicits {
 
   implicit final class VariableOps(private val x: LpVariable) extends AnyVal {
-    def *(coefficient: Double): LpExpr = x.handle.toExpr(coefficient)
-    def unary_- : LpExpr = x.handle.toExpr(-1.0)
-    def +(other: LpExpr): LpExpr = x.handle.toExpr(1.0).plus(other)
-    def -(other: LpExpr): LpExpr = x.handle.toExpr(1.0).plus(other.scaledBy(-1.0))
-    def +(constant: Double): LpExpr = x.handle.toExpr(1.0).plusConstant(constant)
-    def -(constant: Double): LpExpr = x.handle.toExpr(1.0).plusConstant(-constant)
-    def <=(rhs: Double): LpConstraint = x.handle.toExpr(1.0).compare(LpSense.Le, rhs)
-    def >=(rhs: Double): LpConstraint = x.handle.toExpr(1.0).compare(LpSense.Ge, rhs)
-    def ===(rhs: Double): LpConstraint = x.handle.toExpr(1.0).compare(LpSense.Eq, rhs)
-    def <=(rhs: LpExpr): LpConstraint = x.handle.toExpr(1.0).compare(LpSense.Le, rhs)
-    def >=(rhs: LpExpr): LpConstraint = x.handle.toExpr(1.0).compare(LpSense.Ge, rhs)
-    def ===(rhs: LpExpr): LpConstraint = x.handle.toExpr(1.0).compare(LpSense.Eq, rhs)
+    def *(coefficient: Double): LpExpr = x.toExpr(coefficient)
+    def /(divisor: Double): LpExpr = x.toExpr(LpArithmetic.reciprocal(divisor))
+    def unary_- : LpExpr = x.toExpr(-1.0)
+    def +(other: LpExpr): LpExpr = x.toExpr(1.0).plus(other)
+    def -(other: LpExpr): LpExpr = x.toExpr(1.0).plus(other.scaledBy(-1.0))
+    def +(constant: Double): LpExpr = x.toExpr(1.0).plusConstant(constant)
+    def -(constant: Double): LpExpr = x.toExpr(1.0).plusConstant(-constant)
+    def <=(rhs: Double): LpConstraint = x.toExpr(1.0).compare(LpSense.Le, rhs)
+    def >=(rhs: Double): LpConstraint = x.toExpr(1.0).compare(LpSense.Ge, rhs)
+    def ===(rhs: Double): LpConstraint = x.toExpr(1.0).compare(LpSense.Eq, rhs)
+    def <=(rhs: LpExpr): LpConstraint = x.toExpr(1.0).compare(LpSense.Le, rhs)
+    def >=(rhs: LpExpr): LpConstraint = x.toExpr(1.0).compare(LpSense.Ge, rhs)
+    def ===(rhs: LpExpr): LpConstraint = x.toExpr(1.0).compare(LpSense.Eq, rhs)
   }
 
   implicit final class VariableSetOps[K](private val x: LpVariableSet[K]) {
@@ -61,6 +62,7 @@ object implicits {
     def +(constant: Double): LpExpr = expression.plusConstant(constant)
     def -(constant: Double): LpExpr = expression.plusConstant(-constant)
     def *(scale: Double): LpExpr = expression.scaledBy(scale)
+    def /(divisor: Double): LpExpr = expression.scaledBy(LpArithmetic.reciprocal(divisor))
     def unary_- : LpExpr = expression.scaledBy(-1.0)
     def <=(rhs: Double): LpConstraint = expression.compare(LpSense.Le, rhs)
     def >=(rhs: Double): LpConstraint = expression.compare(LpSense.Ge, rhs)
@@ -72,7 +74,7 @@ object implicits {
 
   /** Puts numeric literals on the left of arithmetic, PuLP-style: `3.0 * x`, `5.0 - expr`. */
   implicit final class DoubleLpOps(private val value: Double) extends AnyVal {
-    def *(x: LpVariable): LpExpr = x.handle.toExpr(value)
+    def *(x: LpVariable): LpExpr = x.toExpr(value)
     def *[K](x: LpVariableSet[K]): LpExpr = x.handle.toExpr(value)
     def *(expression: LpExpr): LpExpr = expression.scaledBy(value)
     def +(expression: LpExpr): LpExpr = expression.plusConstant(value)
@@ -101,7 +103,7 @@ object implicits {
   }
 
   /** Allows a variable wherever an expression argument is expected (e.g. `expr + x`). */
-  implicit def variableToExpr(variable: LpVariable): LpExpr = variable.handle.toExpr(1.0)
+  implicit def variableToExpr(variable: LpVariable): LpExpr = variable.toExpr(1.0)
 
   /** Allows a variable set wherever an expression argument is expected. */
   implicit def variableSetToExpr[K](variables: LpVariableSet[K]): LpExpr = variables.handle.toExpr(1.0)

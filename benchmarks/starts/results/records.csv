@@ -1,0 +1,17 @@
+case,mode,repetition,warmup,seconds,snapshot_seconds,validation_preparation_seconds,status,objective,expected,valid,iterations,nodes,start_used,seeded_incumbent
+lp_coordinates,cold,0,true,7.700170018,1.458E-6,0.0,Optimal,42.99999991572852,43.0,true,4,0,false,false
+lp_coordinates,started,0,true,14.623026785,0.010584315,9.898164319,Optimal,43.000000070064154,43.0,true,3,0,true,false
+lp_coordinates,started,1,false,16.54998179,0.008684553,12.012320397,Optimal,43.00000007006409,43.0,true,3,0,true,false
+lp_coordinates,cold,1,false,4.858042786,8.75E-7,0.0,Optimal,42.999999915728544,43.0,true,4,0,false,false
+lp_coordinates,cold,2,false,5.576212839,5.0E-7,0.0,Optimal,42.99999991572853,43.0,true,4,0,false,false
+lp_coordinates,started,2,false,16.780929006,0.009336808,11.414874962,Optimal,43.00000007006417,43.0,true,3,0,true,false
+lp_coordinates,started,3,false,16.234792389,0.005690035,10.732430339,Optimal,43.00000007006442,43.0,true,3,0,true,false
+lp_coordinates,cold,3,false,5.122954169,5.83E-7,0.0,Optimal,42.99999991572852,43.0,true,4,0,false,false
+mip_knapsack,cold,0,true,21.243861315,7.09E-7,0.0,Optimal,27.0,27.0,true,83,17,false,false
+mip_knapsack,started,0,true,22.85989582,0.009069264,2.113077279,Optimal,27.0,27.0,true,84,17,true,true
+mip_knapsack,started,1,false,23.623918739,0.00972831,2.142120666,Optimal,27.0,27.0,true,84,17,true,true
+mip_knapsack,cold,1,false,20.400272738,3.75E-7,0.0,Optimal,27.0,27.0,true,83,17,false,false
+mip_knapsack,cold,2,false,21.252451659,5.0E-7,0.0,Optimal,27.0,27.0,true,83,17,false,false
+mip_knapsack,started,2,false,22.321341583,0.010970859,1.86309382,Optimal,27.0,27.0,true,84,17,true,true
+mip_knapsack,started,3,false,22.920774862,0.009900603,2.182984584,Optimal,27.0,27.0,true,84,17,true,true
+mip_knapsack,cold,3,false,20.280745209,5.42E-7,0.0,Optimal,27.0,27.0,true,83,17,false,false

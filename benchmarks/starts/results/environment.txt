@@ -1,0 +1,12 @@
+Spark=3.5.3
+Scala=2.12.20
+Java=11.0.26
+OS=Linux aarch64
+CPUs=12
+master=local[4]
+partitions=4
+tolerance=1e-8
+validationTolerance=1e-6
+warmups=1
+repetitions=3
+interiorFloor=0.001

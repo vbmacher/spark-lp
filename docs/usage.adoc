@@ -20,7 +20,7 @@ For a Spark 3.5.3 application using that local build:
 
 [source,scala]
 ----
-libraryDependencies += "com.github.vbmacher" %% "spark-lp" % "3.5.3_1.5.0"
+libraryDependencies += "com.github.vbmacher" %% "spark-lp" % "3.5.3_2.0.0"
 ----
 
 Releases use the `<spark-version>_<library-version>` scheme; pick one matching your Spark
@@ -51,6 +51,14 @@ flowchart LR
 
 Mermaid blocks need a Mermaid-capable AsciiDoc renderer; plain Asciidoctor shows their source.
 
+== Feasibility models
+
+An omitted objective means constant zero for continuous, integer and binary models.
+Add constraints and call `solve()` to find a feasible point. Normal feasibility,
+termination and unavailable-candidate semantics apply. The implicit objective does
+not mutate the model: a later `model += objective` or `setObjective` sets an explicit
+objective for subsequent solves.
+
 == DSL vocabulary
 
 [cols="1,2",options="header"]
@@ -72,6 +80,15 @@ A scalar RHS applies to every group. A grouped RHS DataFrame holds the grouping 
 a numeric `rhs` column, once per key. Terms without a matching RHS are errors; an RHS-only
 group is a zero-term constraint. `lpSum(...)` / `lpSumBy(...)` provide alternative expression syntax.
 
+== Local arithmetic helpers
+
+Divide a scalar variable or linear expression by a finite nonzero constant:
+`x / 2.0`, `(2.0*x + y + 4.0) / -2.0`. The reciprocal must be representable as
+finite `Double`. `lpDot(Seq(2.0, 3.0), Seq(x, y))` builds a local weighted sum;
+expression collections also include their weighted constants. Coefficients must be
+finite and collection lengths must match. Two empty collections produce zero.
+These helpers perform no Spark actions; use keyed weighted sums for distributed data.
+
 == Bounds, integers, and typed data
 
 [source,scala]
@@ -84,16 +101,22 @@ val solution = model.solve(SolveConfig(mip = MipConfig(maxNodes = 200)))
 try println(solution.status) finally solution.close()
 ----
 
-`Binary` is 0/1 intersected with declared bounds. `Integer` requires finite explicit bounds,
+`Binary` is 0/1 intersected with declared bounds. `Integer` uses finite declared or inferred search bounds,
 e.g. `model.variable("units", upperBound = Some(10.0), category = Integer)`. Bounds enclose
 whole integers and are never widened by the rounding tolerance; they must lie within
 `+/- (2^53 - 1)` because values are `Double`.
 
 Continuous variables take `lowerBound` and `upperBound = Some(value)`. Equal bounds fix a
 variable exactly. Fully fixed or finite-bound-only models need no artificial constraint. For a
-free variable use `lowerBound = Double.NegativeInfinity` and express any finite upper limit as a
-separate `x <= limit` constraint. Other linear models need at least one nontrivial constraint or finite
-upper bound. Nonzero-curvature QP models also support unconstrained objectives.
+free variable use `lowerBound = Double.NegativeInfinity`; combine it with
+`upperBound = Some(limit)` for an upper-only continuous variable.
+Upper-only variables compile as `x = limit - y`, `y >= 0`, and results use original units.
+Linear models with no active constraint rows are solved analytically from their
+variable domains and objective coefficients, including empty-variable and constant-only
+models. Results have zero numerical iterations. An improving direction without a
+finite bound gives `Unbounded`, with a finite feasible assignment available for diagnostics.
+Rows eliminated by presolve retain their original diagnostics.
+Nonzero-curvature QP models also support unconstrained objectives.
 
 For `Dataset[Offer]`, declare `model.variablesOf("amount", offersDs, (o: Offer) => o.id)` and use
 `lpSum(amount.weightedBy(offersDs)(_.cost))`. Typed keys support primitives, tuples, and custom
@@ -266,3 +289,523 @@ feasible output. These controls are rejected for integer models; branch-and-boun
 
 The link:algorithm.adoc#_opt_in_progress_policy[opt-in progress policy] describes how stagnation
 windows compare successive iterates for both backends.
+
+== Local combinations and permutations
+
+`LpCombinatorics.combinations(values, size)` and `permutations(values, size)`
+return lazy iterators of vectors. `combinationsUpTo` and `permutationsUpTo` enumerate
+sizes from zero through the smaller of the maximum size and input length.
+Size zero yields one empty vector, oversized fixed sizes yield nothing, and negative
+sizes raise `LpModelException`. Input positions are distinct: repeated values can
+produce repeated output vectors. Ordering follows input-index combinations, with
+index permutations within each combination. Up-to-size ordering is size first.
+
+[source,scala]
+----
+val pairs = LpCombinatorics.combinations(Vector("a", "b", "c"), 2)
+val choices = pairs.map { pair =>
+  model.variable(pair.mkString("pair_", "_", ""), category = Binary)
+}.toVector
+model += (lpSum(choices.map(x => 1.0 * x)) >= 1.0)
+----
+
+These helpers use standard Scala `combinations` and `permutations` on input indices.
+They copy a finite local input once (`O(n)` storage) and enumerate outputs lazily;
+output counts grow combinatorially. Do not collect distributed data to use them.
+
+== Independent model scenarios
+
+`val scenario = model.copy("scenario")` copies variable declarations, objective,
+sense and named scalar/grouped constraints. `scenario.model` is independently
+editable; use `scenario.variable(x)` or `scenario.variables(amounts)` for copied
+handles, and `scenario.expression(expr)` to rebind an expression. Foreign handles
+are rejected. Linear and quadratic objectives preserve their constants and factors.
+Copying performs no Spark actions. Immutable expressions and lazy DataFrame/Dataset
+sources share data plans, so a copy is not a durable source-data snapshot. Keep
+sources stable during each solve or materialize them explicitly. Closing a result
+from one model does not release another model's result or caller-owned input caches.
+
+=== Prioritized objectives
+
+`solvePriorities` solves an ordered sequence of linear `LpPriority` objectives in the model's
+minimization or maximization sense. Each optimal, feasible stage adds an unnamed preservation row
+on an independent model copy. Its allowance is `absoluteTolerance + relativeTolerance * abs(optimum)`,
+including objective constants; zero optima therefore use the absolute allowance. The compiler assigns
+and validates automatic row names. The source model is unchanged. Any unresolved or unsuccessful
+stage stops the sequence; inspect `complete`, every stage's `solution.status`, and `error`.
+
+[source,scala]
+----
+val priorities = model.solvePriorities(Seq(
+  LpPriority(cost, absoluteTolerance = 1e-6),
+  LpPriority(emissions)))
+try {
+  if (priorities.complete) {
+    val finalSolution = priorities.stages.last.solution.get
+    finalSolution.values(priorities.copied.variables(production)).show()
+  }
+} finally priorities.close()
+----
+
+The result owns all stage solutions and their caches. Numerical solver exceptions are recorded on
+the unsuccessful stage; model validation exceptions propagate and release completed stage results.
+Each stage receives the supplied solve configuration, including its own time limit.
+
+=== Local indexed and matrix variables
+
+`model.indexedVariables("x", Seq("a", "b"), category = Binary)` returns local keyed scalar handles:
+`x("a")`, `x.keys`, `x.values`, and `x.entries`. `model.matrixVariables("flow", origins, destinations)`
+uses tuple access `flow((origin, destination))`, with the first axis outermost. Both factories accept
+scalar-declaration bounds and categories and preserve input order. Composite keys use `LpKeyEncoder`;
+names contain hex-encoded canonical keys for deterministic, unambiguous identities. Null and duplicate
+keys, including duplicate encoded identities, are rejected before variables are registered. Empty
+axes produce no variables, but each supplied axis is still validated.
+
+These factories allocate all handles on the driver, using memory proportional to the number of local
+keys or Cartesian-product cells. Use DataFrame/Dataset families for distributed domains; the local
+factories never collect distributed inputs. Values use the ordinary `solution.value(handle)` API.
+
+=== Explicit rounded reports
+
+`val report = solution.rounded(LpRounding(integerTolerance = 1e-6, boundTolerance = 1e-8))`
+provides `report.value(x)` and distributed `report.values(family)`. Integer/binary values snap to
+nearby integers first; all categories then snap to the nearest effective bound within absolute
+bound tolerance (ties choose the lower bound). Integer bounds use ceiling/floor, and binary bounds
+intersect `{0, 1}`. Values outside tolerance and non-finite values are preserved. Tolerances must be
+finite and nonnegative, with integer tolerance below `0.5`. Continuous decimal formatting is separate.
+
+The view has no feasibility, objective or status metadata: snapping can violate constraints. It does
+not change any raw values, solver residuals, evidence or candidate claims. The raw solution owns the
+view's lifetime; complete Spark actions before closing it. Access through either facade after close
+raises an explicit error. Independently validate rounded assignments before using them as candidates.
+
+=== Continuous relaxation
+
+`model.solve(SolveConfig(relaxIntegrality = true))` relaxes integer and binary variables for that
+solve. Integer lower/upper bounds are first tightened with ceiling/floor; binary bounds are first
+intersected with `{0, 1}` and similarly tightened. Ordinary linear constraints and continuous domains
+are preserved. The model and its handles retain their declared categories for subsequent solves.
+
+`solution.isRelaxation` identifies this result. Its status, candidate feasibility, objective and
+progress describe the continuous relaxation. Fractional values are not a MIP incumbent, and an optimal
+or unbounded relaxation does not establish MIP optimality or unboundedness. A valid relaxation bound
+bounds the original optimum; proved relaxation infeasibility implies original infeasibility. Normal
+continuous stopping controls apply. Discrete structures beyond integer/binary categories require
+explicitly supported relaxation semantics.
+
+=== Individual keyed members
+
+`val selected: LpVariable = family(key)` is a lazy symbolic member handle. It works in scalar
+expressions, comparisons and `solution.value(selected)` while family-wide sums remain available.
+Primitive keys, tuples matching struct keys, and custom `LpKeyEncoder` instances use the same
+canonical identity as the declared domain. Repeated lookups refer to the same variable. Looking up
+a key launches no Spark jobs and collects no domain data. Null/empty encoded keys are rejected
+immediately; absent or incompatible encoded keys are rejected during compilation (or result access).
+A model copy rebinds selected handles through `copy.variable(selected)`.
+
+=== Expression inspection and immutable edits
+
+`expression.constant` is local metadata. `expression.coefficients` returns a distributed
+`RDD[LpCoefficient]`, keyed by model-local `LpVariableId(family, key)`. Repeated terms are summed and
+exactly canceled coefficients omitted. This call validates lazy source data with Spark actions;
+coefficient data remains distributed. `expression.coefficient(variable)` returns one coefficient
+with a Spark action, or zero when the expression has no term for that variable.
+
+`withCoefficient(variable, value)`, `withoutCoefficient(variable)` and `withConstant(value)` derive
+new expressions without reading sources or changing the originals. Selected keyed members can be
+edited in family-wide relational expressions. Cross-model handles and non-finite updates are rejected.
+`pending.withRhs(value)` returns a distinct pending constraint preserving its name and normalized
+left-hand side. Its RHS is the normalized constant (expression constants are already moved to the
+right); it does not replace a constraint already added to a model. Source plans must stay stable
+through inspection actions, just as for solving.
+=== Evaluate expressions against a solution
+
+`solution.evaluate(3.0 * x + family.sum($"cost") + 7.0)` evaluates an arbitrary linear expression
+with that solution's retained values. Repeated terms aggregate, selected/composite keys retain their
+identity, and constants are included. Coefficient sources are read at evaluation time; materialize
+them explicitly when a durable snapshot is required. Validation and the distributed join/reduction
+perform Spark actions, returning only the scalar total to the driver.
+
+Foreign-model terms, missing/non-finite values, unavailable candidates and closed solutions raise
+an explicit error. An available stopped or infeasible iterate can be evaluated for diagnostics;
+the result of an expression is not a feasibility or optimality claim. Complete evaluation before
+closing the solution. Variables declared after the solve have no values in the retained assignment.
+
+=== Original model inspection
+
+`val view = model.inspect` captures read-only declarations, objective/sense and constants without a
+Spark action. Later declaration/objective edits do not alter this view. Lazy input data is not copied:
+keep sources stable through expanded inspection, or materialize inputs for a durable snapshot.
+`variableDeclarations` and `constraintDeclarations` are local declaration metadata, including IDs,
+names, categories, domain kinds, bounds and row senses.
+
+`view.variables`, `view.constraints`, `view.coefficients` and `view.objectiveCoefficients` expose
+original expanded data as RDDs. `diagonalCoefficients` and `quadraticFactors` preserve quadratic
+objectives separately. IDs pair a declaration index with a canonical encoded key; scalar keys are
+empty. Declaration order is deterministic; distributed row ordering is unspecified. Repeated
+coefficients aggregate and exact zero coefficients disappear while empty original rows remain.
+Expanded coefficient/constraint methods perform source validation actions and never collect a whole
+matrix or family. These uncached RDDs own no solver resources; callers own any persistence they add.
+
+`view.statistics()` performs exact Spark counts, separating declaration counts from expanded variables,
+rows, constraint nonzeros and objective nonzeros. These are original-model sizes: fixed variables,
+redundant rows and contradictory rows remain visible, and solver slacks, shifts, splits and factor
+auxiliaries are excluded. Inspection does not optimize or mutate the model.
+
+=== Independent candidate validation
+
+`model.validateCandidate(model.candidateValues(Seq(x -> 2.0, family("a") -> 1.0)))` checks a complete
+independent assignment. Distributed callers supply `RDD[LpCandidateValue]` using original model-local
+IDs from inspection. Missing, duplicate, foreign and non-finite values produce an infeasible report
+with no objective. Local handle conversion rejects foreign models before creating the RDD. Partial
+assignments are not completed automatically.
+
+`report.violations` contains distributed per-variable bound/integrality and per-constraint violations.
+Absolute row/bound tolerance defaults to `1e-8`; integrality tolerance defaults to `1e-6`. Feasibility
+requires every applicable check to pass. `maxViolation` is the maximum raw absolute violation (infinity
+for malformed assignments); use each record's `accepted` flag for its corresponding tolerance.
+`CandidateValidationConfig(relaxIntegrality = true)` skips only integrality checks: declared bounds,
+binary `[0,1]` bounds and original constraints still apply. This validation mode does not tighten
+integer bounds to their enclosed integer endpoints.
+
+The independently computed objective includes sense, constants, diagonal curvature and squared
+factors, including for infeasible but well-formed assignments. Numeric overflow makes it unavailable.
+Validation performs Spark actions, keeps inputs distributed and never runs optimization or claims
+optimality. Keep lazy sources stable during these actions. Close the report after reading violations;
+only report-owned caches are released, preserving caller-owned candidate/input caches.
+
+=== Portable model and component data
+
+`LpPortableModel.fromView(model.inspect)` provides schema-versioned public data for variable
+metadata, original rows, sparse coefficients, affine objective, curvature and squared factors.
+`LpPortableModel.variable(x)`, `.expression(expr)` and `.constraint(pending)` convert individual
+components. IDs are model-local and repeated coefficients add. Coefficient collections remain RDDs;
+conversion evaluates source validation actions without collecting domains or matrices. Schema `1`
+is explicit; unsupported schema versions are rejected rather than guessed.
+
+`val imported = data.toProblem(maxLocalRows = 10000)` binds a new model to the supplied Spark session.
+Variable IDs and canonical/composite keys are preserved. Grouped rows become named scalar row
+expressions; `imported.constraintIds` maps portable row IDs to their reconstructed identities.
+`imported.variable(id)`, `.expression(data)` and `.constraint(data)` bind components to this model.
+Import explicitly collects bounded row metadata, never variable domains or coefficients. Imported
+variable domains expose canonical `lp_key` values, names and results; original application columns
+and executable coefficient source plans are not serialized. Source and imported models are independent.
+
+Duplicate identities/names, missing references, non-finite coefficients and invalid schema/bounds are
+rejected. `LpSolutionData` represents optional result metadata and value availability separately;
+it does not establish a fresh feasibility or optimality proof. Its distributed values retain the
+source solution's lifetime unless callers materialize their own copy. Data RDDs own no implicit caches;
+callers control source consistency and persistence.
+
+=== Integer optimality gaps
+
+`MipConfig(absoluteGapTolerance = 0.0, gapTolerance = 1e-9)` accepts a verified incumbent when either
+its absolute or relative remaining improvement satisfies the configured threshold. Absolute gap is
+`max(0, incumbent - globalLowerBound)` for minimization, with the direction reversed for maximization.
+Relative gap divides by `max(1, abs(originalIncumbentObjective))`, including objective constants.
+Absolute tolerances therefore use application objective units. Both tolerances must be finite and
+nonnegative; zero permits only a closed numerical gap for that threshold.
+
+`solution.mip` exposes incumbent, global bound, achieved gaps, processed/open node counts and the
+termination reason. Bounds from open, pruned and unresolved subtrees remain part of the global bound;
+missing incumbents or unknown/non-finite bounds yield absent gaps. Node bounds require a converged
+LP relaxation and dual residual within solver tolerance, so these are numerical certificates at the
+configured tolerance. `Optimal` includes tolerance acceptance; `GapTolerance` distinguishes a positive
+accepted gap from `SearchExhausted`. A node limit or unresolved relaxation retains its weaker status.
+
+=== MIP progress and cooperative stopping
+
+`SolveConfig(mip = MipConfig(control = MipControl(timeLimit = Some(30.seconds),
+onProgress = event => println(event), shouldStop = () => cancelled)))` supplies a whole-search
+budget and callbacks. The clock starts at branch-and-bound setup after model compilation and covers
+all root/child LP work and search processing, excluding final result reconstruction. `nanoTime`
+accepts an injected monotonic nanosecond clock for deterministic deadline tests. `onNodeProgress`
+delivers a node number and continuous solver event separately from whole-search `onProgress`.
+
+Whole-search events report processed/open nodes, elapsed seconds, and available incumbent, global
+bound and gaps in original objective units. Cooperative checks run both between nodes and within LP
+initialization/iterations/inner work. They cannot interrupt an active Spark action or native call.
+Callbacks run synchronously on the driver; exceptions propagate and release search-owned caches.
+
+A stopped result retains its best verified integer-feasible incumbent with matching objective and
+values, or `candidate.available=false` with no values. Check both `candidate.available` and
+`candidate.feasible` before use. Fractional root iterates are not exposed as incumbents. Completed
+conclusive results take precedence over a subsequent stop request. Continuous `SolveControl` and
+iteration callbacks keep their continuous-only contract; MIP uses `MipControl` explicitly.
+
+=== LP shadow prices
+
+For an optimal continuous linear solve, `solution.constraints` includes `dual`: the derivative of
+the original objective value with respect to the original row RHS, within numerical tolerance and
+while the active set is stable. Objective maximization signs and bound shifts are restored. For a
+minimization problem, active `>=` rows typically have nonnegative prices and `<=` rows nonpositive
+prices; equality prices are unrestricted. Maximization reverses these signs.
+
+`dual_note` explains unavailable prices. Presolved rows and all members of merged equivalent rows
+have no unique reconstructed price. Stopped, infeasible, quadratic and ordinary MIP solves do not
+expose LP shadow prices. Degeneracy can make even retained multipliers non-unique; they are local
+sensitivity information, not guarantees for arbitrary RHS changes. Prices share the solution's
+existing diagnostic lifetime and require no separate cached distributed vector.
+
+=== LP reduced costs
+
+`solution.reducedCost(variable): Option[Double]` and `solution.reducedCosts(family)` expose
+`c_j - sum_i(a_ij * dual_i)` in original objective units, excluding variable-bound multipliers from
+the row sum. Thus a minimizing variable at its lower bound has nonnegative reduced cost, one at its
+upper bound nonpositive cost, and an interior/free variable zero cost within tolerance. Maximization
+reverses bound signs. Family results join the original domain with nullable `lp_reduced_cost`.
+
+Fixed variables and variables touching rows whose dual mapping is unavailable return no reduced cost.
+Stopped, infeasible, quadratic and ordinary MIP solves expose no global LP reduced costs. Available
+values use optimal continuous LP evidence and share its sensitivity/degeneracy limitations. Computation
+and family joins remain distributed; scalar lookup performs a Spark action. Close the solution after
+all actions to release the additional result cache; access after close fails explicitly.
+
+=== JSON model interchange
+
+`LpJson.write(model, "file:///tmp/model-json", solution = Some(LpSolutionData.fromSolution(result)))`
+writes a versioned directory of JSON-lines partitions. `LpJson.read(path)` returns portable model
+data and optional solution metadata; `document.model.toProblem()` reconstructs a usable model and
+handle mapping in the supplied Spark session. Model-only export omits the solution argument. Imported
+solution metadata has `solutionMetadataVerified=false`; independently validate supplied values before
+using them. Optional residuals/status/objective are separate from mathematical definitions.
+
+Schema `1` preserves original IDs, composite encoded keys and display parts, names, categories,
+bounds, objective constants, affine coefficients and quadratic factors. Original application domain
+columns, closures, credentials and Spark plans are excluded. Unbounded lower limits use the string
+`negativeInfinity`, absent upper bounds use `null`, and unavailable diagnostics use `null`; signed
+infinite result objectives use explicit strings. Finite coefficients use full Double precision.
+Unknown schemas, malformed categories/numbers and invalid references are rejected by reading and
+portable-model reconstruction.
+
+Large collections remain partitioned; only declarations and the small header are driver-local.
+Reading is lazy beyond the header; reconstruction applies the documented local row-metadata cap.
+Export performs Spark validation and writing actions, requiring stable inputs throughout. The destination
+is a Hadoop-filesystem directory and must not exist unless `overwrite=true`. Data is written to a
+unique temporary sibling before publishing by rename; failures clean the temporary directory. Explicit
+overwrite replaces the existing destination after successful data writing. Rename/overwrite atomicity
+depends on the underlying filesystem. Callers own imported RDD persistence and solution lifetimes.
+
+=== Explicit algebra rendering
+
+`LpAlgebra.preview(model.inspect, maxLines = 80)` renders bounded human-readable original algebra,
+with an exact `TRUNCATED` line count when output is omitted. `LpAlgebra.write(model.inspect, writer)`
+streams complete output to a caller-owned writer. Expressions and pending constraints use
+`LpAlgebra.expression(expr, maxTerms)` and `.constraint(row, maxTerms)` with explicit term truncation.
+
+Rendering includes objective sense/constants, named rows, bounds, categories and quadratic factors.
+Repeated coefficients aggregate, numbers use full `Double.toString` precision, and names use escaped
+backtick delimiters. Ordering follows declaration indices and canonical keys. All methods explicitly
+perform Spark actions; full rendering sorts and transfers one partition at a time, so the largest
+partition bounds driver transfer memory. No implicit `toString` triggers model evaluation. Output is
+for human review and does not promise a machine-readable LP-file dialect. Models and caller writers
+remain unchanged/open apart from the requested text write.
+
+=== LP-file export
+
+`val names = LpExport.lp(model.inspect, java.nio.file.Paths.get("model.lp"))` writes original linear
+algebra in a CPLEX-style LP dialect: objective sense/offset, named rows, explicit bounds, integer and
+binary declarations. Internal solver slacks/splits are excluded. Quadratic objectives are rejected.
+Numbers use full Double precision; repeated terms aggregate. The default `ExportNaming.Normalized`
+assigns deterministic `vN`/`rN` names and returns distributed reversible mappings to original IDs/names.
+`Original` requires unique, nonreserved ASCII identifier names of at most 200 characters; invalid names
+fail explicitly. Close the mapping after use to release its caches.
+
+The destination is a local UTF-8 file whose parent directory exists. Existing files are rejected unless
+`overwrite=true`. A temporary sibling is completed before moving it into place; failures remove the
+partial temporary file. Export validates and materializes lazy algebra with Spark actions, then sorts
+and streams partitions, without collecting the coefficient matrix. Keep source data stable until export
+and mapping use finish. Repeated exports of stable sources are deterministic. The dialect is checked
+against the independent HiGHS reader when SciPy's bundled HiGHS binding is available in the test environment.
+
+== MPS-file export
+
+`LpMps.write(model.inspect, path, naming = ExportNaming.Normalized, relaxIntegrality = false, overwrite = false)` writes UTF-8 free MPS on the driver filesystem and returns the same closeable, reversible identity mappings as LP export. `Original` requires unique ASCII identifier names of at most 200 characters; normalized names support arbitrary original names. Rows and columns have deterministic order and full round-trip double precision. Coefficients remain distributed and the sorted output streams one Spark partition at a time. Stable lazy inputs are required; export validates and caches its expanded records for the operation.
+
+The file contains `NAME`, `OBJSENSE`, `ROWS`, `COLUMNS`, `RHS`, `BOUNDS` and `ENDATA`. `OBJSENSE` explicitly preserves minimization or maximization. The RHS entry on the free objective row is the *negative* objective constant. Readers must support both extensions; readers that ignore them cannot preserve this dialect's objective. Integer columns use `INTORG`/`INTEND` markers, binary columns also use `BV`, and all bounds are explicit, including free, fixed and one-sided bounds. `relaxIntegrality = true` omits integer markers and `BV` while retaining binary bounds intersected with `[0,1]`; this intentionally exports a continuous relaxation.
+
+Quadratic objectives fail explicitly. Existing destinations require explicit overwrite; failed writes remove their temporary output. Optional interoperability tests use the installed SciPy-bundled HiGHS reader and solver and check both integer and relaxation objectives. The objective and bound encodings follow the https://docs.gurobi.com/projects/optimizer/en/current/reference/fileformats/modelformats.html[MPS format reference].
+
+== MPS-file import
+
+`LpMpsImport.read(path, MpsReadOptions(...))` reads a UTF-8 driver-local file into an ordinary named `LpProblem`. The result exposes `variables: Map[String, LpVariable]` and original row names mapped to their one or two reconstructed constraints. These handles support ordinary inspection, additional constraints and solving. Import itself performs no optimization and does not tighten or invent integer bounds. A preserved model outside a selected solver's capabilities receives that solver's explicit capability error.
+
+The supported dialect uses whitespace-separated free MPS records, also accepting fixed-format files whose names contain no embedded spaces and whose records explicitly repeat column and set names. Sections are `NAME`, optional `OBJSENSE`/`OBJNAME`, `ROWS`, `COLUMNS`, optional `RHS`, `RANGES`, `BOUNDS`, and required `ENDATA`, in that order. One `N` objective row is required. The default objective sense is minimize; `OBJSENSE` preserves MAX/MIN, and an explicit `objectiveSense` option overrides it. The objective constant is the negative RHS of the objective row. Duplicate coefficient entries sum; missing coefficients and RHS entries are zero. Comments begin with `*`. Numbers support E or D exponents and full double precision.
+
+Continuous variables default to `[0,+infinity)`. Integer markers default to `[0,1]` unless explicit upper bounds or `PL`/`FR` specify otherwise. `LO`, `UP`, `FX`, `FR`, `MI`, `PL`, `LI`, `UI` and `BV` bounds are supported. An explicitly negative upper bound implies a free lower bound if no lower bound is specified. Binary domains retain `[0,1]` semantics. `rhsSet`, `boundSet` and `rangeSet` select named data sets; each defaults to the first encountered set independently, and an explicitly requested missing set is an error. All records, including unselected sets, are structurally checked.
+
+A range of magnitude `r` makes an L row `[rhs-r,rhs]`, a G row `[rhs,rhs+r]`, and an E row `[rhs,rhs+r]` for a nonnegative range or `[rhs-r,rhs]` for a negative range. Such rows become `name__lower` and `name__upper`, with collisions rejected. SOS, quadratic, semi-continuous, multiple objective/free rows, omitted-name continuation records and unknown sections are rejected with file/line/section diagnostics.
+
+Parsing is sequential but stores the coefficient matrix and model declarations on the driver: memory is O(variables + rows + coefficient records). Defaults cap input at 64 MiB, 100,000 variables, 10,000 rows and 1,000,000 coefficient records; `MpsReadOptions` changes these limits explicitly. The reader closes its input on success or error and does not alter the source file.
+
+[source,scala]
+----
+import java.nio.file.Paths
+import org.apache.spark.sql.SparkSession
+import com.github.vbmacher.spark_lp.dsl._
+
+implicit val spark: SparkSession = SparkSession.builder().master("local[*]").appName("mps").getOrCreate()
+val imported = LpMpsImport.read(Paths.get("model.mps"))
+val result = imported.model.solve()
+try imported.variables.toSeq.sortBy(_._1).foreach { case (name, variable) =>
+  println(s"$name = ${result.value(variable)}")
+} finally { result.close(); spark.stop() }
+
+----
+
+== Variable bounds, fixing and names
+
+Scalar variables, variable families and lazy selected members expose `setBounds(lower, upper)`, `fix(value)`, `unfix()` and `rename(name)`, returning the same symbolic handle. Expressions keep referring to that identity. `lowerBound` and `upperBound` inspect the current selected bounds. Edits perform no Spark action and do not collect a distributed domain; missing selected keys and expanded-name collisions are rejected during compilation. Numeric/domain errors and directly known duplicate names fail immediately.
+
+`fix` sets both bounds to a finite value in the variable's category. The first fix saves the previous bounds; repeated fixes retain that restoration point. `unfix` restores it and is a no-op without a saved fix. Whole-family fixes save and restore selected-member overrides too. `setBounds` replaces bounds and clears the corresponding fix restoration point; whole-family `setBounds` also clears all member bound overrides. Fixes and bound edits may deliberately widen previously declared bounds. Family renaming preserves explicit member aliases; renamed members retain their encoded identity. Model copies own independent metadata and fix restoration state.
+
+Edits affect subsequent solves. Existing solutions retain values, diagnostics, and the names/bounds used by value and rounding reports. Read-only model views also snapshot declaration metadata. Input Spark plans remain lazy and must stay stable for their documented lifetime. Editing a model during a solve is unsupported and raises an error when attempted from callbacks. Concurrent mutation of a model from other threads is unsupported.
+
+The compiler represents per-member bound differences with additional rows against a common family transformation. These rows obey the configured row budget and stay out of user constraint reports. Their row metadata is held on the driver like other compiled constraint rows; the domain is streamed during lowering. Reduced costs and optional certificate artifacts are unavailable for this transformation; original user-row shadow prices remain available when uniquely mapped. Portable/JSON export includes expanded member bounds and names; portable import bounds local metadata overrides with `maxLocalOverrides` (default 10,000).
+
+[source,scala]
+----
+val capacity = model.variable("capacity", upperBound = Some(100.0))
+capacity.setBounds(0.0, Some(80.0)).fix(40.0).rename("available_capacity")
+capacity.unfix() // restores [0,80]
+// A keyed family uses the same operations: allocation(("region", 1)).fix(5.0)
+----
+
+== Integer bounds inferred from constraints
+
+Integer variables accept omitted upper bounds (`None`) and free lower bounds (`Double.NegativeInfinity`). The built-in solver propagates original row intervals to infer finite integer search bounds when constrained integer domains lack them. This includes coupled rows and keyed families; declarations, expressions and subsequent solves retain their original domains. `SolveConfig(boundInference = BoundInferenceConfig(maxPasses = 8, maxLocalChanges = 100000, tolerance = 1e-10))` bounds propagation work and the local integer metadata retained for search. No arbitrary finite cap is substituted.
+
+Propagation distributes coefficient joins and row aggregates, using exact binary-double decimal products/sums and outward-rounded divisions. Row bounds have a conservative allowance `tolerance * (1 + abs(rhs))`; integer deductions round inward to enclosed integer values. Contradictions proven by these conservative bounds return `Infeasible` with no candidate and a diagnostic note. Finite integer endpoints remain limited to `+/- (2^53 - 1)` for exact double representation.
+
+Rowless and separable integer models (at most one nonzero per original row) use the analytical bound-only path, including a feasible integer point and the appropriate unbounded objective when an improving integer direction exists. A constrained domain whose finite interval cannot be inferred receives an explicit unsupported-model error; an unbounded LP relaxation alone does not establish integer unboundedness. Continuous-relaxation solves skip integer deductions from constraints and preserve their fractional feasible region. Explicitly bounded MIPs use their normal search path.
+
+[source,scala]
+----
+val model = LpProblem("integer capacity", Maximize)
+val amount = model.variable("amount", category = Integer)
+model += lpSum(amount)
+model += (amount <= 12.5)
+val result = model.solve()
+try println(result.value(amount)) finally result.close() // 12
+----
+
+== Presolve controls and reconstruction
+
+`SolveConfig(presolve = PresolveConfig(enabled = true, effort = PresolveEffort.Full))` enables bound propagation, exactly representable singleton-equality fixes, and substitution of free continuous zero-cost columns that occur in only one equality. `Basic` is the default: fixed-variable and empty-row lowering, exact-coefficient duplicate-equality detection, and necessary missing-integer-bound inference. `enabled = false` disables optional duplicate detection, bound inference and substitutions; fixed bounds and empty rows still receive the structural lowering required by the solver format. Unbounded integer intervals that need disabled inference receive a capability error.
+
+`boundInference` controls propagation passes, local metadata limits and conservative row tolerance; `maxSubstitutions` bounds column elimination records. Constraint coefficients stay distributed. Substitution uses `x = (rhs - sum(other original terms)) / coefficient` and removes at most one eligible column per original equality, so reconstruction is acyclic. Integer/binary variables are never eliminated by the continuous free-column rule. No objective term is dropped: substituted columns have exactly zero linear cost and quadratic models do not use this substitution.
+
+`solution.presolve` reports original variable/row counts, remaining original variable/row counts, actual solver dimensions, fixed-variable counts, bound-change records and substitution records. Values and constraint activities are reconstructed in original units. Tightened-bound sensitivity and certificate artifacts are unavailable; removed/merged row sensitivity is explicitly nullable. Repeated solves rebuild reductions from the declared model. Fully reduced models return an analytical result. Continuous relaxation skips integer deductions from constraints. Adapter-specific presolve support is part of each adapter's declared capabilities.
+
+The reductions follow standard LP/MIP presolve methods surveyed in https://arxiv.org/abs/2206.10709[PaPILO: A Parallel Presolving Library for Integer and Linear Programming with Multiprecision Support]. Spark LP implements the documented subset; it does not embed PaPILO. The link:../benchmarks/presolve/README.md[presolve benchmark report] records equal-tolerance reduction and overhead measurements.
+
+== Custom solver adapters
+
+`model.solve(adapter, LpAdapterOptions(...))` uses an application-supplied `LpSolverAdapter`; `model.solve(SolveConfig(...))` uses the built-in solver without any external package. An adapter publishes `LpSolverCapabilities` and implements `prepare(view, options)`, returning an `LpAdapterSession` with `solve()` and idempotent `close()`. Preparation failures must release partially acquired resources. The library closes a prepared session after success or failure, and materializes its normalized result before closing it.
+
+The public `LpModelView` supplies original variable and row identities, distributed coefficients, bounds, categories, objective sense and constant. An adapter must preserve them. It returns `LpAdapterResult` with original-coordinate assignments, optional original-unit objective/bound and sensitivity data, a status and backend diagnostics. Candidate identities, finiteness, bounds, integrality and original rows are checked independently. An optimal status requires a feasible candidate; a claimed objective must match the original expression including its constant. Missing points remain unavailable, and missing duals or bounds remain absent. Backend optimality, infeasibility and bound claims are supplied by the backend; candidate validation does not manufacture certificates or prove optimality. `solution.backend` identifies that provenance.
+
+Capability checks reject unsupported LP/MIP, quadratic objectives, infinite bounds, requested duals and callbacks before preparation. A callback-capable adapter must invoke `onProgress` on the driver and honor cancellation and time limits. The adapter options carry their own tolerances and resource controls; built-in Newton settings are not forwarded implicitly. Automatic relaxation is not supported by this entry point. Starts and native access require their corresponding adapter interfaces and advertised support.
+
+`maxVariables`, `maxConstraints` and `maxNonzeros` bound transfer size before preparation. Expanded data stays in Spark RDDs until the adapter exports or collects it. Local solvers need local memory/disk for their model; being callable from Spark does not make them distributed. Sessions and native handles must remain on the driver. Copy primitive metadata into local values before creating Spark closures; do not capture a driver session. Neither session cleanup nor solution cleanup may unpersist caller-owned sources.
+
+`LpCommandAdapter` provides LP export, deterministic original/exported identity mappings, a unique temporary directory, argument-safe `ProcessBuilder` execution and parsing hooks. Implement `command(modelFile, solutionFile, options)` as an argument sequence and `parse(solutionFile, mapping, options)` with explicit parser resource limits. No shell interpolation is performed. The process budget starts at launch; cooperative cancellation and timeouts terminate the process and its descendants and return a stopped result without inventing a candidate from partial output. Nonzero exits, unavailable executables, missing files and parser errors fail explicitly. Logs have a configurable byte cap and a bounded tail in result diagnostics. Temporary files are removed on close unless `LpCommandOptions(retainArtifacts = true)` is explicit; retained paths appear in diagnostics and remain caller-owned. Parsers must load or materialize file-backed data before session cleanup.
+
+The executable public-API examples and conformance suite are in `spark-lp/src/test/scala/example/adapters/AdapterConformanceSuite.scala`, outside the library package. `BoxAdapter` solves bounded rowless LP/MIP models in process; `PythonHighsAdapter` demonstrates LP-file exchange with an optional installed SciPy/HiGHS process. The suite covers keyed identity mapping, min/max constants, integrality, caller caches, malformed results, process failures, cancellation, timeouts and artifact ownership. The examples impose deliberately narrow model/format support and reject requests outside it.
+
+== Special ordered sets
+
+`model.addSos1("selection", Seq(x -> 1.0, y -> 2.0))` permits at most one nonzero member. `addSos2` permits at most two nonzero members, which must be adjacent in ascending weight order. Members can be scalar variables or selected keyed members. SOS2 weights must be finite and distinct; SOS1 permits ties. Names are unique within a model, duplicate members are rejected, and overlapping groups all apply.
+
+The built-in solver uses binary selectors and exact finite-bound linking constraints. Every member requires finite declared lower and upper bounds; an unsupported unbounded member is rejected without inventing a cap. Continuous, integer and binary members are supported. Quadratic objectives with SOS groups are rejected. Automatic Newton selection uses regularized CG because tight selector constraints can make the normal equations ill-conditioned. Explicit Newton settings remain available.
+
+`MipConfig.sosZeroTolerance` controls incumbent nonzero checks, independently of integrality tolerance. `CandidateValidationConfig.sosZeroTolerance` controls original-model candidate checks. Both default to `1e-6`; zero requests exact zero tests. `relaxIntegrality = true` relaxes the selectors along with integer variables and labels the result as a relaxation. Selector variables and internal linking rows are excluded from public results.
+
+Model copies, inspection, algebra rendering and JSON preserve SOS groups and weight order. LP and MPS export reject SOS models because the implemented dialects cannot preserve their semantics; use JSON for complete interchange.
+
+== Native solver sessions
+
+`model.prepareNative(adapter, options)` returns `Either[LpUnsupported, LpNativeSession]`. Unsupported adapters return a reason without preparing a native model. A supported session fixes the model snapshot and prevents DSL edits until close. Use its creating driver thread for every operation, including close; the handle is not serializable and must never be captured in executor closures. Finish actions on its mapping and results before closing it. The session owns its backend process/resources and all normalized solutions it returns; close is idempotent.
+
+The lifecycle is preparation, parameter/callback configuration, solve, then inspection or solution-file export. `setParameter(name, value)`, `parameter(name)`, `information(name)`, `callback(handler)`, `readSolution(path)` and `writeSolution(path)` return explicit unsupported-operation results when an operation or parameter is unavailable. Parameter values are backend-specific strings. `mapping` exposes original identities and native names. Backend information and callback messages are diagnostics; they do not independently establish generic feasibility, optimality or certificates.
+
+Parameter changes, callback changes and solution-file imports invalidate `latestSolution` and advance `modelRevision`. `isCurrent(result)` tells whether a result represents the current session. Retained result objects are immutable solve snapshots; invalidation does not rewrite their values. A new solve refreshes the current result through independent original-model candidate validation. Structural native edits are not exposed: bounds, objective and rows must be edited through the DSL after closing and preparing a new session. Callbacks cannot reenter session operations. A solve or callback exception closes the session and releases its edit lock and resources.
+
+`HighsPythonAdapter` supplies optional native LP/MIP access without a JVM binding. It uses an existing Python `highspy` installation, or the HiGHS module in SciPy when standalone `highspy` is unavailable. No package is installed automatically. The conformance environment uses SciPy 1.16.3 with HiGHS 1.8.0; standalone package versions can expose different parameters. Missing executables/imports fail with backend startup diagnostics and cleanup. The regular built-in solve requires neither Python nor HiGHS.
+
+HiGHS receives an LP export with exact original coefficients, sense, constant and normalized names; its public solution arrays map back to these names after native presolve. It supports native parameters, logging and improving-MIP-solution callbacks, original-coordinate LP duals/reduced costs, backend information queries, and HiGHS solution/start files. Solution-file reads are native hints and are not declared feasible incumbents without validation. File writes require a fresh solve and reject an existing destination. SOS and quadratic models are explicitly unsupported by this LP exchange adapter. Console/log/implicit solution-file parameters are managed by the bridge to preserve its protocol and explicit file ownership.
+
+The bridge is a bounded driver process. Generic transfer limits apply before export; the backend stores the model locally, and the JSON response is collected on the driver with a configurable character cap. Startup/operation timeout defaults to 60 seconds, log limit to 10 MiB and response limit to 32 Mi characters. `LpAdapterOptions.timeLimit` and `shouldStop` bound solve execution. Forced interruption terminates the process and returns a stopped result with no invented incumbent; prepare a fresh session to continue. Temporary resources are removed on close unless artifact retention is explicit. Any commercial adapter remains responsible for its own license and backend resource ownership.
+
+[source,scala]
+----
+val adapter = new HighsPythonAdapter()
+val session = model.prepareNative(adapter).fold(
+  unsupported => throw new IllegalArgumentException(unsupported.detail), identity)
+try {
+  session.setParameter("presolve", "on").fold(
+    unsupported => throw new IllegalArgumentException(unsupported.detail), identity)
+  session.callback(event => println(event.message))
+  val result = session.solve()
+  println(result.objectiveValue)
+  println(session.information("simplex_iteration_count"))
+  session.writeSolution(java.nio.file.Paths.get("solution.txt"))
+} finally session.close()
+----
+
+The public-API conformance suite is `spark-lp/src/test/scala/example/adapters/NativeSessionSuite.scala`. Backend API details and callback semantics are defined by the https://ergo-code.github.io/HiGHS/stable/interfaces/python/[HiGHS Python documentation] and https://github.com/ERGO-Code/HiGHS/blob/master/examples/call_highs_from_python.py[HiGHS callback examples].
+
+== LP warm starts and MIP starts
+
+`model.start(Seq(x -> 1.0, items("a") -> 2.0))` creates an independently owned distributed assignment snapshot. `model.start(rddOfCandidateValues, LpStartConfig(...))` accepts original identity/value records without collecting them on the driver. Pass the result as `SolveConfig(start = Some(start))` and close it after its last use. `solution.asStart()` snapshots retained values before the source solution closes; the start then remains usable independently. Creating a start materializes a local Spark checkpoint, so caller-owned source caches are not released by its close operation.
+
+Full and partial assignments are supported. Missing keys are allowed by default and use neutral solver-coordinate values during initialization. `allowPartial = false` requires every current model variable. Duplicate/foreign identities and non-finite values reject the start. Starts are associated with their originating model; cross-model reuse requires explicit identity remapping. Every solve revalidates the snapshot against current domains, bounds, categories, rows and objective. Renaming does not change identity. Changed bounds, source data or new variables can make an assignment infeasible or incomplete. Closed starts and attempts to snapshot a closed solution fail explicitly.
+
+`LpStartConfig.repairBounds` defaults to true: out-of-bound hints are clipped. Near-integral values are rounded within the configured MIP integrality tolerance and the resulting point is checked against the original rows again. A fractional or row-infeasible hint does not establish an incumbent. `requireFeasible = true` rejects anything except a complete feasible assignment. Rejected hints leave the mathematical model and cold solve intact; fixing variables is a separate operation.
+
+For a built-in continuous LP, original values are transformed through lower shifts, upper reflections and free-variable splits. Row slacks are reconstructed from the proposed primal activity, missing coordinates receive neutral values, and all solver coordinates are lifted to at least `interiorFloor` (default `1e-3`). The infeasible-start interior-point method computes fresh dual multipliers and dual slacks through its regular initialization; no basis or dual start is assumed. Interior lifting can change feasibility, so a hint is not reported as a completed feasible iterate. Quadratic and analytical solve paths explicitly report that iterative user starts are unsupported or unused.
+
+For MIP and SOS models, a complete independently validated assignment seeds the incumbent before node search. Its original objective, including constants and sense, participates in pruning and gap logic. An early stop can retain it even with zero processed nodes; it does not create a root bound or an optimality claim. The root relaxation can also use its primal hint. Partial/fractional hints alone cannot create a feasible incumbent. Original values survive presolve and are reconstructed in public results.
+
+`solution.start` reports `Accepted`, `Repaired`, `Rejected` or `Unsupported`, a reason, completeness and feasibility, whether initialization actually used the start, whether it seeded an incumbent, and preparation time. Acceptance does not imply use when a stop occurs before initialization. Start construction time is separate from this preparation field. Custom adapters advertise start support and must return usage metadata; unsupported adapters reject the request explicitly. The HiGHS bridge supports its native solution/start-file operations; generic `LpAdapterOptions.start` is explicitly unsupported by that adapter.
+
+[source,scala]
+----
+val initial = model.start(Seq(x -> 1.0, y -> 0.0))
+try {
+  val result = model.solve(SolveConfig(start = Some(initial)))
+  try {
+    println(result.start)
+    println(result.objectiveValue)
+  } finally result.close()
+} finally initial.close()
+----
+
+See `benchmarks/starts/README.md` for equal-tolerance start/no-start measurements, including snapshot/validation overhead. Warm starts can reduce solver work and can also increase total elapsed time.
+
+== MIP search tuning
+
+Enable cuts, strong branching and concurrent nodes independently through `MipConfig.search`:
+
+[source,scala]
+----
+val result = model.solve(SolveConfig(mip = MipConfig(
+  maxNodes = 1000,
+  search = MipSearchConfig(
+    cuts = MipCutsConfig(enabled = true, maxRounds = 2, maxCutsPerNode = 20, maxCuts = 100),
+    strongBranching = StrongBranchingConfig(enabled = true,
+      maxCandidates = 4, maxIterations = 5, maxProbes = 100),
+    parallelNodes = 2,
+    maxConcurrentLocalBytes = 1024L * 1024 * 1024))))
+try println(result.mip.map(_.search)) finally result.close()
+----
+
+Defaults disable cuts and strong branching and use one worker. `MipCutsConfig` supports binary knapsack cover cuts with a default numerical allowance of `1e-9` and maximum coefficient ratio `1e12`. `maxRounds` applies per searched node; `maxCutsPerNode` includes inherited cuts and bounds the total rows appended there; `maxCuts` limits successful additions across the search. Zero cut budgets disable that work. Cuts below the root remain restricted to their branch domain.
+
+Strong branching considers up to `maxCandidates` fractional variables and up to two LP probes for each. `maxIterations` applies to each probe; `maxProbes` is a whole-search cap, with zero disabling probes. Incomplete probes keep a valid inherited bound and do not manufacture incumbents. Probes and cut re-solves add work beyond `maxNodes`, which counts launched search nodes. `solution.iterations` includes this extra LP work; `solution.mip.get.search` separates relaxation count, cut rounds, global/local cut additions, strong probes, peak concurrent LPs and estimated concurrent Newton bytes.
+
+`parallelNodes` bounds active LP relaxations, including cut re-solves and probes. `maxConcurrentLocalBytes` defaults to 1 GiB and rejects a parallel configuration whose estimated worst-case concurrent Newton storage exceeds it. It is an estimate, not a JVM/process/executor memory limit. Size driver metadata, executor cache/shuffle memory and Spark cores separately. The default CG estimate includes its 256 MiB preconditioner budget per active relaxation; increasing workers can require increasing the explicit concurrent budget. Automatic Newton selection uses CG when cuts are present. Many tiny Spark jobs can make parallelism slower; measure with the application's scheduling configuration and model sizes.
+
+Warm starts, absolute/relative gaps, `MipControl` deadlines, cancellation and progress remain active in every mode. Global bounds include running nodes, and a stop retains independently feasible incumbents, including a validated start. Cleanup waits for cooperative worker completion. Callbacks run on the driver coordinator; keep them short. Under backpressure, older node-iteration diagnostic events can be coalesced, while incumbent/global-bound updates remain coordinated. Parallel completion order is nondeterministic. Use `MipSearchConfig()` for the serial best-first/most-fractional baseline.
+
+The link:algorithm.adoc[algorithm guide] defines cut validity, bound acceptance and memory estimates. The link:../benchmarks/mip-search/README.md[benchmark report] measures the individual options and all combinations at equal tolerances, including regressions.

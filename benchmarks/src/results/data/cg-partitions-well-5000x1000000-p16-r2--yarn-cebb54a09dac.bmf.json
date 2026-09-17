@@ -1,0 +1,698 @@
+{
+  "distributed-rows-5000-vars-1000000-width-32 / CG / cfg-c7022bedef7ce215": {
+    "cg-restarts": {
+      "lower_value": 0,
+      "upper_value": 0,
+      "value": 0
+    },
+    "cg-steps": {
+      "lower_value": 241,
+      "upper_value": 241,
+      "value": 241
+    },
+    "driver-heap-bytes-max": {
+      "value": 2011016976
+    },
+    "driver-rss-bytes-max": {
+      "value": 2913792000
+    },
+    "dual-max": {
+      "value": 1.6385548421791502e-17
+    },
+    "gap-max": {
+      "value": 5.168139193319529e-10
+    },
+    "latency": {
+      "lower_value": 17379039833.0,
+      "upper_value": 18694958088.0,
+      "value": 17949846255.0
+    },
+    "maximum-rank": {
+      "lower_value": 0,
+      "upper_value": 0,
+      "value": 0
+    },
+    "measured-attempted-count": {
+      "value": 5
+    },
+    "measured-converged-count": {
+      "value": 5
+    },
+    "measured-excluded-count": {
+      "value": 0
+    },
+    "measured-failed-count": {
+      "value": 0
+    },
+    "measured-records-count": {
+      "_evidence": {
+        "campaign": {
+          "campaign_id": "cg-partitions-well-5000x1000000-p16-r2",
+          "notes": [],
+          "partition_comparison": {
+            "build": {
+              "baseline_implementation_sha": "9208f8e52dc387514f48fcb33bd9f2c2128e8384",
+              "implementation_sha": "7e30c9451411524a172e8bfbb777b8df7ff1f194",
+              "inventory_sha256": "b2bbc78c392a2e02c3767d084909d654dc5f401f24075ddc4b74698f3439c211",
+              "jar_sha256": "597325a9353ec79041c7deb2a6308664b132e8783eea871fc7de3fe548f750f4",
+              "source_hash": "e6c6d4327e9c63babb9a79033b5d1c175636bd04373ffeff520d7bce3ed7a6ad"
+            },
+            "comparison_order": [
+              16,
+              32,
+              64
+            ],
+            "events_sha256": [
+              "abaed1e62ada17be25c362aa017066fb384962bb77faa9c8c442b67c67485f34"
+            ],
+            "executor_memory_peaks": [
+              {
+                "executor_ordinal": 1,
+                "heap_bytes": 4484208520,
+                "jvm_nonheap_bytes": 213658152,
+                "rss_bytes": 6700744704
+              },
+              {
+                "executor_ordinal": 2,
+                "heap_bytes": 4724891296,
+                "jvm_nonheap_bytes": 213325384,
+                "rss_bytes": 7187234816
+              },
+              {
+                "executor_ordinal": 3,
+                "heap_bytes": 4725391064,
+                "jvm_nonheap_bytes": 213520464,
+                "rss_bytes": 6125248512
+              },
+              {
+                "executor_ordinal": 4,
+                "heap_bytes": 4739279936,
+                "jvm_nonheap_bytes": 214875408,
+                "rss_bytes": 6251941888
+              }
+            ],
+            "executor_memory_scope": "Whole application stage peaks; includes generation, warmup, preparation, solve and validation.",
+            "observed_executors": {
+              "executor_cores": [
+                4,
+                4,
+                4,
+                4
+              ],
+              "executor_count": 4,
+              "task_executor_count": 4
+            },
+            "paired_speedup_vs_64": {
+              "max": 1.5658032893352651,
+              "median": 1.5224990735337385,
+              "min": 1.4787440485235137
+            },
+            "partitions": 16,
+            "recommendation": "Retain explicit 16 partitions for these three seed-11 CG fixtures on the tested four-executor environment. Across both comparison orders, median paired speedups versus 64 partitions were 1.44\u20132.16x; all 90 measured solves and 18 warmups passed independent accuracy checks at 1e-8. This is a workload-specific recommendation; no global partition default, numerical setting or solver algorithm changed.",
+            "records_file": "collected-09/results/records.jsonl",
+            "records_sha256": "798fe8dec8bfc6cf2dab53652a55a4987130443b2b61840e2f94c513f06c461e",
+            "round": 2,
+            "runtime": {
+              "architecture": "aarch64",
+              "blas": "com.github.fommil.netlib.F2jBLAS",
+              "concurrent_tasks_per_executor": 4,
+              "driver_max_heap_bytes": 17179869184,
+              "executors": 4,
+              "java": "11.0.32+9-LTS",
+              "lapack": "com.github.fommil.netlib.F2jLAPACK",
+              "spark.dynamicAllocation.enabled": "false",
+              "spark.executor.cores": "4",
+              "spark.executor.instances": "4",
+              "spark.executor.memory": "16g",
+              "spark.executor.memoryOverhead": "4g",
+              "spark.executorEnv.MKL_NUM_THREADS": "1",
+              "spark.executorEnv.OMP_NUM_THREADS": "1",
+              "spark.executorEnv.OPENBLAS_NUM_THREADS": "1",
+              "spark.speculation": "false",
+              "spark.task.cpus": "1",
+              "spark_version": "3.5.3"
+            },
+            "state": "COMPLETED",
+            "statuses": {
+              "Success": 6
+            },
+            "validated_pairs": 5
+          },
+          "schedule": [],
+          "schema_version": 1,
+          "title": "CG partitions: well, 5000 x 1000000, p16, round 2"
+        },
+        "case": {
+          "case_id": "distributed-rows-5000-vars-1000000-width-32",
+          "fixture_hash": "df89fc8db227c86baba4b84b4e4c7c1fce03da8a021928188ded05482bfba53f",
+          "m": 5000,
+          "n": 1000000,
+          "nnz": 160000,
+          "nnz_basis": "see source provenance",
+          "shape": {
+            "family": "well",
+            "nonzeros_per_row": 32,
+            "seed": 11
+          }
+        },
+        "configuration": {
+          "algorithm": "CG",
+          "cg_limit_per_rank": 1000,
+          "cg_tolerance": 1e-10,
+          "configuration_id": "cfg-c7022bedef7ce215",
+          "control": "",
+          "dual_regularization": 1e-08,
+          "environment": {
+            "blas": "com.github.fommil.netlib.F2jBLAS",
+            "computer": "distributed cluster",
+            "java_version": "11.0.32+9-LTS",
+            "master": "yarn",
+            "os": "Linux",
+            "spark_version": "3.5.3"
+          },
+          "environment_id": "env-fd9b0666003a",
+          "eta": null,
+          "heap_gib": 16,
+          "implementation": "cg",
+          "label": "cg",
+          "memory_topology": {
+            "concurrent_tasks_per_executor": 4,
+            "executors": 4
+          },
+          "outer_limit": 100,
+          "partitions": 16,
+          "preconditioner_memory_bytes": 268435456,
+          "primal_regularization": 1e-08,
+          "scenario": "",
+          "source_configuration_id": "cfg-de7a424723df862c",
+          "source_hash": "e6c6d4327e9c63babb9a79033b5d1c175636bd04373ffeff520d7bce3ed7a6ad",
+          "suite": "com.github.vbmacher.spark_lp.CGBenchmark",
+          "timing_scope": "core solve excluding independent validation",
+          "tolerance": 1e-08,
+          "warmup_case": null,
+          "warmups": 1
+        },
+        "records": [
+          {
+            "accuracy_basis": "independent-original-lp",
+            "algorithm": "CG",
+            "application_id": null,
+            "attempt_id": "cg-partitions-well-5000x1000000-p16-r2/distributed-rows-5000-vars-1000000-width-32/cfg-c7022bedef7ce215/rep-000/attempt-001",
+            "attempt_number": 1,
+            "campaign_id": "cg-partitions-well-5000x1000000-p16-r2",
+            "case_id": "distributed-rows-5000-vars-1000000-width-32",
+            "cg_restarts": 0,
+            "cg_steps": 241,
+            "configuration_id": "cfg-c7022bedef7ce215",
+            "maximum_rank": 0,
+            "memory": {
+              "peak_heap_bytes": 1964985728,
+              "peak_rss_bytes": 2843078656,
+              "scope": "driver process; combined with executors in local mode; includes validation"
+            },
+            "outer_iterations": 9,
+            "provenance": {
+              "line": 1,
+              "source_path": "results/records.jsonl",
+              "source_sha256": "798fe8dec8bfc6cf2dab53652a55a4987130443b2b61840e2f94c513f06c461e"
+            },
+            "rank_escalations": null,
+            "raw": {
+              "driver_process_cpu_seconds": 43.38,
+              "driver_process_gc_seconds": 0.207,
+              "generation_seconds": 9.867852563,
+              "phase_seconds": {
+                "Initialization": 0.110931656,
+                "InnerSolve": 21.788253055000002,
+                "OuterIteration": 0.7671498939999992,
+                "SystemSetup": 1.621024780999999
+              },
+              "preparation_seconds": 3.318959093,
+              "spark": {
+                "completed_jobs": 413,
+                "disk_spilled_bytes": 0,
+                "executor_cpu_seconds": 60.67729397300015,
+                "executor_run_seconds": 76.21700000000399,
+                "jobs": 413,
+                "memory_spilled_bytes": 0,
+                "missing_task_metrics": 0,
+                "shuffle_read_bytes": 189782044,
+                "shuffle_write_bytes": 189782044,
+                "task_attempts": 7790,
+                "task_duration_ms": {
+                  "max": 270,
+                  "max_to_median": 16.875,
+                  "median": 16.0,
+                  "min": 6,
+                  "p95": 31.549999999999272
+                },
+                "task_gc_seconds": 0.6910000000000004,
+                "unsuccessful_task_attempts": 0
+              },
+              "validation_seconds": 1.853716354
+            },
+            "repetition": 0,
+            "residuals": {
+              "dual": 1.6376392338622478e-17,
+              "gap": 5.168133406184514e-10,
+              "min_s": 3.3208918496204064e-16,
+              "min_x": 3.940156128558125e-15,
+              "objective": 72.66782367582623,
+              "objective_error": 4.507186645173619e-10,
+              "primal": 1.295883029659026e-10
+            },
+            "run_id": "cg-partitions-well-5000x1000000-p16-r2/distributed-rows-5000-vars-1000000-width-32/cfg-c7022bedef7ce215/rep-000",
+            "solve_seconds": 24.287359386000002,
+            "spark_jobs": 413,
+            "status": "Success",
+            "stop_reason": null,
+            "warmup": true
+          },
+          {
+            "accuracy_basis": "independent-original-lp",
+            "algorithm": "CG",
+            "application_id": null,
+            "attempt_id": "cg-partitions-well-5000x1000000-p16-r2/distributed-rows-5000-vars-1000000-width-32/cfg-c7022bedef7ce215/rep-001/attempt-001",
+            "attempt_number": 1,
+            "campaign_id": "cg-partitions-well-5000x1000000-p16-r2",
+            "case_id": "distributed-rows-5000-vars-1000000-width-32",
+            "cg_restarts": 0,
+            "cg_steps": 241,
+            "configuration_id": "cfg-c7022bedef7ce215",
+            "maximum_rank": 0,
+            "memory": {
+              "peak_heap_bytes": 2011016976,
+              "peak_rss_bytes": 2898845696,
+              "scope": "driver process; combined with executors in local mode; includes validation"
+            },
+            "outer_iterations": 9,
+            "provenance": {
+              "line": 2,
+              "source_path": "results/records.jsonl",
+              "source_sha256": "798fe8dec8bfc6cf2dab53652a55a4987130443b2b61840e2f94c513f06c461e"
+            },
+            "rank_escalations": null,
+            "raw": {
+              "driver_process_cpu_seconds": 25.33,
+              "driver_process_gc_seconds": 0.113,
+              "generation_seconds": 9.867852563,
+              "phase_seconds": {
+                "Initialization": 0.097176573,
+                "InnerSolve": 16.725860242,
+                "OuterIteration": 0.679923923000004,
+                "SystemSetup": 1.1919973499999972
+              },
+              "preparation_seconds": 0.49450086,
+              "spark": {
+                "completed_jobs": 413,
+                "disk_spilled_bytes": 0,
+                "executor_cpu_seconds": 53.887378042000115,
+                "executor_run_seconds": 63.508000000002795,
+                "jobs": 413,
+                "memory_spilled_bytes": 0,
+                "missing_task_metrics": 0,
+                "shuffle_read_bytes": 189780180,
+                "shuffle_write_bytes": 189780180,
+                "task_attempts": 7790,
+                "task_duration_ms": {
+                  "max": 54,
+                  "max_to_median": 3.6,
+                  "median": 15.0,
+                  "min": 6,
+                  "p95": 29.0
+                },
+                "task_gc_seconds": 0.5280000000000002,
+                "unsuccessful_task_attempts": 0
+              },
+              "validation_seconds": 1.099269264
+            },
+            "repetition": 1,
+            "residuals": {
+              "dual": 1.6385548421791502e-17,
+              "gap": 5.168133406184515e-10,
+              "min_s": 3.3208918496250804e-16,
+              "min_x": 3.940156128560624e-15,
+              "objective": 72.66782367582621,
+              "objective_error": 4.5071847161286145e-10,
+              "primal": 1.2958830179247218e-10
+            },
+            "run_id": "cg-partitions-well-5000x1000000-p16-r2/distributed-rows-5000-vars-1000000-width-32/cfg-c7022bedef7ce215/rep-001",
+            "solve_seconds": 18.694958088,
+            "spark_jobs": 413,
+            "status": "Success",
+            "stop_reason": null,
+            "warmup": false
+          },
+          {
+            "accuracy_basis": "independent-original-lp",
+            "algorithm": "CG",
+            "application_id": null,
+            "attempt_id": "cg-partitions-well-5000x1000000-p16-r2/distributed-rows-5000-vars-1000000-width-32/cfg-c7022bedef7ce215/rep-002/attempt-001",
+            "attempt_number": 1,
+            "campaign_id": "cg-partitions-well-5000x1000000-p16-r2",
+            "case_id": "distributed-rows-5000-vars-1000000-width-32",
+            "cg_restarts": 0,
+            "cg_steps": 241,
+            "configuration_id": "cfg-c7022bedef7ce215",
+            "maximum_rank": 0,
+            "memory": {
+              "peak_heap_bytes": 1939563488,
+              "peak_rss_bytes": 2907127808,
+              "scope": "driver process; combined with executors in local mode; includes validation"
+            },
+            "outer_iterations": 9,
+            "provenance": {
+              "line": 3,
+              "source_path": "results/records.jsonl",
+              "source_sha256": "798fe8dec8bfc6cf2dab53652a55a4987130443b2b61840e2f94c513f06c461e"
+            },
+            "rank_escalations": null,
+            "raw": {
+              "driver_process_cpu_seconds": 23.69,
+              "driver_process_gc_seconds": 0.075,
+              "generation_seconds": 9.867852563,
+              "phase_seconds": {
+                "Initialization": 0.057013787,
+                "InnerSolve": 16.72777278599999,
+                "OuterIteration": 0.6719817970000044,
+                "SystemSetup": 1.1812028560000045
+              },
+              "preparation_seconds": 0.432946377,
+              "spark": {
+                "completed_jobs": 413,
+                "disk_spilled_bytes": 0,
+                "executor_cpu_seconds": 53.38500817899999,
+                "executor_run_seconds": 62.010000000001526,
+                "jobs": 413,
+                "memory_spilled_bytes": 0,
+                "missing_task_metrics": 0,
+                "shuffle_read_bytes": 189775773,
+                "shuffle_write_bytes": 189775773,
+                "task_attempts": 7790,
+                "task_duration_ms": {
+                  "max": 55,
+                  "max_to_median": 3.9285714285714284,
+                  "median": 14.0,
+                  "min": 5,
+                  "p95": 27.0
+                },
+                "task_gc_seconds": 0.49000000000000027,
+                "unsuccessful_task_attempts": 0
+              },
+              "validation_seconds": 1.040390917
+            },
+            "repetition": 2,
+            "residuals": {
+              "dual": 1.637604672236616e-17,
+              "gap": 5.16813147713951e-10,
+              "min_s": 3.3208918496217697e-16,
+              "min_x": 3.940156128562416e-15,
+              "objective": 72.66782367582621,
+              "objective_error": 4.5071847161286145e-10,
+              "primal": 1.2958832685024532e-10
+            },
+            "run_id": "cg-partitions-well-5000x1000000-p16-r2/distributed-rows-5000-vars-1000000-width-32/cfg-c7022bedef7ce215/rep-002",
+            "solve_seconds": 18.637971226,
+            "spark_jobs": 413,
+            "status": "Success",
+            "stop_reason": null,
+            "warmup": false
+          },
+          {
+            "accuracy_basis": "independent-original-lp",
+            "algorithm": "CG",
+            "application_id": null,
+            "attempt_id": "cg-partitions-well-5000x1000000-p16-r2/distributed-rows-5000-vars-1000000-width-32/cfg-c7022bedef7ce215/rep-003/attempt-001",
+            "attempt_number": 1,
+            "campaign_id": "cg-partitions-well-5000x1000000-p16-r2",
+            "case_id": "distributed-rows-5000-vars-1000000-width-32",
+            "cg_restarts": 0,
+            "cg_steps": 241,
+            "configuration_id": "cfg-c7022bedef7ce215",
+            "maximum_rank": 0,
+            "memory": {
+              "peak_heap_bytes": 1928535072,
+              "peak_rss_bytes": 2907918336,
+              "scope": "driver process; combined with executors in local mode; includes validation"
+            },
+            "outer_iterations": 9,
+            "provenance": {
+              "line": 4,
+              "source_path": "results/records.jsonl",
+              "source_sha256": "798fe8dec8bfc6cf2dab53652a55a4987130443b2b61840e2f94c513f06c461e"
+            },
+            "rank_escalations": null,
+            "raw": {
+              "driver_process_cpu_seconds": 21.77,
+              "driver_process_gc_seconds": 0.079,
+              "generation_seconds": 9.867852563,
+              "phase_seconds": {
+                "Initialization": 0.053163223,
+                "InnerSolve": 16.129497171,
+                "OuterIteration": 0.6329277260000019,
+                "SystemSetup": 1.1342581349999974
+              },
+              "preparation_seconds": 0.405024023,
+              "spark": {
+                "completed_jobs": 413,
+                "disk_spilled_bytes": 0,
+                "executor_cpu_seconds": 53.32214913000008,
+                "executor_run_seconds": 61.307000000001175,
+                "jobs": 413,
+                "memory_spilled_bytes": 0,
+                "missing_task_metrics": 0,
+                "shuffle_read_bytes": 189781948,
+                "shuffle_write_bytes": 189781948,
+                "task_attempts": 7790,
+                "task_duration_ms": {
+                  "max": 51,
+                  "max_to_median": 3.642857142857143,
+                  "median": 14.0,
+                  "min": 5,
+                  "p95": 26.0
+                },
+                "task_gc_seconds": 0.3960000000000002,
+                "unsuccessful_task_attempts": 0
+              },
+              "validation_seconds": 0.946799776
+            },
+            "repetition": 3,
+            "residuals": {
+              "dual": 1.6374923327763596e-17,
+              "gap": 5.168129548094506e-10,
+              "min_s": 3.3208918496235816e-16,
+              "min_x": 3.940156128562498e-15,
+              "objective": 72.6678236758262,
+              "objective_error": 4.5071827870836105e-10,
+              "primal": 1.2958830117879267e-10
+            },
+            "run_id": "cg-partitions-well-5000x1000000-p16-r2/distributed-rows-5000-vars-1000000-width-32/cfg-c7022bedef7ce215/rep-003",
+            "solve_seconds": 17.949846255,
+            "spark_jobs": 413,
+            "status": "Success",
+            "stop_reason": null,
+            "warmup": false
+          },
+          {
+            "accuracy_basis": "independent-original-lp",
+            "algorithm": "CG",
+            "application_id": null,
+            "attempt_id": "cg-partitions-well-5000x1000000-p16-r2/distributed-rows-5000-vars-1000000-width-32/cfg-c7022bedef7ce215/rep-004/attempt-001",
+            "attempt_number": 1,
+            "campaign_id": "cg-partitions-well-5000x1000000-p16-r2",
+            "case_id": "distributed-rows-5000-vars-1000000-width-32",
+            "cg_restarts": 0,
+            "cg_steps": 241,
+            "configuration_id": "cfg-c7022bedef7ce215",
+            "maximum_rank": 0,
+            "memory": {
+              "peak_heap_bytes": 1905930320,
+              "peak_rss_bytes": 2912894976,
+              "scope": "driver process; combined with executors in local mode; includes validation"
+            },
+            "outer_iterations": 9,
+            "provenance": {
+              "line": 5,
+              "source_path": "results/records.jsonl",
+              "source_sha256": "798fe8dec8bfc6cf2dab53652a55a4987130443b2b61840e2f94c513f06c461e"
+            },
+            "rank_escalations": null,
+            "raw": {
+              "driver_process_cpu_seconds": 22.66,
+              "driver_process_gc_seconds": 0.083,
+              "generation_seconds": 9.867852563,
+              "phase_seconds": {
+                "Initialization": 0.042362359,
+                "InnerSolve": 16.061850869000004,
+                "OuterIteration": 0.6517224540000015,
+                "SystemSetup": 1.1718002709999986
+              },
+              "preparation_seconds": 0.401545817,
+              "spark": {
+                "completed_jobs": 413,
+                "disk_spilled_bytes": 0,
+                "executor_cpu_seconds": 53.54985634900004,
+                "executor_run_seconds": 61.15300000000085,
+                "jobs": 413,
+                "memory_spilled_bytes": 0,
+                "missing_task_metrics": 0,
+                "shuffle_read_bytes": 189783843,
+                "shuffle_write_bytes": 189783843,
+                "task_attempts": 7790,
+                "task_duration_ms": {
+                  "max": 48,
+                  "max_to_median": 3.4285714285714284,
+                  "median": 14.0,
+                  "min": 5,
+                  "p95": 27.0
+                },
+                "task_gc_seconds": 0.3430000000000002,
+                "unsuccessful_task_attempts": 0
+              },
+              "validation_seconds": 0.874377897
+            },
+            "repetition": 4,
+            "residuals": {
+              "dual": 1.6375268967730274e-17,
+              "gap": 5.168139193319529e-10,
+              "min_s": 3.320891849627514e-16,
+              "min_x": 3.940156128563359e-15,
+              "objective": 72.66782367582624,
+              "objective_error": 4.507188574218623e-10,
+              "primal": 1.295883061282085e-10
+            },
+            "run_id": "cg-partitions-well-5000x1000000-p16-r2/distributed-rows-5000-vars-1000000-width-32/cfg-c7022bedef7ce215/rep-004",
+            "solve_seconds": 17.927735953000003,
+            "spark_jobs": 413,
+            "status": "Success",
+            "stop_reason": null,
+            "warmup": false
+          },
+          {
+            "accuracy_basis": "independent-original-lp",
+            "algorithm": "CG",
+            "application_id": null,
+            "attempt_id": "cg-partitions-well-5000x1000000-p16-r2/distributed-rows-5000-vars-1000000-width-32/cfg-c7022bedef7ce215/rep-005/attempt-001",
+            "attempt_number": 1,
+            "campaign_id": "cg-partitions-well-5000x1000000-p16-r2",
+            "case_id": "distributed-rows-5000-vars-1000000-width-32",
+            "cg_restarts": 0,
+            "cg_steps": 241,
+            "configuration_id": "cfg-c7022bedef7ce215",
+            "maximum_rank": 0,
+            "memory": {
+              "peak_heap_bytes": 1941200384,
+              "peak_rss_bytes": 2913792000,
+              "scope": "driver process; combined with executors in local mode; includes validation"
+            },
+            "outer_iterations": 9,
+            "provenance": {
+              "line": 6,
+              "source_path": "results/records.jsonl",
+              "source_sha256": "798fe8dec8bfc6cf2dab53652a55a4987130443b2b61840e2f94c513f06c461e"
+            },
+            "rank_escalations": null,
+            "raw": {
+              "driver_process_cpu_seconds": 20.75,
+              "driver_process_gc_seconds": 0.072,
+              "generation_seconds": 9.867852563,
+              "phase_seconds": {
+                "Initialization": 0.041115339,
+                "InnerSolve": 15.607670778999998,
+                "OuterIteration": 0.6211720949999986,
+                "SystemSetup": 1.1090816200000033
+              },
+              "preparation_seconds": 0.406414325,
+              "spark": {
+                "completed_jobs": 413,
+                "disk_spilled_bytes": 0,
+                "executor_cpu_seconds": 51.964070955000025,
+                "executor_run_seconds": 58.764999999999525,
+                "jobs": 413,
+                "memory_spilled_bytes": 0,
+                "missing_task_metrics": 0,
+                "shuffle_read_bytes": 189784686,
+                "shuffle_write_bytes": 189784686,
+                "task_attempts": 7790,
+                "task_duration_ms": {
+                  "max": 43,
+                  "max_to_median": 3.0714285714285716,
+                  "median": 14.0,
+                  "min": 5,
+                  "p95": 26.0
+                },
+                "task_gc_seconds": 0.2820000000000002,
+                "unsuccessful_task_attempts": 0
+              },
+              "validation_seconds": 0.894069906
+            },
+            "repetition": 5,
+            "residuals": {
+              "dual": 1.638485765959368e-17,
+              "gap": 5.16813147713951e-10,
+              "min_s": 3.3208918496163665e-16,
+              "min_x": 3.940156128559027e-15,
+              "objective": 72.66782367582621,
+              "objective_error": 4.5071847161286145e-10,
+              "primal": 1.2958830100004574e-10
+            },
+            "run_id": "cg-partitions-well-5000x1000000-p16-r2/distributed-rows-5000-vars-1000000-width-32/cfg-c7022bedef7ce215/rep-005",
+            "solve_seconds": 17.379039833,
+            "spark_jobs": 413,
+            "status": "Success",
+            "stop_reason": null,
+            "warmup": false
+          }
+        ],
+        "schema_version": 1,
+        "sources": [
+          {
+            "path": "results/records.jsonl",
+            "revision": null,
+            "sha256": "798fe8dec8bfc6cf2dab53652a55a4987130443b2b61840e2f94c513f06c461e",
+            "uri": null
+          }
+        ]
+      },
+      "value": 5
+    },
+    "measured-unknown-count": {
+      "value": 0
+    },
+    "measured-unrun-count": {
+      "value": 0
+    },
+    "objective-error-max": {
+      "value": 4.507188574218623e-10
+    },
+    "outer-iterations": {
+      "lower_value": 9,
+      "upper_value": 9,
+      "value": 9
+    },
+    "primal-max": {
+      "value": 1.2958832685024532e-10
+    },
+    "warmup-attempted-count": {
+      "value": 1
+    },
+    "warmup-converged-count": {
+      "value": 1
+    },
+    "warmup-excluded-count": {
+      "value": 0
+    },
+    "warmup-failed-count": {
+      "value": 0
+    },
+    "warmup-records-count": {
+      "value": 1
+    },
+    "warmup-unknown-count": {
+      "value": 0
+    },
+    "warmup-unrun-count": {
+      "value": 0
+    }
+  }
+}

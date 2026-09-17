@@ -38,6 +38,7 @@ object ExampleMPS extends App {
     .appName("ExampleMPS")
     .master("local[2]")
     .getOrCreate()
+  spark.sparkContext.setCheckpointDir(java.nio.file.Files.createTempDirectory("spark-lp-checkpoints").toString)
 
   // Parse the provided MPS file.
   val parser = new MPSParser()

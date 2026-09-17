@@ -1,0 +1,1606 @@
+{
+  "scaling-wide-10000-10-20-seed-11 / CG / cfg-be395a14dc9459c7": {
+    "cg-restarts": {
+      "lower_value": 0,
+      "upper_value": 0,
+      "value": 0
+    },
+    "cg-steps": {
+      "lower_value": 667,
+      "upper_value": 667,
+      "value": 667
+    },
+    "driver-heap-bytes-max": {
+      "value": 8094247856
+    },
+    "driver-rss-bytes-max": {
+      "value": 9283051520
+    },
+    "dual-max": {
+      "value": 1.11371744023125e-12
+    },
+    "gap-max": {
+      "value": 6.199564715531714e-10
+    },
+    "latency": {
+      "lower_value": 169496382593.99997,
+      "upper_value": 187214105126.0,
+      "value": 175863276011.0
+    },
+    "maximum-rank": {
+      "lower_value": 0,
+      "upper_value": 0,
+      "value": 0
+    },
+    "measured-attempted-count": {
+      "value": 5
+    },
+    "measured-converged-count": {
+      "value": 5
+    },
+    "measured-excluded-count": {
+      "value": 0
+    },
+    "measured-failed-count": {
+      "value": 0
+    },
+    "measured-records-count": {
+      "_evidence": {
+        "campaign": {
+          "campaign_id": "benchmark-scaling-distributed-a0f2da3cc3df",
+          "notes": [],
+          "schedule": [],
+          "schema_version": 1,
+          "title": "Benchmark scaling distributed a0f2da3cc3df"
+        },
+        "case": {
+          "case_id": "scaling-wide-10000-10-20-seed-11",
+          "fixture_hash": "d448c97ea87c729723bf9bf10c341bbecca9868dfa5a2f1e9fdc062cd64bc2c1",
+          "m": 10000,
+          "n": 100000,
+          "nnz": 200000,
+          "nnz_basis": "see source provenance",
+          "shape": {
+            "family": "wide",
+            "nonzeros_per_row": 20,
+            "seed": 11
+          }
+        },
+        "configuration": {
+          "algorithm": "CG",
+          "cg_limit_per_rank": 1000,
+          "cg_tolerance": 1e-10,
+          "configuration_id": "cfg-be395a14dc9459c7",
+          "control": "",
+          "dual_regularization": 1e-08,
+          "environment": {
+            "blas": "com.github.fommil.netlib.F2jBLAS",
+            "computer": "distributed cluster",
+            "java_version": "11.0.32.1+10-LTS",
+            "master": "yarn",
+            "os": "Linux",
+            "spark_version": "3.5.3"
+          },
+          "environment_id": "env-59108452d067",
+          "eta": null,
+          "heap_gib": 16,
+          "implementation": "cg",
+          "label": "cg",
+          "memory_topology": {
+            "concurrent_tasks_per_executor": 4,
+            "executors": 8
+          },
+          "outer_limit": 100,
+          "partitions": 32,
+          "preconditioner_memory_bytes": 268435456,
+          "primal_regularization": 1e-08,
+          "scenario": "",
+          "source_configuration_id": "cfg-67dd7fff8a72d4f9",
+          "source_hash": "27550f49a95499df115f9c3ee81764150f08778820608d19923bb62092ead6af",
+          "suite": "com.github.vbmacher.spark_lp.CGBenchmark",
+          "timing_scope": "core solve excluding independent validation",
+          "tolerance": 1e-08,
+          "warmup_case": null,
+          "warmups": 1
+        },
+        "records": [
+          {
+            "accuracy_basis": "independent-original-lp",
+            "algorithm": "CG",
+            "application_id": null,
+            "attempt_id": "benchmark-scaling-distributed-a0f2da3cc3df/scaling-wide-10000-10-20-seed-11/cfg-be395a14dc9459c7/rep-000/attempt-001",
+            "attempt_number": 1,
+            "campaign_id": "benchmark-scaling-distributed-a0f2da3cc3df",
+            "case_id": "scaling-wide-10000-10-20-seed-11",
+            "cg_restarts": 0,
+            "cg_steps": 667,
+            "configuration_id": "cfg-be395a14dc9459c7",
+            "maximum_rank": 0,
+            "memory": {
+              "peak_heap_bytes": 3705862608,
+              "peak_rss_bytes": 4679172096,
+              "scope": "driver process; combined with executors in local mode; includes validation"
+            },
+            "outer_iterations": 43,
+            "provenance": {
+              "line": 1,
+              "source_path": "scaling-wide-10000-10-20-seed-11--cg--e8-p32/records.jsonl",
+              "source_sha256": "1db8b247793d3140ca26a3ca492fb43ac2c6e6c9e4cb1c2091390852102223ed"
+            },
+            "rank_escalations": null,
+            "raw": {},
+            "repetition": 0,
+            "residuals": {
+              "dual": 1.113717440214902e-12,
+              "gap": 6.199525212279678e-10,
+              "min_s": 2.159657108264907e-17,
+              "min_x": 2.159480733040196e-17,
+              "objective": -0.6581712927381345,
+              "objective_error": 8.561577310082799e-10,
+              "primal": 8.00765099585327e-11
+            },
+            "run_id": "benchmark-scaling-distributed-a0f2da3cc3df/scaling-wide-10000-10-20-seed-11/cfg-be395a14dc9459c7/rep-000",
+            "solve_seconds": 186.70387357299998,
+            "spark_jobs": null,
+            "status": "Success",
+            "stop_reason": null,
+            "warmup": true
+          },
+          {
+            "accuracy_basis": "independent-original-lp",
+            "algorithm": "CG",
+            "application_id": null,
+            "attempt_id": "benchmark-scaling-distributed-a0f2da3cc3df/scaling-wide-10000-10-20-seed-11/cfg-be395a14dc9459c7/rep-001/attempt-001",
+            "attempt_number": 1,
+            "campaign_id": "benchmark-scaling-distributed-a0f2da3cc3df",
+            "case_id": "scaling-wide-10000-10-20-seed-11",
+            "cg_restarts": 0,
+            "cg_steps": 667,
+            "configuration_id": "cfg-be395a14dc9459c7",
+            "maximum_rank": 0,
+            "memory": {
+              "peak_heap_bytes": 4825891104,
+              "peak_rss_bytes": 5826084864,
+              "scope": "driver process; combined with executors in local mode; includes validation"
+            },
+            "outer_iterations": 43,
+            "provenance": {
+              "line": 2,
+              "source_path": "scaling-wide-10000-10-20-seed-11--cg--e8-p32/records.jsonl",
+              "source_sha256": "1db8b247793d3140ca26a3ca492fb43ac2c6e6c9e4cb1c2091390852102223ed"
+            },
+            "rank_escalations": null,
+            "raw": {},
+            "repetition": 1,
+            "residuals": {
+              "dual": 1.1137174402102205e-12,
+              "gap": 6.199541950945788e-10,
+              "min_s": 2.1596571082985706e-17,
+              "min_x": 2.1594807330738972e-17,
+              "objective": -0.6581712927381389,
+              "objective_error": 8.561604091948592e-10,
+              "primal": 8.007650995831077e-11
+            },
+            "run_id": "benchmark-scaling-distributed-a0f2da3cc3df/scaling-wide-10000-10-20-seed-11/cfg-be395a14dc9459c7/rep-001",
+            "solve_seconds": 178.877265545,
+            "spark_jobs": null,
+            "status": "Success",
+            "stop_reason": null,
+            "warmup": false
+          },
+          {
+            "accuracy_basis": "independent-original-lp",
+            "algorithm": "CG",
+            "application_id": null,
+            "attempt_id": "benchmark-scaling-distributed-a0f2da3cc3df/scaling-wide-10000-10-20-seed-11/cfg-be395a14dc9459c7/rep-002/attempt-001",
+            "attempt_number": 1,
+            "campaign_id": "benchmark-scaling-distributed-a0f2da3cc3df",
+            "case_id": "scaling-wide-10000-10-20-seed-11",
+            "cg_restarts": 0,
+            "cg_steps": 667,
+            "configuration_id": "cfg-be395a14dc9459c7",
+            "maximum_rank": 0,
+            "memory": {
+              "peak_heap_bytes": 5792694056,
+              "peak_rss_bytes": 6842589184,
+              "scope": "driver process; combined with executors in local mode; includes validation"
+            },
+            "outer_iterations": 43,
+            "provenance": {
+              "line": 3,
+              "source_path": "scaling-wide-10000-10-20-seed-11--cg--e8-p32/records.jsonl",
+              "source_sha256": "1db8b247793d3140ca26a3ca492fb43ac2c6e6c9e4cb1c2091390852102223ed"
+            },
+            "rank_escalations": null,
+            "raw": {},
+            "repetition": 2,
+            "residuals": {
+              "dual": 1.11371744023125e-12,
+              "gap": 6.199547307318951e-10,
+              "min_s": 2.1596571083885624e-17,
+              "min_x": 2.1594807331630773e-17,
+              "objective": -0.658171292738138,
+              "objective_error": 8.561598735575434e-10,
+              "primal": 8.007650995891846e-11
+            },
+            "run_id": "benchmark-scaling-distributed-a0f2da3cc3df/scaling-wide-10000-10-20-seed-11/cfg-be395a14dc9459c7/rep-002",
+            "solve_seconds": 187.214105126,
+            "spark_jobs": null,
+            "status": "Success",
+            "stop_reason": null,
+            "warmup": false
+          },
+          {
+            "accuracy_basis": "independent-original-lp",
+            "algorithm": "CG",
+            "application_id": null,
+            "attempt_id": "benchmark-scaling-distributed-a0f2da3cc3df/scaling-wide-10000-10-20-seed-11/cfg-be395a14dc9459c7/rep-003/attempt-001",
+            "attempt_number": 1,
+            "campaign_id": "benchmark-scaling-distributed-a0f2da3cc3df",
+            "case_id": "scaling-wide-10000-10-20-seed-11",
+            "cg_restarts": 0,
+            "cg_steps": 667,
+            "configuration_id": "cfg-be395a14dc9459c7",
+            "maximum_rank": 0,
+            "memory": {
+              "peak_heap_bytes": 6562369480,
+              "peak_rss_bytes": 7662338048,
+              "scope": "driver process; combined with executors in local mode; includes validation"
+            },
+            "outer_iterations": 43,
+            "provenance": {
+              "line": 4,
+              "source_path": "scaling-wide-10000-10-20-seed-11--cg--e8-p32/records.jsonl",
+              "source_sha256": "1db8b247793d3140ca26a3ca492fb43ac2c6e6c9e4cb1c2091390852102223ed"
+            },
+            "rank_escalations": null,
+            "raw": {},
+            "repetition": 3,
+            "residuals": {
+              "dual": 1.1137174401851855e-12,
+              "gap": 6.199537264119288e-10,
+              "min_s": 2.159657108206743e-17,
+              "min_x": 2.1594807329817416e-17,
+              "objective": -0.6581712927381347,
+              "objective_error": 8.56157864917609e-10,
+              "primal": 8.007650995780274e-11
+            },
+            "run_id": "benchmark-scaling-distributed-a0f2da3cc3df/scaling-wide-10000-10-20-seed-11/cfg-be395a14dc9459c7/rep-003",
+            "solve_seconds": 169.49638259399998,
+            "spark_jobs": null,
+            "status": "Success",
+            "stop_reason": null,
+            "warmup": false
+          },
+          {
+            "accuracy_basis": "independent-original-lp",
+            "algorithm": "CG",
+            "application_id": null,
+            "attempt_id": "benchmark-scaling-distributed-a0f2da3cc3df/scaling-wide-10000-10-20-seed-11/cfg-be395a14dc9459c7/rep-004/attempt-001",
+            "attempt_number": 1,
+            "campaign_id": "benchmark-scaling-distributed-a0f2da3cc3df",
+            "case_id": "scaling-wide-10000-10-20-seed-11",
+            "cg_restarts": 0,
+            "cg_steps": 667,
+            "configuration_id": "cfg-be395a14dc9459c7",
+            "maximum_rank": 0,
+            "memory": {
+              "peak_heap_bytes": 7382364336,
+              "peak_rss_bytes": 8526839808,
+              "scope": "driver process; combined with executors in local mode; includes validation"
+            },
+            "outer_iterations": 43,
+            "provenance": {
+              "line": 5,
+              "source_path": "scaling-wide-10000-10-20-seed-11--cg--e8-p32/records.jsonl",
+              "source_sha256": "1db8b247793d3140ca26a3ca492fb43ac2c6e6c9e4cb1c2091390852102223ed"
+            },
+            "rank_escalations": null,
+            "raw": {},
+            "repetition": 4,
+            "residuals": {
+              "dual": 1.1137174402208611e-12,
+              "gap": 6.199531238199483e-10,
+              "min_s": 2.1596571082967936e-17,
+              "min_x": 2.1594807330722847e-17,
+              "objective": -0.6581712927381345,
+              "objective_error": 8.561577310082799e-10,
+              "primal": 8.007650995865481e-11
+            },
+            "run_id": "benchmark-scaling-distributed-a0f2da3cc3df/scaling-wide-10000-10-20-seed-11/cfg-be395a14dc9459c7/rep-004",
+            "solve_seconds": 171.40525406999998,
+            "spark_jobs": null,
+            "status": "Success",
+            "stop_reason": null,
+            "warmup": false
+          },
+          {
+            "accuracy_basis": "independent-original-lp",
+            "algorithm": "CG",
+            "application_id": null,
+            "attempt_id": "benchmark-scaling-distributed-a0f2da3cc3df/scaling-wide-10000-10-20-seed-11/cfg-be395a14dc9459c7/rep-005/attempt-001",
+            "attempt_number": 1,
+            "campaign_id": "benchmark-scaling-distributed-a0f2da3cc3df",
+            "case_id": "scaling-wide-10000-10-20-seed-11",
+            "cg_restarts": 0,
+            "cg_steps": 667,
+            "configuration_id": "cfg-be395a14dc9459c7",
+            "maximum_rank": 0,
+            "memory": {
+              "peak_heap_bytes": 8094247856,
+              "peak_rss_bytes": 9283051520,
+              "scope": "driver process; combined with executors in local mode; includes validation"
+            },
+            "outer_iterations": 43,
+            "provenance": {
+              "line": 6,
+              "source_path": "scaling-wide-10000-10-20-seed-11--cg--e8-p32/records.jsonl",
+              "source_sha256": "1db8b247793d3140ca26a3ca492fb43ac2c6e6c9e4cb1c2091390852102223ed"
+            },
+            "rank_escalations": null,
+            "raw": {},
+            "repetition": 5,
+            "residuals": {
+              "dual": 1.1137174402149043e-12,
+              "gap": 6.199564715531714e-10,
+              "min_s": 2.1596571084374373e-17,
+              "min_x": 2.159480733212592e-17,
+              "objective": -0.6581712927381407,
+              "objective_error": 8.561614804694909e-10,
+              "primal": 8.007650995846368e-11
+            },
+            "run_id": "benchmark-scaling-distributed-a0f2da3cc3df/scaling-wide-10000-10-20-seed-11/cfg-be395a14dc9459c7/rep-005",
+            "solve_seconds": 175.863276011,
+            "spark_jobs": null,
+            "status": "Success",
+            "stop_reason": null,
+            "warmup": false
+          }
+        ],
+        "schema_version": 1,
+        "sources": [
+          {
+            "path": "scaling-wide-10000-10-20-seed-11--cg--e8-p32/records.jsonl",
+            "revision": null,
+            "sha256": "1db8b247793d3140ca26a3ca492fb43ac2c6e6c9e4cb1c2091390852102223ed",
+            "uri": null
+          }
+        ]
+      },
+      "value": 5
+    },
+    "measured-unknown-count": {
+      "value": 0
+    },
+    "measured-unrun-count": {
+      "value": 0
+    },
+    "objective-error-max": {
+      "value": 8.561614804694909e-10
+    },
+    "outer-iterations": {
+      "lower_value": 43,
+      "upper_value": 43,
+      "value": 43
+    },
+    "primal-max": {
+      "value": 8.007650995891846e-11
+    },
+    "warmup-attempted-count": {
+      "value": 1
+    },
+    "warmup-converged-count": {
+      "value": 1
+    },
+    "warmup-excluded-count": {
+      "value": 0
+    },
+    "warmup-failed-count": {
+      "value": 0
+    },
+    "warmup-records-count": {
+      "value": 1
+    },
+    "warmup-unknown-count": {
+      "value": 0
+    },
+    "warmup-unrun-count": {
+      "value": 0
+    }
+  },
+  "scaling-wide-10000-10-20-seed-11 / Cholesky / cfg-718eb23cbe98c3dd": {
+    "cg-restarts": {
+      "lower_value": 0,
+      "upper_value": 0,
+      "value": 0
+    },
+    "cg-steps": {
+      "lower_value": 0,
+      "upper_value": 0,
+      "value": 0
+    },
+    "driver-heap-bytes-max": {
+      "value": 9088782808
+    },
+    "driver-rss-bytes-max": {
+      "value": 11324391424
+    },
+    "dual-max": {
+      "value": 1.8457030268148703e-17
+    },
+    "gap-max": {
+      "value": 8.041654163369551e-09
+    },
+    "latency": {
+      "lower_value": 1441710858208.0,
+      "upper_value": 1452084785023.0,
+      "value": 1445193037197.0
+    },
+    "maximum-rank": {
+      "lower_value": 0,
+      "upper_value": 0,
+      "value": 0
+    },
+    "measured-attempted-count": {
+      "value": 5
+    },
+    "measured-converged-count": {
+      "value": 5
+    },
+    "measured-excluded-count": {
+      "value": 0
+    },
+    "measured-failed-count": {
+      "value": 0
+    },
+    "measured-records-count": {
+      "_evidence": {
+        "campaign": {
+          "campaign_id": "benchmark-scaling-distributed-a0f2da3cc3df",
+          "notes": [],
+          "schedule": [],
+          "schema_version": 1,
+          "title": "Benchmark scaling distributed a0f2da3cc3df"
+        },
+        "case": {
+          "case_id": "scaling-wide-10000-10-20-seed-11",
+          "fixture_hash": "d448c97ea87c729723bf9bf10c341bbecca9868dfa5a2f1e9fdc062cd64bc2c1",
+          "m": 10000,
+          "n": 100000,
+          "nnz": 200000,
+          "nnz_basis": "see source provenance",
+          "shape": {
+            "family": "wide",
+            "nonzeros_per_row": 20,
+            "seed": 11
+          }
+        },
+        "configuration": {
+          "algorithm": "Cholesky",
+          "cg_limit_per_rank": 1000,
+          "cg_tolerance": 1e-10,
+          "configuration_id": "cfg-718eb23cbe98c3dd",
+          "control": "",
+          "dual_regularization": 0.0,
+          "environment": {
+            "blas": "com.github.fommil.netlib.F2jBLAS",
+            "computer": "distributed cluster",
+            "java_version": "11.0.32.1+10-LTS",
+            "master": "yarn",
+            "os": "Linux",
+            "spark_version": "3.5.3"
+          },
+          "environment_id": "env-59108452d067",
+          "eta": null,
+          "heap_gib": 16,
+          "implementation": "cholesky",
+          "label": "cholesky",
+          "memory_topology": {
+            "concurrent_tasks_per_executor": 4,
+            "executors": 8
+          },
+          "outer_limit": 100,
+          "partitions": 32,
+          "preconditioner_memory_bytes": 268435456,
+          "primal_regularization": 0.0,
+          "scenario": "",
+          "source_configuration_id": "cfg-5a3286fd7bb11d11",
+          "source_hash": "27550f49a95499df115f9c3ee81764150f08778820608d19923bb62092ead6af",
+          "suite": "com.github.vbmacher.spark_lp.CholeskyBenchmark",
+          "timing_scope": "core solve excluding independent validation",
+          "tolerance": 1e-08,
+          "warmup_case": null,
+          "warmups": 1
+        },
+        "records": [
+          {
+            "accuracy_basis": "independent-original-lp",
+            "algorithm": "Cholesky",
+            "application_id": null,
+            "attempt_id": "benchmark-scaling-distributed-a0f2da3cc3df/scaling-wide-10000-10-20-seed-11/cfg-718eb23cbe98c3dd/rep-000/attempt-001",
+            "attempt_number": 1,
+            "campaign_id": "benchmark-scaling-distributed-a0f2da3cc3df",
+            "case_id": "scaling-wide-10000-10-20-seed-11",
+            "cg_restarts": 0,
+            "cg_steps": 0,
+            "configuration_id": "cfg-718eb23cbe98c3dd",
+            "maximum_rank": 0,
+            "memory": {
+              "peak_heap_bytes": 6935282176,
+              "peak_rss_bytes": 9633800192,
+              "scope": "driver process; combined with executors in local mode; includes validation"
+            },
+            "outer_iterations": 9,
+            "provenance": {
+              "line": 1,
+              "source_path": "scaling-wide-10000-10-20-seed-11--cholesky--e8-p32/records.jsonl",
+              "source_sha256": "f764cf9d3fb76b52e6a9cf032366503ec0d6d34adf03e7d760074e05656c31cb"
+            },
+            "rank_escalations": null,
+            "raw": {},
+            "repetition": 0,
+            "residuals": {
+              "dual": 1.8525943748623018e-17,
+              "gap": 8.041648740041771e-09,
+              "min_s": 1.0748293254501245e-14,
+              "min_x": 1.2884627923348487e-14,
+              "objective": -0.6581712828633113,
+              "objective_error": 5.099095976853155e-09,
+              "primal": 1.3779379870348344e-15
+            },
+            "run_id": "benchmark-scaling-distributed-a0f2da3cc3df/scaling-wide-10000-10-20-seed-11/cfg-718eb23cbe98c3dd/rep-000",
+            "solve_seconds": 1450.5907121330001,
+            "spark_jobs": null,
+            "status": "Success",
+            "stop_reason": null,
+            "warmup": true
+          },
+          {
+            "accuracy_basis": "independent-original-lp",
+            "algorithm": "Cholesky",
+            "application_id": null,
+            "attempt_id": "benchmark-scaling-distributed-a0f2da3cc3df/scaling-wide-10000-10-20-seed-11/cfg-718eb23cbe98c3dd/rep-001/attempt-001",
+            "attempt_number": 1,
+            "campaign_id": "benchmark-scaling-distributed-a0f2da3cc3df",
+            "case_id": "scaling-wide-10000-10-20-seed-11",
+            "cg_restarts": 0,
+            "cg_steps": 0,
+            "configuration_id": "cfg-718eb23cbe98c3dd",
+            "maximum_rank": 0,
+            "memory": {
+              "peak_heap_bytes": 9088782808,
+              "peak_rss_bytes": 11322568704,
+              "scope": "driver process; combined with executors in local mode; includes validation"
+            },
+            "outer_iterations": 9,
+            "provenance": {
+              "line": 2,
+              "source_path": "scaling-wide-10000-10-20-seed-11--cholesky--e8-p32/records.jsonl",
+              "source_sha256": "f764cf9d3fb76b52e6a9cf032366503ec0d6d34adf03e7d760074e05656c31cb"
+            },
+            "rank_escalations": null,
+            "raw": {},
+            "repetition": 1,
+            "residuals": {
+              "dual": 1.8214264821039465e-17,
+              "gap": 8.041651150409672e-09,
+              "min_s": 1.0748293254502485e-14,
+              "min_x": 1.2884627923359037e-14,
+              "objective": -0.65817128286331,
+              "objective_error": 5.0990967803091294e-09,
+              "primal": 1.3964260969918545e-15
+            },
+            "run_id": "benchmark-scaling-distributed-a0f2da3cc3df/scaling-wide-10000-10-20-seed-11/cfg-718eb23cbe98c3dd/rep-001",
+            "solve_seconds": 1444.854555339,
+            "spark_jobs": null,
+            "status": "Success",
+            "stop_reason": null,
+            "warmup": false
+          },
+          {
+            "accuracy_basis": "independent-original-lp",
+            "algorithm": "Cholesky",
+            "application_id": null,
+            "attempt_id": "benchmark-scaling-distributed-a0f2da3cc3df/scaling-wide-10000-10-20-seed-11/cfg-718eb23cbe98c3dd/rep-002/attempt-001",
+            "attempt_number": 1,
+            "campaign_id": "benchmark-scaling-distributed-a0f2da3cc3df",
+            "case_id": "scaling-wide-10000-10-20-seed-11",
+            "cg_restarts": 0,
+            "cg_steps": 0,
+            "configuration_id": "cfg-718eb23cbe98c3dd",
+            "maximum_rank": 0,
+            "memory": {
+              "peak_heap_bytes": 8061178296,
+              "peak_rss_bytes": 11324391424,
+              "scope": "driver process; combined with executors in local mode; includes validation"
+            },
+            "outer_iterations": 9,
+            "provenance": {
+              "line": 3,
+              "source_path": "scaling-wide-10000-10-20-seed-11--cholesky--e8-p32/records.jsonl",
+              "source_sha256": "f764cf9d3fb76b52e6a9cf032366503ec0d6d34adf03e7d760074e05656c31cb"
+            },
+            "rank_escalations": null,
+            "raw": {},
+            "repetition": 2,
+            "residuals": {
+              "dual": 1.8414154279788998e-17,
+              "gap": 8.041654163369551e-09,
+              "min_s": 1.0748293254499711e-14,
+              "min_x": 1.2884627923359928e-14,
+              "objective": -0.6581712828633078,
+              "objective_error": 5.0990980524477545e-09,
+              "primal": 1.4010895266738518e-15
+            },
+            "run_id": "benchmark-scaling-distributed-a0f2da3cc3df/scaling-wide-10000-10-20-seed-11/cfg-718eb23cbe98c3dd/rep-002",
+            "solve_seconds": 1452.084785023,
+            "spark_jobs": null,
+            "status": "Success",
+            "stop_reason": null,
+            "warmup": false
+          },
+          {
+            "accuracy_basis": "independent-original-lp",
+            "algorithm": "Cholesky",
+            "application_id": null,
+            "attempt_id": "benchmark-scaling-distributed-a0f2da3cc3df/scaling-wide-10000-10-20-seed-11/cfg-718eb23cbe98c3dd/rep-003/attempt-001",
+            "attempt_number": 1,
+            "campaign_id": "benchmark-scaling-distributed-a0f2da3cc3df",
+            "case_id": "scaling-wide-10000-10-20-seed-11",
+            "cg_restarts": 0,
+            "cg_steps": 0,
+            "configuration_id": "cfg-718eb23cbe98c3dd",
+            "maximum_rank": 0,
+            "memory": {
+              "peak_heap_bytes": 7127136808,
+              "peak_rss_bytes": 9426837504,
+              "scope": "driver process; combined with executors in local mode; includes validation"
+            },
+            "outer_iterations": 9,
+            "provenance": {
+              "line": 4,
+              "source_path": "scaling-wide-10000-10-20-seed-11--cholesky--e8-p32/records.jsonl",
+              "source_sha256": "f764cf9d3fb76b52e6a9cf032366503ec0d6d34adf03e7d760074e05656c31cb"
+            },
+            "rank_escalations": null,
+            "raw": {},
+            "repetition": 3,
+            "residuals": {
+              "dual": 1.8457030268148703e-17,
+              "gap": 8.04165001218038e-09,
+              "min_s": 1.074829325449731e-14,
+              "min_x": 1.288462792335419e-14,
+              "objective": -0.6581712828633118,
+              "objective_error": 5.099095642079833e-09,
+              "primal": 1.380081141832107e-15
+            },
+            "run_id": "benchmark-scaling-distributed-a0f2da3cc3df/scaling-wide-10000-10-20-seed-11/cfg-718eb23cbe98c3dd/rep-003",
+            "solve_seconds": 1445.193037197,
+            "spark_jobs": null,
+            "status": "Success",
+            "stop_reason": null,
+            "warmup": false
+          },
+          {
+            "accuracy_basis": "independent-original-lp",
+            "algorithm": "Cholesky",
+            "application_id": null,
+            "attempt_id": "benchmark-scaling-distributed-a0f2da3cc3df/scaling-wide-10000-10-20-seed-11/cfg-718eb23cbe98c3dd/rep-004/attempt-001",
+            "attempt_number": 1,
+            "campaign_id": "benchmark-scaling-distributed-a0f2da3cc3df",
+            "case_id": "scaling-wide-10000-10-20-seed-11",
+            "cg_restarts": 0,
+            "cg_steps": 0,
+            "configuration_id": "cfg-718eb23cbe98c3dd",
+            "maximum_rank": 0,
+            "memory": {
+              "peak_heap_bytes": 7115606656,
+              "peak_rss_bytes": 9571803136,
+              "scope": "driver process; combined with executors in local mode; includes validation"
+            },
+            "outer_iterations": 9,
+            "provenance": {
+              "line": 5,
+              "source_path": "scaling-wide-10000-10-20-seed-11--cholesky--e8-p32/records.jsonl",
+              "source_sha256": "f764cf9d3fb76b52e6a9cf032366503ec0d6d34adf03e7d760074e05656c31cb"
+            },
+            "rank_escalations": null,
+            "raw": {},
+            "repetition": 4,
+            "residuals": {
+              "dual": 1.8449881934103628e-17,
+              "gap": 8.0416522216843e-09,
+              "min_s": 1.0748293254502313e-14,
+              "min_x": 1.2884627923355664e-14,
+              "objective": -0.6581712828633082,
+              "objective_error": 5.099097851583761e-09,
+              "primal": 1.4007279058445316e-15
+            },
+            "run_id": "benchmark-scaling-distributed-a0f2da3cc3df/scaling-wide-10000-10-20-seed-11/cfg-718eb23cbe98c3dd/rep-004",
+            "solve_seconds": 1441.710858208,
+            "spark_jobs": null,
+            "status": "Success",
+            "stop_reason": null,
+            "warmup": false
+          },
+          {
+            "accuracy_basis": "independent-original-lp",
+            "algorithm": "Cholesky",
+            "application_id": null,
+            "attempt_id": "benchmark-scaling-distributed-a0f2da3cc3df/scaling-wide-10000-10-20-seed-11/cfg-718eb23cbe98c3dd/rep-005/attempt-001",
+            "attempt_number": 1,
+            "campaign_id": "benchmark-scaling-distributed-a0f2da3cc3df",
+            "case_id": "scaling-wide-10000-10-20-seed-11",
+            "cg_restarts": 0,
+            "cg_steps": 0,
+            "configuration_id": "cfg-718eb23cbe98c3dd",
+            "maximum_rank": 0,
+            "memory": {
+              "peak_heap_bytes": 6856454600,
+              "peak_rss_bytes": 8573169664,
+              "scope": "driver process; combined with executors in local mode; includes validation"
+            },
+            "outer_iterations": 9,
+            "provenance": {
+              "line": 6,
+              "source_path": "scaling-wide-10000-10-20-seed-11--cholesky--e8-p32/records.jsonl",
+              "source_sha256": "f764cf9d3fb76b52e6a9cf032366503ec0d6d34adf03e7d760074e05656c31cb"
+            },
+            "rank_escalations": null,
+            "raw": {},
+            "repetition": 5,
+            "residuals": {
+              "dual": 1.8374686285898823e-17,
+              "gap": 8.041648606132423e-09,
+              "min_s": 1.0748293254499932e-14,
+              "min_x": 1.2884627923355058e-14,
+              "objective": -0.6581712828633155,
+              "objective_error": 5.099093432575905e-09,
+              "primal": 1.3782185111870955e-15
+            },
+            "run_id": "benchmark-scaling-distributed-a0f2da3cc3df/scaling-wide-10000-10-20-seed-11/cfg-718eb23cbe98c3dd/rep-005",
+            "solve_seconds": 1450.1438578670002,
+            "spark_jobs": null,
+            "status": "Success",
+            "stop_reason": null,
+            "warmup": false
+          }
+        ],
+        "schema_version": 1,
+        "sources": [
+          {
+            "path": "scaling-wide-10000-10-20-seed-11--cholesky--e8-p32/records.jsonl",
+            "revision": null,
+            "sha256": "f764cf9d3fb76b52e6a9cf032366503ec0d6d34adf03e7d760074e05656c31cb",
+            "uri": null
+          }
+        ]
+      },
+      "value": 5
+    },
+    "measured-unknown-count": {
+      "value": 0
+    },
+    "measured-unrun-count": {
+      "value": 0
+    },
+    "objective-error-max": {
+      "value": 5.0990980524477545e-09
+    },
+    "outer-iterations": {
+      "lower_value": 9,
+      "upper_value": 9,
+      "value": 9
+    },
+    "primal-max": {
+      "value": 1.4010895266738518e-15
+    },
+    "warmup-attempted-count": {
+      "value": 1
+    },
+    "warmup-converged-count": {
+      "value": 1
+    },
+    "warmup-excluded-count": {
+      "value": 0
+    },
+    "warmup-failed-count": {
+      "value": 0
+    },
+    "warmup-records-count": {
+      "value": 1
+    },
+    "warmup-unknown-count": {
+      "value": 0
+    },
+    "warmup-unrun-count": {
+      "value": 0
+    }
+  },
+  "scaling-wide-5000-10-20-seed-11 / CG / cfg-e88450d792592670": {
+    "driver-heap-bytes-max": {
+      "value": 8759526160
+    },
+    "driver-rss-bytes-max": {
+      "value": 9957208064
+    },
+    "measured-attempted-count": {
+      "value": 5
+    },
+    "measured-converged-count": {
+      "value": 0
+    },
+    "measured-excluded-count": {
+      "value": 0
+    },
+    "measured-failed-count": {
+      "value": 5
+    },
+    "measured-records-count": {
+      "_evidence": {
+        "campaign": {
+          "campaign_id": "benchmark-scaling-distributed-a0f2da3cc3df",
+          "notes": [],
+          "schedule": [],
+          "schema_version": 1,
+          "title": "Benchmark scaling distributed a0f2da3cc3df"
+        },
+        "case": {
+          "case_id": "scaling-wide-5000-10-20-seed-11",
+          "fixture_hash": "5ef2c20bce4d37807ae9bdc3d7f3a15d4033411e2194e55bd00a5ee0e04b6ba9",
+          "m": 5000,
+          "n": 50000,
+          "nnz": 100000,
+          "nnz_basis": "see source provenance",
+          "shape": {
+            "family": "wide",
+            "nonzeros_per_row": 20,
+            "seed": 11
+          }
+        },
+        "configuration": {
+          "algorithm": "CG",
+          "cg_limit_per_rank": 1000,
+          "cg_tolerance": 1e-10,
+          "configuration_id": "cfg-e88450d792592670",
+          "control": "",
+          "dual_regularization": 1e-08,
+          "environment": {
+            "blas": "com.github.fommil.netlib.F2jBLAS",
+            "computer": "distributed cluster",
+            "java_version": "11.0.32.1+10-LTS",
+            "master": "yarn",
+            "os": "Linux",
+            "spark_version": "3.5.3"
+          },
+          "environment_id": "env-59108452d067",
+          "eta": null,
+          "heap_gib": 16,
+          "implementation": "cg",
+          "label": "cg",
+          "memory_topology": {
+            "concurrent_tasks_per_executor": 4,
+            "executors": 8
+          },
+          "outer_limit": 100,
+          "partitions": 32,
+          "preconditioner_memory_bytes": 268435456,
+          "primal_regularization": 1e-08,
+          "scenario": "",
+          "source_configuration_id": "cfg-8763ec989216b47c",
+          "source_hash": "27550f49a95499df115f9c3ee81764150f08778820608d19923bb62092ead6af",
+          "suite": "com.github.vbmacher.spark_lp.CGBenchmark",
+          "timing_scope": "core solve excluding independent validation",
+          "tolerance": 1e-08,
+          "warmup_case": null,
+          "warmups": 1
+        },
+        "records": [
+          {
+            "accuracy_basis": "independent-original-lp",
+            "algorithm": "CG",
+            "application_id": null,
+            "attempt_id": "benchmark-scaling-distributed-a0f2da3cc3df/scaling-wide-5000-10-20-seed-11/cfg-e88450d792592670/rep-000/attempt-001",
+            "attempt_number": 1,
+            "campaign_id": "benchmark-scaling-distributed-a0f2da3cc3df",
+            "case_id": "scaling-wide-5000-10-20-seed-11",
+            "cg_restarts": 0,
+            "cg_steps": 757,
+            "configuration_id": "cfg-e88450d792592670",
+            "maximum_rank": 0,
+            "memory": {
+              "peak_heap_bytes": 4397245776,
+              "peak_rss_bytes": 5371666432,
+              "scope": "driver process; combined with executors in local mode; includes validation"
+            },
+            "outer_iterations": 100,
+            "provenance": {
+              "line": 1,
+              "source_path": "scaling-wide-5000-10-20-seed-11--cg--e8-p32/records.jsonl",
+              "source_sha256": "c2f9b6f9ca6940dbf366ef4f0292e11a25c9c24a9627d101fe1860b5d2a39d75"
+            },
+            "rank_escalations": null,
+            "raw": {},
+            "repetition": 0,
+            "residuals": {
+              "dual": null,
+              "gap": null,
+              "min_s": null,
+              "min_x": null,
+              "objective": null,
+              "objective_error": null,
+              "primal": null
+            },
+            "run_id": "benchmark-scaling-distributed-a0f2da3cc3df/scaling-wide-5000-10-20-seed-11/cfg-e88450d792592670/rep-000",
+            "solve_seconds": 401.291235834,
+            "spark_jobs": null,
+            "status": "IterationLimit",
+            "stop_reason": null,
+            "warmup": true
+          },
+          {
+            "accuracy_basis": "independent-original-lp",
+            "algorithm": "CG",
+            "application_id": null,
+            "attempt_id": "benchmark-scaling-distributed-a0f2da3cc3df/scaling-wide-5000-10-20-seed-11/cfg-e88450d792592670/rep-001/attempt-001",
+            "attempt_number": 1,
+            "campaign_id": "benchmark-scaling-distributed-a0f2da3cc3df",
+            "case_id": "scaling-wide-5000-10-20-seed-11",
+            "cg_restarts": 0,
+            "cg_steps": 759,
+            "configuration_id": "cfg-e88450d792592670",
+            "maximum_rank": 0,
+            "memory": {
+              "peak_heap_bytes": 5620151800,
+              "peak_rss_bytes": 6673911808,
+              "scope": "driver process; combined with executors in local mode; includes validation"
+            },
+            "outer_iterations": 100,
+            "provenance": {
+              "line": 2,
+              "source_path": "scaling-wide-5000-10-20-seed-11--cg--e8-p32/records.jsonl",
+              "source_sha256": "c2f9b6f9ca6940dbf366ef4f0292e11a25c9c24a9627d101fe1860b5d2a39d75"
+            },
+            "rank_escalations": null,
+            "raw": {},
+            "repetition": 1,
+            "residuals": {
+              "dual": null,
+              "gap": null,
+              "min_s": null,
+              "min_x": null,
+              "objective": null,
+              "objective_error": null,
+              "primal": null
+            },
+            "run_id": "benchmark-scaling-distributed-a0f2da3cc3df/scaling-wide-5000-10-20-seed-11/cfg-e88450d792592670/rep-001",
+            "solve_seconds": 391.906070966,
+            "spark_jobs": null,
+            "status": "IterationLimit",
+            "stop_reason": null,
+            "warmup": false
+          },
+          {
+            "accuracy_basis": "independent-original-lp",
+            "algorithm": "CG",
+            "application_id": null,
+            "attempt_id": "benchmark-scaling-distributed-a0f2da3cc3df/scaling-wide-5000-10-20-seed-11/cfg-e88450d792592670/rep-002/attempt-001",
+            "attempt_number": 1,
+            "campaign_id": "benchmark-scaling-distributed-a0f2da3cc3df",
+            "case_id": "scaling-wide-5000-10-20-seed-11",
+            "cg_restarts": 0,
+            "cg_steps": 759,
+            "configuration_id": "cfg-e88450d792592670",
+            "maximum_rank": 0,
+            "memory": {
+              "peak_heap_bytes": 6530459792,
+              "peak_rss_bytes": 7615406080,
+              "scope": "driver process; combined with executors in local mode; includes validation"
+            },
+            "outer_iterations": 100,
+            "provenance": {
+              "line": 3,
+              "source_path": "scaling-wide-5000-10-20-seed-11--cg--e8-p32/records.jsonl",
+              "source_sha256": "c2f9b6f9ca6940dbf366ef4f0292e11a25c9c24a9627d101fe1860b5d2a39d75"
+            },
+            "rank_escalations": null,
+            "raw": {},
+            "repetition": 2,
+            "residuals": {
+              "dual": null,
+              "gap": null,
+              "min_s": null,
+              "min_x": null,
+              "objective": null,
+              "objective_error": null,
+              "primal": null
+            },
+            "run_id": "benchmark-scaling-distributed-a0f2da3cc3df/scaling-wide-5000-10-20-seed-11/cfg-e88450d792592670/rep-002",
+            "solve_seconds": 384.114936161,
+            "spark_jobs": null,
+            "status": "IterationLimit",
+            "stop_reason": null,
+            "warmup": false
+          },
+          {
+            "accuracy_basis": "independent-original-lp",
+            "algorithm": "CG",
+            "application_id": null,
+            "attempt_id": "benchmark-scaling-distributed-a0f2da3cc3df/scaling-wide-5000-10-20-seed-11/cfg-e88450d792592670/rep-003/attempt-001",
+            "attempt_number": 1,
+            "campaign_id": "benchmark-scaling-distributed-a0f2da3cc3df",
+            "case_id": "scaling-wide-5000-10-20-seed-11",
+            "cg_restarts": 0,
+            "cg_steps": 759,
+            "configuration_id": "cfg-e88450d792592670",
+            "maximum_rank": 0,
+            "memory": {
+              "peak_heap_bytes": 7377497872,
+              "peak_rss_bytes": 8494383104,
+              "scope": "driver process; combined with executors in local mode; includes validation"
+            },
+            "outer_iterations": 100,
+            "provenance": {
+              "line": 4,
+              "source_path": "scaling-wide-5000-10-20-seed-11--cg--e8-p32/records.jsonl",
+              "source_sha256": "c2f9b6f9ca6940dbf366ef4f0292e11a25c9c24a9627d101fe1860b5d2a39d75"
+            },
+            "rank_escalations": null,
+            "raw": {},
+            "repetition": 3,
+            "residuals": {
+              "dual": null,
+              "gap": null,
+              "min_s": null,
+              "min_x": null,
+              "objective": null,
+              "objective_error": null,
+              "primal": null
+            },
+            "run_id": "benchmark-scaling-distributed-a0f2da3cc3df/scaling-wide-5000-10-20-seed-11/cfg-e88450d792592670/rep-003",
+            "solve_seconds": 385.385611867,
+            "spark_jobs": null,
+            "status": "IterationLimit",
+            "stop_reason": null,
+            "warmup": false
+          },
+          {
+            "accuracy_basis": "independent-original-lp",
+            "algorithm": "CG",
+            "application_id": null,
+            "attempt_id": "benchmark-scaling-distributed-a0f2da3cc3df/scaling-wide-5000-10-20-seed-11/cfg-e88450d792592670/rep-004/attempt-001",
+            "attempt_number": 1,
+            "campaign_id": "benchmark-scaling-distributed-a0f2da3cc3df",
+            "case_id": "scaling-wide-5000-10-20-seed-11",
+            "cg_restarts": 0,
+            "cg_steps": 757,
+            "configuration_id": "cfg-e88450d792592670",
+            "maximum_rank": 0,
+            "memory": {
+              "peak_heap_bytes": 8083916680,
+              "peak_rss_bytes": 9234403328,
+              "scope": "driver process; combined with executors in local mode; includes validation"
+            },
+            "outer_iterations": 100,
+            "provenance": {
+              "line": 5,
+              "source_path": "scaling-wide-5000-10-20-seed-11--cg--e8-p32/records.jsonl",
+              "source_sha256": "c2f9b6f9ca6940dbf366ef4f0292e11a25c9c24a9627d101fe1860b5d2a39d75"
+            },
+            "rank_escalations": null,
+            "raw": {},
+            "repetition": 4,
+            "residuals": {
+              "dual": null,
+              "gap": null,
+              "min_s": null,
+              "min_x": null,
+              "objective": null,
+              "objective_error": null,
+              "primal": null
+            },
+            "run_id": "benchmark-scaling-distributed-a0f2da3cc3df/scaling-wide-5000-10-20-seed-11/cfg-e88450d792592670/rep-004",
+            "solve_seconds": 373.79009369,
+            "spark_jobs": null,
+            "status": "IterationLimit",
+            "stop_reason": null,
+            "warmup": false
+          },
+          {
+            "accuracy_basis": "independent-original-lp",
+            "algorithm": "CG",
+            "application_id": null,
+            "attempt_id": "benchmark-scaling-distributed-a0f2da3cc3df/scaling-wide-5000-10-20-seed-11/cfg-e88450d792592670/rep-005/attempt-001",
+            "attempt_number": 1,
+            "campaign_id": "benchmark-scaling-distributed-a0f2da3cc3df",
+            "case_id": "scaling-wide-5000-10-20-seed-11",
+            "cg_restarts": 0,
+            "cg_steps": 759,
+            "configuration_id": "cfg-e88450d792592670",
+            "maximum_rank": 0,
+            "memory": {
+              "peak_heap_bytes": 8759526160,
+              "peak_rss_bytes": 9957208064,
+              "scope": "driver process; combined with executors in local mode; includes validation"
+            },
+            "outer_iterations": 100,
+            "provenance": {
+              "line": 6,
+              "source_path": "scaling-wide-5000-10-20-seed-11--cg--e8-p32/records.jsonl",
+              "source_sha256": "c2f9b6f9ca6940dbf366ef4f0292e11a25c9c24a9627d101fe1860b5d2a39d75"
+            },
+            "rank_escalations": null,
+            "raw": {},
+            "repetition": 5,
+            "residuals": {
+              "dual": null,
+              "gap": null,
+              "min_s": null,
+              "min_x": null,
+              "objective": null,
+              "objective_error": null,
+              "primal": null
+            },
+            "run_id": "benchmark-scaling-distributed-a0f2da3cc3df/scaling-wide-5000-10-20-seed-11/cfg-e88450d792592670/rep-005",
+            "solve_seconds": 384.33525542,
+            "spark_jobs": null,
+            "status": "IterationLimit",
+            "stop_reason": null,
+            "warmup": false
+          }
+        ],
+        "schema_version": 1,
+        "sources": [
+          {
+            "path": "scaling-wide-5000-10-20-seed-11--cg--e8-p32/records.jsonl",
+            "revision": null,
+            "sha256": "c2f9b6f9ca6940dbf366ef4f0292e11a25c9c24a9627d101fe1860b5d2a39d75",
+            "uri": null
+          }
+        ]
+      },
+      "value": 5
+    },
+    "measured-unknown-count": {
+      "value": 0
+    },
+    "measured-unrun-count": {
+      "value": 0
+    },
+    "unsuccessful-duration-ns": {
+      "lower_value": 373790093690.0,
+      "upper_value": 391906070966.0,
+      "value": 384335255420.0
+    },
+    "warmup-attempted-count": {
+      "value": 1
+    },
+    "warmup-converged-count": {
+      "value": 0
+    },
+    "warmup-excluded-count": {
+      "value": 0
+    },
+    "warmup-failed-count": {
+      "value": 1
+    },
+    "warmup-records-count": {
+      "value": 1
+    },
+    "warmup-unknown-count": {
+      "value": 0
+    },
+    "warmup-unrun-count": {
+      "value": 0
+    }
+  },
+  "scaling-wide-5000-10-20-seed-11 / Cholesky / cfg-df04cb0cc5c635b6": {
+    "cg-restarts": {
+      "lower_value": 0,
+      "upper_value": 0,
+      "value": 0
+    },
+    "cg-steps": {
+      "lower_value": 0,
+      "upper_value": 0,
+      "value": 0
+    },
+    "driver-heap-bytes-max": {
+      "value": 5911871992
+    },
+    "driver-rss-bytes-max": {
+      "value": 7878344704
+    },
+    "dual-max": {
+      "value": 1.9704581504611097e-17
+    },
+    "gap-max": {
+      "value": 2.6998292746885085e-09
+    },
+    "latency": {
+      "lower_value": 207683114004.0,
+      "upper_value": 211491823658.00003,
+      "value": 208439876675.0
+    },
+    "maximum-rank": {
+      "lower_value": 0,
+      "upper_value": 0,
+      "value": 0
+    },
+    "measured-attempted-count": {
+      "value": 5
+    },
+    "measured-converged-count": {
+      "value": 5
+    },
+    "measured-excluded-count": {
+      "value": 0
+    },
+    "measured-failed-count": {
+      "value": 0
+    },
+    "measured-records-count": {
+      "_evidence": {
+        "campaign": {
+          "campaign_id": "benchmark-scaling-distributed-a0f2da3cc3df",
+          "notes": [],
+          "schedule": [],
+          "schema_version": 1,
+          "title": "Benchmark scaling distributed a0f2da3cc3df"
+        },
+        "case": {
+          "case_id": "scaling-wide-5000-10-20-seed-11",
+          "fixture_hash": "5ef2c20bce4d37807ae9bdc3d7f3a15d4033411e2194e55bd00a5ee0e04b6ba9",
+          "m": 5000,
+          "n": 50000,
+          "nnz": 100000,
+          "nnz_basis": "see source provenance",
+          "shape": {
+            "family": "wide",
+            "nonzeros_per_row": 20,
+            "seed": 11
+          }
+        },
+        "configuration": {
+          "algorithm": "Cholesky",
+          "cg_limit_per_rank": 1000,
+          "cg_tolerance": 1e-10,
+          "configuration_id": "cfg-df04cb0cc5c635b6",
+          "control": "",
+          "dual_regularization": 0.0,
+          "environment": {
+            "blas": "com.github.fommil.netlib.F2jBLAS",
+            "computer": "distributed cluster",
+            "java_version": "11.0.32.1+10-LTS",
+            "master": "yarn",
+            "os": "Linux",
+            "spark_version": "3.5.3"
+          },
+          "environment_id": "env-59108452d067",
+          "eta": null,
+          "heap_gib": 16,
+          "implementation": "cholesky",
+          "label": "cholesky",
+          "memory_topology": {
+            "concurrent_tasks_per_executor": 4,
+            "executors": 8
+          },
+          "outer_limit": 100,
+          "partitions": 32,
+          "preconditioner_memory_bytes": 268435456,
+          "primal_regularization": 0.0,
+          "scenario": "",
+          "source_configuration_id": "cfg-4a66ac2e035e8fd2",
+          "source_hash": "27550f49a95499df115f9c3ee81764150f08778820608d19923bb62092ead6af",
+          "suite": "com.github.vbmacher.spark_lp.CholeskyBenchmark",
+          "timing_scope": "core solve excluding independent validation",
+          "tolerance": 1e-08,
+          "warmup_case": null,
+          "warmups": 1
+        },
+        "records": [
+          {
+            "accuracy_basis": "independent-original-lp",
+            "algorithm": "Cholesky",
+            "application_id": null,
+            "attempt_id": "benchmark-scaling-distributed-a0f2da3cc3df/scaling-wide-5000-10-20-seed-11/cfg-df04cb0cc5c635b6/rep-000/attempt-001",
+            "attempt_number": 1,
+            "campaign_id": "benchmark-scaling-distributed-a0f2da3cc3df",
+            "case_id": "scaling-wide-5000-10-20-seed-11",
+            "cg_restarts": 0,
+            "cg_steps": 0,
+            "configuration_id": "cfg-df04cb0cc5c635b6",
+            "maximum_rank": 0,
+            "memory": {
+              "peak_heap_bytes": 3212884504,
+              "peak_rss_bytes": 4726661120,
+              "scope": "driver process; combined with executors in local mode; includes validation"
+            },
+            "outer_iterations": 9,
+            "provenance": {
+              "line": 1,
+              "source_path": "scaling-wide-5000-10-20-seed-11--cholesky--e8-p32/records.jsonl",
+              "source_sha256": "757d1009dce44c208cdf0c0f5b7fb9955f4110845e6620991c6262267b8f15fb"
+            },
+            "rank_escalations": null,
+            "raw": {},
+            "repetition": 0,
+            "residuals": {
+              "dual": 1.9417619183875113e-17,
+              "gap": 2.6998275164241932e-09,
+              "min_s": 1.2244769876690928e-14,
+              "min_x": 1.4279871855687223e-14,
+              "objective": -2.7885874551861054,
+              "objective_error": 1.6843729079924217e-09,
+              "primal": 1.1988272210765746e-14
+            },
+            "run_id": "benchmark-scaling-distributed-a0f2da3cc3df/scaling-wide-5000-10-20-seed-11/cfg-df04cb0cc5c635b6/rep-000",
+            "solve_seconds": 216.875219263,
+            "spark_jobs": null,
+            "status": "Success",
+            "stop_reason": null,
+            "warmup": true
+          },
+          {
+            "accuracy_basis": "independent-original-lp",
+            "algorithm": "Cholesky",
+            "application_id": null,
+            "attempt_id": "benchmark-scaling-distributed-a0f2da3cc3df/scaling-wide-5000-10-20-seed-11/cfg-df04cb0cc5c635b6/rep-001/attempt-001",
+            "attempt_number": 1,
+            "campaign_id": "benchmark-scaling-distributed-a0f2da3cc3df",
+            "case_id": "scaling-wide-5000-10-20-seed-11",
+            "cg_restarts": 0,
+            "cg_steps": 0,
+            "configuration_id": "cfg-df04cb0cc5c635b6",
+            "maximum_rank": 0,
+            "memory": {
+              "peak_heap_bytes": 2310021744,
+              "peak_rss_bytes": 5885333504,
+              "scope": "driver process; combined with executors in local mode; includes validation"
+            },
+            "outer_iterations": 9,
+            "provenance": {
+              "line": 2,
+              "source_path": "scaling-wide-5000-10-20-seed-11--cholesky--e8-p32/records.jsonl",
+              "source_sha256": "757d1009dce44c208cdf0c0f5b7fb9955f4110845e6620991c6262267b8f15fb"
+            },
+            "rank_escalations": null,
+            "raw": {},
+            "repetition": 1,
+            "residuals": {
+              "dual": 1.9555638483851335e-17,
+              "gap": 2.699826930336089e-09,
+              "min_s": 1.2244769876680553e-14,
+              "min_x": 1.427987185568609e-14,
+              "objective": -2.7885874551861063,
+              "objective_error": 1.6843726735571793e-09,
+              "primal": 1.199674781181738e-14
+            },
+            "run_id": "benchmark-scaling-distributed-a0f2da3cc3df/scaling-wide-5000-10-20-seed-11/cfg-df04cb0cc5c635b6/rep-001",
+            "solve_seconds": 210.52354278,
+            "spark_jobs": null,
+            "status": "Success",
+            "stop_reason": null,
+            "warmup": false
+          },
+          {
+            "accuracy_basis": "independent-original-lp",
+            "algorithm": "Cholesky",
+            "application_id": null,
+            "attempt_id": "benchmark-scaling-distributed-a0f2da3cc3df/scaling-wide-5000-10-20-seed-11/cfg-df04cb0cc5c635b6/rep-002/attempt-001",
+            "attempt_number": 1,
+            "campaign_id": "benchmark-scaling-distributed-a0f2da3cc3df",
+            "case_id": "scaling-wide-5000-10-20-seed-11",
+            "cg_restarts": 0,
+            "cg_steps": 0,
+            "configuration_id": "cfg-df04cb0cc5c635b6",
+            "maximum_rank": 0,
+            "memory": {
+              "peak_heap_bytes": 3559916040,
+              "peak_rss_bytes": 6444904448,
+              "scope": "driver process; combined with executors in local mode; includes validation"
+            },
+            "outer_iterations": 9,
+            "provenance": {
+              "line": 3,
+              "source_path": "scaling-wide-5000-10-20-seed-11--cholesky--e8-p32/records.jsonl",
+              "source_sha256": "757d1009dce44c208cdf0c0f5b7fb9955f4110845e6620991c6262267b8f15fb"
+            },
+            "rank_escalations": null,
+            "raw": {},
+            "repetition": 2,
+            "residuals": {
+              "dual": 1.9362947637357448e-17,
+              "gap": 2.6998271647713307e-09,
+              "min_s": 1.2244769876674814e-14,
+              "min_x": 1.4279871855682288e-14,
+              "objective": -2.7885874551861054,
+              "objective_error": 1.6843729079924217e-09,
+              "primal": 1.2018382973556396e-14
+            },
+            "run_id": "benchmark-scaling-distributed-a0f2da3cc3df/scaling-wide-5000-10-20-seed-11/cfg-df04cb0cc5c635b6/rep-002",
+            "solve_seconds": 211.49182365800002,
+            "spark_jobs": null,
+            "status": "Success",
+            "stop_reason": null,
+            "warmup": false
+          },
+          {
+            "accuracy_basis": "independent-original-lp",
+            "algorithm": "Cholesky",
+            "application_id": null,
+            "attempt_id": "benchmark-scaling-distributed-a0f2da3cc3df/scaling-wide-5000-10-20-seed-11/cfg-df04cb0cc5c635b6/rep-003/attempt-001",
+            "attempt_number": 1,
+            "campaign_id": "benchmark-scaling-distributed-a0f2da3cc3df",
+            "case_id": "scaling-wide-5000-10-20-seed-11",
+            "cg_restarts": 0,
+            "cg_steps": 0,
+            "configuration_id": "cfg-df04cb0cc5c635b6",
+            "maximum_rank": 0,
+            "memory": {
+              "peak_heap_bytes": 5911871992,
+              "peak_rss_bytes": 7736078336,
+              "scope": "driver process; combined with executors in local mode; includes validation"
+            },
+            "outer_iterations": 9,
+            "provenance": {
+              "line": 4,
+              "source_path": "scaling-wide-5000-10-20-seed-11--cholesky--e8-p32/records.jsonl",
+              "source_sha256": "757d1009dce44c208cdf0c0f5b7fb9955f4110845e6620991c6262267b8f15fb"
+            },
+            "rank_escalations": null,
+            "raw": {},
+            "repetition": 3,
+            "residuals": {
+              "dual": 1.935004261828688e-17,
+              "gap": 2.6998292746885085e-09,
+              "min_s": 1.2244769876666075e-14,
+              "min_x": 1.427987185568751e-14,
+              "objective": -2.788587455186099,
+              "objective_error": 1.684374549039118e-09,
+              "primal": 1.2018099283161712e-14
+            },
+            "run_id": "benchmark-scaling-distributed-a0f2da3cc3df/scaling-wide-5000-10-20-seed-11/cfg-df04cb0cc5c635b6/rep-003",
+            "solve_seconds": 208.439876675,
+            "spark_jobs": null,
+            "status": "Success",
+            "stop_reason": null,
+            "warmup": false
+          },
+          {
+            "accuracy_basis": "independent-original-lp",
+            "algorithm": "Cholesky",
+            "application_id": null,
+            "attempt_id": "benchmark-scaling-distributed-a0f2da3cc3df/scaling-wide-5000-10-20-seed-11/cfg-df04cb0cc5c635b6/rep-004/attempt-001",
+            "attempt_number": 1,
+            "campaign_id": "benchmark-scaling-distributed-a0f2da3cc3df",
+            "case_id": "scaling-wide-5000-10-20-seed-11",
+            "cg_restarts": 0,
+            "cg_steps": 0,
+            "configuration_id": "cfg-df04cb0cc5c635b6",
+            "maximum_rank": 0,
+            "memory": {
+              "peak_heap_bytes": 2397138984,
+              "peak_rss_bytes": 7878344704,
+              "scope": "driver process; combined with executors in local mode; includes validation"
+            },
+            "outer_iterations": 9,
+            "provenance": {
+              "line": 5,
+              "source_path": "scaling-wide-5000-10-20-seed-11--cholesky--e8-p32/records.jsonl",
+              "source_sha256": "757d1009dce44c208cdf0c0f5b7fb9955f4110845e6620991c6262267b8f15fb"
+            },
+            "rank_escalations": null,
+            "raw": {},
+            "repetition": 4,
+            "residuals": {
+              "dual": 1.9704581504611097e-17,
+              "gap": 2.699828454165161e-09,
+              "min_s": 1.2244769876666911e-14,
+              "min_x": 1.4279871855684935e-14,
+              "objective": -2.7885874551861027,
+              "objective_error": 1.6843736112981487e-09,
+              "primal": 1.2004777417202984e-14
+            },
+            "run_id": "benchmark-scaling-distributed-a0f2da3cc3df/scaling-wide-5000-10-20-seed-11/cfg-df04cb0cc5c635b6/rep-004",
+            "solve_seconds": 207.683114004,
+            "spark_jobs": null,
+            "status": "Success",
+            "stop_reason": null,
+            "warmup": false
+          },
+          {
+            "accuracy_basis": "independent-original-lp",
+            "algorithm": "Cholesky",
+            "application_id": null,
+            "attempt_id": "benchmark-scaling-distributed-a0f2da3cc3df/scaling-wide-5000-10-20-seed-11/cfg-df04cb0cc5c635b6/rep-005/attempt-001",
+            "attempt_number": 1,
+            "campaign_id": "benchmark-scaling-distributed-a0f2da3cc3df",
+            "case_id": "scaling-wide-5000-10-20-seed-11",
+            "cg_restarts": 0,
+            "cg_steps": 0,
+            "configuration_id": "cfg-df04cb0cc5c635b6",
+            "maximum_rank": 0,
+            "memory": {
+              "peak_heap_bytes": 2627731960,
+              "peak_rss_bytes": 7807348736,
+              "scope": "driver process; combined with executors in local mode; includes validation"
+            },
+            "outer_iterations": 9,
+            "provenance": {
+              "line": 6,
+              "source_path": "scaling-wide-5000-10-20-seed-11--cholesky--e8-p32/records.jsonl",
+              "source_sha256": "757d1009dce44c208cdf0c0f5b7fb9955f4110845e6620991c6262267b8f15fb"
+            },
+            "rank_escalations": null,
+            "raw": {},
+            "repetition": 5,
+            "residuals": {
+              "dual": 1.9339547116926176e-17,
+              "gap": 2.6998279852946775e-09,
+              "min_s": 1.2244769876671267e-14,
+              "min_x": 1.4279871855689596e-14,
+              "objective": -2.7885874551861036,
+              "objective_error": 1.6843733768629064e-09,
+              "primal": 1.2022696824096178e-14
+            },
+            "run_id": "benchmark-scaling-distributed-a0f2da3cc3df/scaling-wide-5000-10-20-seed-11/cfg-df04cb0cc5c635b6/rep-005",
+            "solve_seconds": 208.14196411499998,
+            "spark_jobs": null,
+            "status": "Success",
+            "stop_reason": null,
+            "warmup": false
+          }
+        ],
+        "schema_version": 1,
+        "sources": [
+          {
+            "path": "scaling-wide-5000-10-20-seed-11--cholesky--e8-p32/records.jsonl",
+            "revision": null,
+            "sha256": "757d1009dce44c208cdf0c0f5b7fb9955f4110845e6620991c6262267b8f15fb",
+            "uri": null
+          }
+        ]
+      },
+      "value": 5
+    },
+    "measured-unknown-count": {
+      "value": 0
+    },
+    "measured-unrun-count": {
+      "value": 0
+    },
+    "objective-error-max": {
+      "value": 1.684374549039118e-09
+    },
+    "outer-iterations": {
+      "lower_value": 9,
+      "upper_value": 9,
+      "value": 9
+    },
+    "primal-max": {
+      "value": 1.2022696824096178e-14
+    },
+    "warmup-attempted-count": {
+      "value": 1
+    },
+    "warmup-converged-count": {
+      "value": 1
+    },
+    "warmup-excluded-count": {
+      "value": 0
+    },
+    "warmup-failed-count": {
+      "value": 0
+    },
+    "warmup-records-count": {
+      "value": 1
+    },
+    "warmup-unknown-count": {
+      "value": 0
+    },
+    "warmup-unrun-count": {
+      "value": 0
+    }
+  }
+}

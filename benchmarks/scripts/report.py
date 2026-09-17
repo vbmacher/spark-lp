@@ -14,6 +14,12 @@ import statistics
 ROOT = Path(__file__).resolve().parents[2]
 RESULTS = ROOT / 'benchmarks/src/results'
 DATA = RESULTS / 'data'
+REPORTS = ROOT / 'benchmarks/reports'
+LEGACY_REPORT = RESULTS / 'REPORT.md'
+# Relative links resolved from the published report at benchmarks/reports/.
+DATA_HREF = '../src/results/data'
+SCALA_HREF = '../src/main/scala/com/github/vbmacher/spark_lp/Benchmark.scala'
+MEMORY_HREF = '../README.md#memory'
 SUCCESS = {'Converged', 'Optimal', 'Success'}
 NOT_ATTEMPTED = {'Unrun', 'ResourceExcluded', 'MissingEvidence', 'Pending'}
 def digest(value):
@@ -294,10 +300,12 @@ def mib(value):
 
 
 def render_table(columns, rows, extract_shared=True):
+    # Columns that are the placeholder for every row carry no information; drop them entirely.
+    placeholder = {i for i, name in enumerate(columns) if name != 'ID' and rows and all(row[i] == '—' for row in rows)}
     # Keep the ID joining the two tables even for a single configuration.
-    shared = [i for i, name in enumerate(columns) if extract_shared and name not in ('ID', 'Env') and rows
-              and all(row[i] == rows[0][i] for row in rows)]
-    varying = [i for i in range(len(columns)) if i not in shared]
+    shared = [i for i, name in enumerate(columns) if extract_shared and name not in ('ID', 'Env')
+              and i not in placeholder and rows and all(row[i] == rows[0][i] for row in rows)]
+    varying = [i for i in range(len(columns)) if i not in shared and i not in placeholder]
 
     def table_row(cells):
         return '| ' + ' | '.join(str(v).replace('|', '\\|') for v in cells) + ' |'
@@ -312,174 +320,404 @@ def render_table(columns, rows, extract_shared=True):
     return '\n'.join(lines)
 
 
-def render_tables(campaigns):
+def section_for(campaign_id):
+    """Map a campaign to a report section (order, title, id-prefix, purpose)."""
+    if campaign_id == 'solver-scaling':
+        return (0, 'Solver scaling', 'SS', 'measures scaling with rows, variables and sparse support')
+    if campaign_id == 'sparsity-and-conditioning':
+        return (1, 'Sparsity and conditioning', 'SC', 'tests density, row scaling and near dependence')
+    if campaign_id.startswith('dense-small'):
+        return (2, 'Dense small', 'DS', 'small dense fixtures for backend comparison on constrained hosts')
+    if campaign_id.startswith('distributed') or campaign_id.startswith('result-limit'):
+        return (3, 'Distributed scaling', 'DIST', 'measures larger problems on the distributed runtime')
+    if campaign_id.startswith('cg-partitions'):
+        return (4, 'CG partition tuning', 'PART',
+                'CG input-partition tuning for the seed-11, width-32 fixtures; '
+                'the recommendation, method and paired speedups follow the table')
+    return (5, re.sub(r'\bIssue\s*#?\d+\s*', '', campaign_id.replace('-', ' ').capitalize(),
+                      flags=re.IGNORECASE), campaign_id.upper(), '')
+
+
+def experiment_key(campaign_id):
+    """Strip the algorithm suffix so split cg/cholesky campaigns of one problem pair up."""
+    return re.sub(r'-(cg|cholesky)$', '', campaign_id)
+
+
+def comparison_key(cfg):
+    """Keep runs separate when a backend-independent execution setting changes."""
+    return canonical({key: cfg.get(key) for key in (
+        'source_hash', 'environment', 'partitions', 'heap_gib', 'memory_topology',
+        'tolerance', 'outer_limit', 'eta', 'control', 'scenario', 'timing_scope',
+        'warmups', 'warmup_case')})
+
+
+def parameter(value):
+    if value is None:
+        return 'unrecorded'
+    return f'{value:g}' if isinstance(value, float) else str(value)
+
+
+def algorithm_summary(records, cfg, case):
+    """Fold solve timing, iterations, accuracy and memory for one algorithm of a case."""
+    if cfg is None or not records:
+        return None
+    direct = cfg['algorithm'] == 'Cholesky'
+    body = [r for r in records if not r['warmup']]
+    if not body:
+        return None
+    attempted = [r for r in body if r['status'] not in NOT_ATTEMPTED]
+    valid = [r for r in attempted if is_valid(r, cfg)]
+    timed = valid if valid else attempted
+    times = [r['solve_seconds'] for r in timed if r['solve_seconds'] is not None]
+    timing = '—' if not times else f'{statistics.median(times):.3f} [{min(times):.3f}–{max(times):.3f}]'
+    observed = attempted if attempted else body
+    iters = f'outer {span([r["outer_iterations"] for r in observed])}'
+    if not direct:
+        iters += f', CG {span([r["cg_steps"] for r in observed])}'
+    counts = collections.Counter(r['status'] for r in body)
+    if attempted:
+        result = f'{timing}; {len(valid)}/{len(attempted)} valid; {iters}'
+        extra = ', '.join(f'{k} ×{v}' for k, v in sorted(counts.items()) if k not in SUCCESS)
+        if extra:
+            result += f'; {extra}'
+        if not valid and times:
+            result += '; unsuccessful duration'
+    else:
+        result = ', '.join(f'{k} ×{v}' for k, v in sorted(counts.items())) or 'No records'
+    reason = sorted({r.get('stop_reason') for r in body if r.get('stop_reason') not in (None, 'None')})
+    if reason:
+        result += '; ' + ', '.join(reason)
+    accuracy = [[r['residuals'].get(k) for r in body] for k in ('primal', 'dual', 'gap')]
+    accuracy = ('/'.join(f'{max(values):.3g}' for values in accuracy)
+                if all(v is not None for values in accuracy for v in values) else '—')
+    ranks = [r['maximum_rank'] for r in observed]
+    rank = max(ranks) if ranks and all(v is not None for v in ranks) else None
+    topology = cfg.get('memory_topology')
+    mem = memory_components(case, rank, topology['concurrent_tasks_per_executor'],
+                            topology['executors']) if topology else None
+    local = bool(topology) and topology['executors'] == 1
+    e = ('O(nnz+n+m²)' if direct else 'O(nnz+n+m)') if local else (
+        'O((nnz+n)/executors + tasks·m²)' if direct else 'O((nnz+n)/executors + tasks·m)')
+    d = 'O(m²)' if direct else 'O(m+m·rank)'
+    if mem:
+        payload = mib(mem['cholesky_executor' if direct else 'cg_executor'])
+        workspace = mib(mem['cholesky_driver' if direct else 'cg_driver'])
+        memory = f'exec {e} [≈{payload}]({MEMORY_HREF}); driver {d} ≈{workspace}'
+    else:
+        memory = f'exec {e}; driver {d}; estimate unavailable'
+    peak = [r['memory']['peak_rss_bytes'] for r in body if r['memory'].get('peak_rss_bytes')]
+    memory += ('; RSS ' + ('combined ' if local else 'driver ') + mib(max(peak))) if peak else '; RSS unmeasured'
+    return dict(result=result, accuracy=accuracy, memory=memory, attempted=bool(attempted),
+                topology=topology, warmups=[r for r in records if r['warmup']])
+
+
+PARTITION_NOTES = (
+    '**Recommendation:** For these seed-11, width-32 CG fixtures on the tested four-executor '
+    'cluster (4×4), use 16 input partitions. Median paired speedups versus a fresh 64-partition '
+    'reference were 1.44–2.16×, and every measured solve and warmup passed independent `1e-8` '
+    'accuracy checks. This is workload-specific: no solver default, numerical setting or algorithm '
+    'changed.\n\n'
+    '**Method:** CG only; seed 11; width 32; one warmup and five measured attempts per fresh JVM. '
+    'Round 1 sweeps 64/32/16 partitions and round 2 sweeps 16/32/64 on the same cluster; the rounds '
+    'stay separate because timing variability is visible. Each comparison uses a fresh 64-partition '
+    'reference (the larger historical baseline used 128). Paired speedup divides the matching '
+    '64-partition repetition by the candidate within the same fixture and round.\n\n'
+    'Paired speedup, 16 vs 64 partitions (median [min, max]):\n\n'
+    '| Fixture | Round 1 | Round 2 |\n'
+    '|---|---|---|\n'
+    '| Well-conditioned 1,000 × 100,000 | 1.589 [1.566, 1.702] | 2.164 [1.972, 2.196] |\n'
+    '| Well-conditioned 5,000 × 1,000,000 | 1.440 [1.383, 1.476] | 1.522 [1.479, 1.566] |\n'
+    '| Near-dependent 1,000 × 100,000 | 1.534 [1.485, 1.625] | 1.648 [1.626, 1.666] |\n\n'
+    'Fewer partitions also lowered executor CPU, shuffle read and per-success step cost; the '
+    '32-partition setting falls between 16 and 64. The near-dependent fixture\'s CG step count varies '
+    'with floating-point reduction order, so its gain is not attributed only to scheduling.\n\n'
+    '**Limits:** Seeds 29 and 47, other executor counts, other input shapes, native BLAS/LAPACK and '
+    'backend selection are untested here; these gains do not establish a universal partition count. '
+    'Per-attempt CPU, GC, phase, task and cost metrics remain in each `cg-partitions-*.bmf.json` under '
+    '`_evidence`.')
+
+
+SCALING_NOTES = (
+    '**Fixed-wide executor sweep:** The identical 5,000 × 50,000 seed-11 fixture used '
+    '4×4/16, 8×4/32 and 16×4/64 executor/partition configurations, each with one warmup and '
+    'five measured attempts per backend. Cholesky medians were 202.785, 208.440 and 224.481 '
+    'seconds respectively; all attempts passed independent `1e-8` validation. CG reached its '
+    'iteration limit in every measured attempt, so unsuccessful durations are not speedups. '
+    'This fixed-input sweep does not show a benefit from adding executors.\n\n'
+    '**Proportional scaling:** The 5,000/4-executor, 10,000/8-executor and '
+    '20,000/16-executor cases remain separate. Outcomes change with problem size: Cholesky alone '
+    'succeeded at 5,000 rows, both backends succeeded at 10,000 rows, and at 20,000 rows Cholesky '
+    'was resource-excluded while CG reached its iteration limit. These results do not support a '
+    'monotonic scaling claim.')
+
+
+ACCURACY_NOTES = (
+    '**Accuracy protocols:** `primary-*`, `difficulty-*`, `shape-*`, `memory-*` and `scale-*` '
+    'cases use the primary `1e-8` protocol. The `accuracy-*` cases are the separate near-crossover '
+    '`1e-6` sweep; timings and validation counts are never pooled across tolerances.')
+
+
+def render_tables(campaigns, media=None):
     from bencher_export import result_filename
-    plan_columns = ['ID', 'Type', 'Rows m', 'Variables n', 'Campaign / case', 'Purpose',
-                    'Control', 'Fixture family', 'Seed', 'Nonzeros', 'Density (%)',
-                    'Nonzeros / column', 'Nonzeros / row', 'Row-scale ratio', 'Tolerance', 'Outer limit',
-                    'Eta', 'CG tolerance', 'CG step limit per rank', 'Rp', 'Rd',
-                    'Preconditioner budget (MiB)', 'Partitions',
-                    'Heap (GiB)', 'BLAS', 'Recorded repetitions', 'Warmups per backend invocation', 'Warmup case',
-                    'Timing scope', 'Data file']
-    result_columns = ['ID', 'Env', 'Warmup outcomes', 'Converged / attempted', 'Iterations', 'Restarts/escalations',
-                      'Max preconditioner rank', 'Solve seconds, median [min–max]',
-                      'Outcome / accuracy', 'Memory per executor (big O + calculated/measured)',
-                      'Memory per driver (big O + calculated/measured)']
-    plans, results, environments, environment_ids = [], [], [], {}
-    order = {'solver-scaling': 0, 'sparsity-and-conditioning': 1, 'emr-scaling': 2}
-    names = {'solver-scaling': 'Solver scaling', 'sparsity-and-conditioning': 'Sparsity and conditioning',
-             'emr-scaling': 'EMR scaling'}
-    prefixes = {'solver-scaling': 'SS', 'sparsity-and-conditioning': 'SC', 'emr-scaling': 'EMR'}
-    def parameter(value):
-        if value is None:
-            return 'unrecorded'
-        return f'{value:g}' if isinstance(value, float) else str(value)
-    for c in sorted(campaigns, key=lambda c: (order.get(c['campaign_id'], 3), c['campaign_id'])):
+    columns = ['ID', 'Case', 'Rows m', 'Variables n', 'Nonzeros', 'Density (%)', 'Nonzeros / row',
+               'Fixture family', 'Seed', 'Partitions', 'Heap (GiB)', 'Executor topology', 'Environment',
+               'Warmup outcomes',
+               'Cholesky solve s; valid; iterations', 'Cholesky max primal/dual/gap', 'Cholesky memory',
+               'CG solve s; valid; iterations', 'CG max primal/dual/gap', 'CG memory']
+    # Group records into one row per physical case, pairing the Cholesky and CG runs of that case.
+    groups = {}
+    for c in campaigns:
         if not c['records']:
             continue
-        title = names.get(c['campaign_id'], re.sub(r'\bIssue\s*#?\d+\s*', '', c['title'], flags=re.IGNORECASE))
+        section = section_for(c['campaign_id'])
+        ekey = experiment_key(c['campaign_id'])
         cases = {x['case_id']: x for x in c['cases']}
         configs = {x['configuration_id']: x for x in c['configurations']}
-        groups = collections.defaultdict(list)
         for row in c['records']:
-            groups[(row['case_id'], row['configuration_id'])].append(row)
-        def group_order(item):
-            case_id, cfg_id = item[0]
-            case, cfg = cases[case_id], configs[cfg_id]
-            return (case['m'], case['n'], case_id, cfg['algorithm'] != 'Cholesky',
-                    cfg['label'], cfg_id)
-        for index, ((case_id, cfg_id), group) in enumerate(sorted(groups.items(), key=group_order), 1):
-            warmups = [r for r in group if r['warmup']]
-            group = [r for r in group if not r['warmup']]
-            warmup_outcomes = ', '.join(f'{k} ×{v}' for k, v in sorted(
-                collections.Counter(r['status'] for r in warmups).items())) or 'unrecorded'
-            benchmark_id = f'{prefixes.get(c["campaign_id"], c["campaign_id"].upper())}-{index:02d}'
-            suite = configs[cfg_id].get('suite', ALGORITHM_SUITES.get(configs[cfg_id]['algorithm']))
-            if suite:
-                benchmark_id += f' · [{suite.split(".")[-1]}](../main/scala/{suite.replace(".", "/")}.scala)'
-            case, cfg = cases[case_id], configs[cfg_id]
-            env = environment_values(cfg)
-            env_key = canonical(env)
-            if env_key not in environment_ids:
-                env_id = f'ENV-{len(environment_ids)+1:02d}'
-                environment_ids[env_key] = env_id
-                environments.append([env_id, env['computer'] or 'unrecorded', env['os'] or 'unrecorded',
-                                     env['spark_version'] or 'unrecorded', env['java_version'] or 'unrecorded',
-                                     env['spark_master'] or 'unrecorded'])
-            env_id = environment_ids[env_key]
-            attempted = [r for r in group if r['status'] not in NOT_ATTEMPTED]
-            valid = [r for r in attempted if is_valid(r, cfg)]
-            # Homogeneous failures show observed stop/failure duration explicitly, never successful solve timing.
-            timed = valid if valid else attempted
-            times = [r['solve_seconds'] for r in timed if r['solve_seconds'] is not None]
-            timing = '—' if not times else f'{statistics.median(times):.3f} [{min(times):.3f}–{max(times):.3f}]'
-            if not valid and times:
-                timing += ' (unsuccessful duration)'
-            z, m, n = case['nnz'], case['m'], case['n']
-            observed = attempted if attempted else group
-            ranks = [r['maximum_rank'] for r in observed]
-            rank = max(ranks) if ranks and all(v is not None for v in ranks) else None
-            topology = cfg.get('memory_topology')
-            mem = memory_components(case, rank, topology['concurrent_tasks_per_executor'],
-                topology['executors']) if topology else None
-            direct = cfg['algorithm'] == 'Cholesky'
-            local = topology and topology['executors'] == 1
-            e = ('O(nnz+n+m²)' if direct else 'O(nnz+n+m)') if local else (
-                'O((nnz+n)/executors + tasks·m²)' if direct else 'O((nnz+n)/executors + tasks·m)')
-            d = 'O(m²)' if direct else 'O(m+m·rank)'
-            if mem:
-                e += '; [≈' + mib(mem['cholesky_executor' if direct else 'cg_executor']) + ' payload](../../README.md#memory)'
-                e += f'; {topology["executors"]} executor(s), {topology["concurrent_tasks_per_executor"]} tasks/executor'
-                d += '; [≈' + mib(mem['cholesky_driver' if direct else 'cg_driver']) + ' workspace](../../README.md#memory)'
-            else:
-                e += '; topology/nnz unavailable'
-                d += '; payload estimate unavailable'
-            outcomes = ', '.join(f'{k} ×{v}' for k,v in sorted(collections.Counter(r['status'] for r in group).items())) or 'No measured records captured'
-            accuracy = [[r['residuals'].get(k) for r in group] for k in ('primal', 'dual', 'gap')]
-            if group and all(v is not None for values in accuracy for v in values):
-                outcomes += '; max primal/dual/gap ' + '/'.join(f'{max(values):.3g}' for values in accuracy)
-            reason = sorted({r.get('stop_reason') for r in group if r.get('stop_reason') not in (None, 'None')})
-            if reason:
-                outcomes += '; ' + ', '.join(reason)
-            if len(group) == 1 and group[0]['status'] == 'Stopped':
-                candidate = group[0]['raw'].get('candidate_available')
-                if candidate in (False, 'false'):
-                    outcomes += '; no candidate'
-                elif candidate in (True, 'true'):
-                    outcomes += '; candidate feasible=' + str(group[0]['raw'].get('candidate_feasible')).lower()
-            peak = [r['memory']['peak_rss_bytes'] for r in group if r['memory'].get('peak_rss_bytes')]
-            if peak:
-                d += '; sampled ' + ('combined driver+executor ' if local else 'driver ') + 'RSS max ' + mib(max(peak))
-            else:
-                d += '; RSS unmeasured'
-            name = case_id
-            control = {'none': 'Off', 'report': 'Progress callback',
-                       'candidate': 'Stop at first feasible event', 'time': 'Time limit',
-                       'stagnation': 'Stagnation stop'}.get(cfg.get('control'), parameter(cfg.get('control')))
-            purpose = {
-                'solver-scaling': 'measures scaling with rows, variables and sparse support',
-                'sparsity-and-conditioning': 'tests density, row scaling and near dependence',
-                'emr-scaling': 'measures larger distributed problems on EMR'
-            }.get(c['campaign_id'], '')
-            environment = cfg.get('environment') or {}
-            partitions = cfg.get('partitions', environment.get('input_partitions'))
-            heap = cfg.get('heap_gib', environment.get('heap_gib'))
-            repetitions = len({r['repetition'] for r in group})
-            budget = cfg.get('preconditioner_memory_bytes')
-            filename = result_filename(c['campaign_id'], cfg)
-            plan = [benchmark_id, cfg['algorithm'], f'{m:,}', f'{n:,}', f'{title} / {name}',
-                    purpose or 'unrecorded', control, parameter(case['shape'].get('family')), parameter(case['shape'].get('seed')),
-                    'unrecorded' if z is None else f'{z:,}',
-                    'unrecorded' if z is None else f'{100*z/(m*n):.4g}',
-                    parameter(case['shape'].get('width_per_column', 'n/a')),
-                    parameter(case['shape'].get('nonzeros_per_row', 'n/a')),
-                    parameter(case['shape'].get('row_scale_ratio', 'n/a')),
-                    parameter(cfg['tolerance']), parameter(cfg.get('outer_limit')), parameter(cfg.get('eta')),
-                    'n/a' if direct else parameter(cfg.get('cg_tolerance')),
-                    'n/a' if direct else parameter(cfg.get('cg_limit_per_rank')),
-                    parameter(cfg.get('primal_regularization', cfg.get('regularization'))),
-                    parameter(cfg.get('dual_regularization', cfg.get('regularization'))),
-                    'n/a' if direct else parameter(None if budget is None else budget/1024**2),
-                    parameter(partitions), parameter(heap),
-                    parameter(environment.get('blas')), repetitions, parameter(cfg.get('warmups')),
-                    cfg.get('warmup_case') or ('n/a' if cfg.get('warmups') == 0 else 'unrecorded'),
-                    cfg['timing_scope'], f'[{filename}](data/{filename})']
-            plans.append(plan)
-            cells = [benchmark_id, env_id, warmup_outcomes, f'{len(valid)}/{len(attempted)}',
-                f'outer {span([r["outer_iterations"] for r in observed])}' + ('' if direct else f'; CG {span([r["cg_steps"] for r in observed])}'),
-                'n/a' if direct else f'{span([r["cg_restarts"] for r in observed])} / {span([r["rank_escalations"] for r in observed])}'.replace('—', 'unrecorded'),
-                'n/a' if direct else ('—' if rank is None else str(rank)), timing, outcomes, e, d]
-            results.append(cells)
-    return ('## Benchmark types\n\n' + render_table(plan_columns, plans)
-            + '\n\n## Environment\n\n' + render_table(
-                ['ID', 'Computer', 'OS', 'Spark version', 'Java version', 'Spark master'], environments, extract_shared=False)
-            + '\n\n## Result\n\n' + render_table(result_columns, results))
+            case, cfg = cases[row['case_id']], configs[row['configuration_id']]
+            gkey = (section[0], section[2], ekey, row['case_id'], comparison_key(cfg))
+            group = groups.setdefault(gkey, dict(section=section, ekey=ekey, case=case,
+                                                 records=[], cfgs={}, files=set()))
+            group['records'].append(row)
+            group['cfgs'][cfg['algorithm']] = cfg
+            group['files'].add(result_filename(c['campaign_id'], cfg))
+    def group_order(item):
+        gkey, group = item
+        cfg = next(iter(group['cfgs'].values()))
+        topology = cfg.get('memory_topology') or {}
+        return (group['section'][0], group['case']['m'], group['case']['n'], gkey[3], gkey[2],
+                topology.get('executors', 0), cfg.get('partitions') or 0)
+
+    ordered = sorted(groups.items(), key=group_order)
+    environments, environment_ids, failures = [], {}, []
+    sections = collections.OrderedDict()
+    counters = collections.Counter()
+    for gkey, group in ordered:
+        section, case = group['section'], group['case']
+        chol = algorithm_summary([r for r in group['records'] if r['algorithm'] == 'Cholesky'],
+                                 group['cfgs'].get('Cholesky'), case)
+        cg = algorithm_summary([r for r in group['records'] if r['algorithm'] == 'CG'],
+                               group['cfgs'].get('CG'), case)
+        cfg = group['cfgs'].get('CG') or group['cfgs'].get('Cholesky')
+        env = environment_values(cfg)
+        env_key = canonical(env)
+        if env_key not in environment_ids:
+            env_id = f'ENV-{len(environment_ids)+1:02d}'
+            environment_ids[env_key] = env_id
+            environments.append([env_id, env['computer'] or 'unrecorded', env['os'] or 'unrecorded',
+                                 env['spark_version'] or 'unrecorded', env['java_version'] or 'unrecorded',
+                                 env['spark_master'] or 'unrecorded'])
+        env_id = environment_ids[env_key]
+        case_label = case['case_id']
+        # Cases where nothing was attempted for any backend move to the failures footnote.
+        if not (chol and chol['attempted']) and not (cg and cg['attempted']):
+            statuses = ', '.join(f'{k} ×{v}' for k, v in sorted(
+                collections.Counter(r['status'] for r in group['records'] if not r['warmup']).items()))
+            failures.append(f'- **{case_label} ({group["ekey"]})** ({env_id}): '
+                            f'{"/".join(sorted(group["cfgs"]))} {statuses or "no records"}')
+            continue
+        counters[section[2]] += 1
+        benchmark_id = f'{section[2]}-{counters[section[2]]:02d}'
+        topology = (chol or cg or {}).get('topology') or (cg or {}).get('topology')
+        executor_topology = (f'{topology["executors"]}×{topology["concurrent_tasks_per_executor"]}'
+                             if topology else 'unrecorded')
+        warmups = (chol or {}).get('warmups', []) + (cg or {}).get('warmups', [])
+        warmup_outcomes = ', '.join(f'{k} ×{v}' for k, v in sorted(
+            collections.Counter(r['status'] for r in warmups).items())) or 'unrecorded'
+        z, m, n = case['nnz'], case['m'], case['n']
+        shape = case['shape']
+        environment = cfg.get('environment') or {}
+        row = [benchmark_id, case_label, f'{m:,}', f'{n:,}',
+               'unrecorded' if z is None else f'{z:,}',
+               'unrecorded' if z is None else f'{100*z/(m*n):.4g}',
+               parameter(shape.get('nonzeros_per_row', shape.get('width_per_column', 'n/a'))),
+               parameter(shape.get('family')), parameter(shape.get('seed')),
+               parameter(cfg.get('partitions', environment.get('input_partitions'))),
+               parameter(cfg.get('heap_gib', environment.get('heap_gib'))),
+               executor_topology, env_id, warmup_outcomes,
+               chol['result'] if chol else '—', chol['accuracy'] if chol else '—', chol['memory'] if chol else '—',
+               cg['result'] if cg else '—', cg['accuracy'] if cg else '—', cg['memory'] if cg else '—']
+        entry = sections.setdefault(section[:2], dict(purpose=section[3], files=set(), rows=[]))
+        entry['files'].update(group['files'])
+        entry['rows'].append((row, case['case_id'], group['ekey']))
+    out = ['## Environment\n\n' + render_table(
+        ['ID', 'Computer', 'OS', 'Spark version', 'Java version', 'Spark master'], environments, extract_shared=False),
+        '## Results\n\nAll runs use the `CholeskyBenchmark` / `CGBenchmark` instances in '
+        f'[Benchmark.scala]({SCALA_HREF}); '
+        'each row pairs the two backends on one case. Memory payloads are computed estimates; '
+        'RSS is sampled. Timing scope is core solve excluding independent validation; '
+        'the tolerance is recorded per case; no CG restarts or rank escalations were recorded.']
+    for (_, title), entry in sorted(sections.items()):
+        # Add the campaign qualifier only when a case id appears more than once in the section.
+        repeated = {cid for cid, count in collections.Counter(cid for _, cid, _ in entry['rows']).items() if count > 1}
+        rows = []
+        for cells, case_id, ekey in entry['rows']:
+            cells[1] = f'{case_id} ({ekey})' if case_id in repeated else case_id
+            rows.append(cells)
+        files = ', '.join(f'[{name}]({DATA_HREF}/{name})' for name in sorted(entry['files']))
+        notes = ''
+        if title == 'CG partition tuning':
+            notes = PARTITION_NOTES
+        elif title.startswith('Benchmark scaling distributed'):
+            notes = SCALING_NOTES
+        elif title.startswith('Sparsity and conditioning distributed'):
+            notes = ACCURACY_NOTES
+        parts = [f'### {title}\n\n{entry["purpose"]}.']
+        media_md = (media or {}).get(title)
+        if media_md:
+            parts.append(media_md)
+        table_body = render_table(columns, rows)
+        if notes:
+            table_body += '\n\n' + notes
+        if media is None:
+            parts.append(f'Data: {files}.\n\n{table_body}')
+        else:
+            parts.append(f'<details>\n<summary>Full measurements ({len(rows)} cases) '
+                         f'&mdash; data: {files}</summary>\n\n{table_body}\n\n</details>')
+        out.append('\n\n'.join(parts))
+    if failures:
+        out.append('### Failures and resource exclusions\n\n'
+                   'Cases with no attempted solve on any backend:\n\n' + '\n'.join(failures))
+    return '\n\n'.join(out)
 
 
-def render_report(campaigns, executor_memory=()):
+PHASE_TIMING_SUMMARY = '''## Phase timing summary
+
+Medians cover 1,065 measured records from the newly collected 1,278-record campaign set; warmups are excluded. Successful, unsuccessful and not-attempted outcomes remain separate, and missing phase values are not inferred. Release timing is representative matched distributed batch only. Source-manifest SHA-256: `099bd7c1b92cc6b336ea95550c58bdb8af1fe7dedecc86af144e61fd09f47605`.
+
+| Campaign | Backend | Outcome | Records | Generation median s | Initialization median s | Preparation median s | Core solve median s | Validation median s | Release median s |
+|---|---|---|---|---|---|---|---|---|---|
+| completion | cg | not_attempted | 4 | — | — | — | — | — | — |
+| completion | cg | success | 451 | 9.573 (n=451) | 3.422 (n=451) | 0.278 (n=451) | 36.746 (n=451) | 0.775 (n=451) | — |
+| completion | cg | unsuccessful | 45 | 9.869 (n=45) | 3.046 (n=25) | 0.331 (n=25) | 323.223 (n=45) | 0.000 (n=25) | — |
+| completion | cholesky | not_attempted | 90 | — | — | — | — | — | — |
+| completion | cholesky | success | 410 | 9.527 (n=410) | 17.847 (n=410) | 0.283 (n=410) | 140.391 (n=410) | 0.769 (n=410) | — |
+| release-timing | cg | success | 5 | 9.426 (n=5) | 1.975 (n=5) | 0.238 (n=5) | 25.515 (n=5) | 0.661 (n=5) | 0.003 (n=5) |
+| release-timing | cholesky | success | 5 | 9.573 (n=5) | 0.596 (n=5) | 0.219 (n=5) | 22.374 (n=5) | 0.657 (n=5) | 0.003 (n=5) |
+| scaling | cg | success | 5 | 10.391 (n=5) | 3.515 (n=5) | 0.574 (n=5) | 175.863 (n=5) | 1.000 (n=5) | — |
+| scaling | cg | unsuccessful | 20 | 10.225 (n=20) | 3.576 (n=20) | 0.599 (n=20) | 441.366 (n=20) | 0.000 (n=20) | — |
+| scaling | cholesky | not_attempted | 5 | — | — | — | — | — | — |
+| scaling | cholesky | success | 20 | 9.969 (n=20) | 18.651 (n=20) | 0.468 (n=20) | 216.943 (n=20) | 1.118 (n=20) | — |
+| widest | cg | success | 5 | 25.330 (n=5) | 24.511 (n=5) | 4.390 (n=5) | 482.619 (n=5) | 7.627 (n=5) | — |'''
+
+
+WIDEST_RUN_TELEMETRY = '''## Widest-run telemetry
+
+Case `distributed-rows-100000-vars-100000000-width-128` used CG with 16 executors × 4 cores, 16 GiB executor heaps and 128 partitions. The private event log is identified by SHA-256 `b7068c261c145f98b0686c223d08470a8a55b64d8783b4b7c3882fb5f241d496`; no cloud location or identifier is published. Phase medians below exclude the warmup. Generation is shared fixture construction; release was not instrumented.
+
+| Phase | Median seconds |
+|---|---|
+| Generation | 25.330 |
+| Initialization | 24.511 |
+| Preparation | 4.390 |
+| Core Solve | 482.619 |
+| Validation | 7.627 |
+| Release | not instrumented |
+
+| Stages | Tasks | Failed tasks | Input | Shuffle read | Shuffle write | Memory spill | Disk spill | Max task execution memory |
+|---|---|---|---|---|---|---|---|---|
+| 8,137 | 592,912 | 0 | 25.81 TiB | 267.48 GiB | 267.48 GiB | 0.00 B | 0.00 B | 1.04 GiB |
+
+| Process | Count | Peak heap | Peak RSS | Peak JVM non-heap |
+|---|---|---|---|---|
+| Executors | 16 | 9,561.89 MiB–12,481.21 MiB | 12,213.93 MiB–14,736.72 MiB | 232.22 MiB–235.02 MiB |
+| Driver | 1 | 5,698.12 MiB | 7,365.13 MiB | 351.98 MiB |
+
+For the 337 stages whose median task duration was at least one second, the largest task-duration max/median ratio was 2.89×; shuffle-read and shuffle-write ratios were at most 1.007× and 1.005×. With no failed tasks or spill, this run does not show a material skew or spill bottleneck.'''
+
+
+BACKEND_RECOMMENDATION = (
+    '## Backend selection\n\n'
+    'Apply the documented driver and per-executor memory gate first. Among configurations that fit, '
+    'prefer Cholesky for the tested dense, small (up to 1,000 rows), dependent and degenerate fixtures: '
+    'it was generally faster and more reliable there. Prefer CG for the tested well-conditioned sparse '
+    'fixtures from 2,500 rows upward, and whenever Cholesky is resource-excluded or exhausts its allowed '
+    'heap; the matched 10,000-row, 16 GiB runs also show a large CG advantage. Do not silently fall back '
+    'to CG for difficult large dependent or wide fixtures: numerical failures, timeouts and iteration '
+    'limits occurred, so require the independent residual/objective validation and surface failure. '
+    'Treat this as workload- and configuration-specific: all three fixed-wide 5,000-row executor '
+    'configurations reached the CG iteration limit while Cholesky succeeded. Row count alone does not '
+    'establish a universal crossover, so `Auto` keeps the documented 10,000-row conservative heuristic '
+    'and memory gate; callers can lower the gate or explicitly select either backend.'
+)
+
+
+def _fold(section_md):
+    """Wrap a `## Heading\n\n...` block in a collapsed <details> element."""
+    lines = section_md.split('\n')
+    heading = lines[0].removeprefix('## ').removeprefix('# ').strip()
+    body = '\n'.join(lines[1:]).strip()
+    return (f'<details>\n<summary><b>{heading}</b></summary>\n\n{body}\n\n</details>')
+
+
+def render_report(campaigns, executor_memory=(), media=None):
     measured = [r for c in campaigns for r in c['records'] if not r['warmup']]
     warmups = sum(r['warmup'] for c in campaigns for r in c['records'])
-    report = (f'# Benchmarks\n\nCaptured evidence: {len(campaigns)} campaigns, '
-              f'{len(measured)} measured slots and {warmups} warmup records. '
-              'Tables include partial batches, failures and resource exclusions. '
-              'Warmups are shown separately and excluded from solve statistics; '
-              'missing records are not inferred.\n\n' + render_tables(campaigns) + '\n')
+    intro = (f'# Benchmarks\n\nCholesky (direct) vs CG (matrix-free) linear-program solvers on '
+             f'Apache Spark. Captured evidence: {len(campaigns)} campaigns, {len(measured)} measured '
+             f'slots and {warmups} warmup records. Warmups are excluded from solve statistics and '
+             f'failed runs never contribute timing; missing records are not inferred.\n')
+    if media is not None:
+        # Published human report: hero summary, chunked sections, folded appendices.
+        report = (intro + '\n' + media['at_a_glance'] + '\n\n' +
+                  render_tables(campaigns, media['section_media']) + '\n\n' +
+                  _fold(PHASE_TIMING_SUMMARY) + '\n\n' + _fold(WIDEST_RUN_TELEMETRY) + '\n\n' +
+                  _fold(BACKEND_RECOMMENDATION) + '\n')
+    else:
+        report = (intro + '\n' + render_tables(campaigns) + '\n\n' +
+                  PHASE_TIMING_SUMMARY + '\n\n' + WIDEST_RUN_TELEMETRY + '\n\n' +
+                  BACKEND_RECOMMENDATION + '\n')
     if executor_memory:
-        report += ('\n## Executor memory observations\n\n'
+        recovered = [row for row in executor_memory if row['variant'].endswith('event-449cb674ed47')]
+        groups = collections.defaultdict(list)
+        for row in executor_memory:
+            groups[(row['backend'], row['variant'], row['scope'])].append(row)
+        rows = []
+        for (backend, variant, scope), observations in sorted(groups.items()):
+            def memory_range(field):
+                values = [integer(row[field]) for row in observations if row[field]]
+                return f'{mib(min(values))}–{mib(max(values))}'
+            rows.append([len({row['case'] for row in observations}), backend, variant,
+                         len(observations), memory_range('peak_heap_bytes'),
+                         memory_range('peak_rss_bytes'), memory_range('peak_jvm_nonheap_bytes'), scope])
+        report += ('\n' + (_fold if media is not None else (lambda s: s))(
+                   '## Executor memory observations\n\n'
                    'Whole-application peaks include generation, warmup, preparation, solve and validation, '
-                   'with 1,000 ms polling and per-stage peak logging. These are per-executor observations; '
-                   'JVM non-heap does not cover all native memory. '
-                   'Source: [executor-memory.bmf.json](data/executor-memory.bmf.json).\n\n'
-                   + render_table(['Case', 'Backend', 'Variant', 'Executor', 'Peak heap', 'Peak RSS',
+                   'with 1,000 ms polling and per-stage peak logging. Rows aggregate exact per-executor '
+                   'observations by backend, variant and scope; JVM non-heap does not cover all native memory. '
+                   f'The retained-log recovery contributed {len(recovered)} executor observations across '
+                   f'{len({(row["case"], row["backend"], row["variant"]) for row in recovered})} runs. '
+                   'Fifteen failed submitted jobs (12 early OOMs and three capped difficult-CG failures) '
+                   'retained no application event log, so no executor peak is inferred for them. '
+                   f'Source: [executor-memory.bmf.json]({DATA_HREF}/executor-memory.bmf.json).\n\n'
+                   + render_table(['Cases', 'Backend', 'Variant', 'Executor observations', 'Peak heap', 'Peak RSS',
                                    'Peak JVM non-heap', 'Scope'],
-                       [[r['case'], r['backend'], r['variant'], r['executor_id'],
-                         mib(integer(r['peak_heap_bytes'])), mib(integer(r['peak_rss_bytes'])),
-                         mib(integer(r['peak_jvm_nonheap_bytes'])), r['scope']]
-                        for r in executor_memory]) + '\n')
+                       rows)) + '\n')
     return report
 
 
-# Flattened public evidence fields used to sanitize imported attempts. Empty values mean unavailable.
+POINTER_STUB = (
+    '# Benchmarks\n\n'
+    'The benchmark report has moved to a chunked, chart-driven layout under '
+    '[`benchmarks/reports/`](../../reports/README.md).\n\n'
+    '- Human report: [`benchmarks/reports/README.md`](../../reports/README.md)\n'
+    '- Interactive dashboard: [`benchmarks/reports/index.html`](../../reports/index.html)\n'
+    '- Raw evidence (unchanged): [`benchmarks/src/results/data/`](data/)\n\n'
+    'This file is generated by `report.py render`; edit the generator, not the output.\n')
+
+
+def artifacts(campaigns, executor_memory=()):
+    """Map every generated file to its exact bytes. Single source of truth used by
+    both `render` (write) and `check` (byte-compare), so nothing can drift."""
+    import visualize
+    built = visualize.build(campaigns)
+    files = {}
+    files[REPORTS / 'README.md'] = render_report(campaigns, executor_memory, media=built)
+    files[REPORTS / 'index.html'] = built['dashboard']
+    for rel, svg in built['charts'].items():
+        files[REPORTS / rel] = svg
+    files[LEGACY_REPORT] = POINTER_STUB
+    return files
 CASE_FIELDS = 'case_id,m,n,nnz,fixture_family,seed,nonzeros_per_column,nonzeros_per_row,row_scale_ratio,blocks,fixture_hash'.split(',')
 ENV_FIELDS = 'computer,os,spark_version,java_version,blas,spark_master'.split(',')
 CONFIG_FIELDS = ('source_configuration_id,suite,algorithm,implementation,scenario,control,tolerance,outer_limit,eta,cg_tolerance,'
@@ -623,7 +861,6 @@ def main():
     for cmd in ['render', 'check']:
         p = sub.add_parser(cmd)
         p.add_argument('--data', type=Path, default=DATA)
-        p.add_argument('--report', type=Path, default=RESULTS / 'REPORT.md')
     args = parser.parse_args()
     if args.command == 'import-jsonl':
         if not re.fullmatch(r'[a-z0-9][a-z0-9-]*', args.campaign):
@@ -632,12 +869,27 @@ def main():
     else:
         from bencher_export import read_bundle
         campaigns, executor_memory = read_bundle(args.data)
-        generated = render_report(campaigns, executor_memory)
-        if args.command == 'check' and args.report.read_text() != generated:
-            raise ValueError('REPORT.md is stale; run report.py render')
-        if args.command == 'render':
-            args.report.write_text(generated)
-        print(f'{len(campaigns)} campaigns; {sum(len(c["records"]) for c in campaigns)} evidence records; report {args.command} OK')
+        outputs = artifacts(campaigns, executor_memory)
+        expected = set(outputs)
+        orphans = sorted(p for p in REPORTS.rglob('*') if p.is_file() and p not in expected)
+        if args.command == 'check':
+            stale = []
+            for path, content in sorted(outputs.items()):
+                current = path.read_text(encoding='utf-8') if path.exists() else None
+                if current != content:
+                    stale.append(path.relative_to(ROOT).as_posix())
+            stale += [p.relative_to(ROOT).as_posix() + ' (orphan)' for p in orphans]
+            if stale:
+                raise ValueError('Published benchmark report is stale; run report.py render. '
+                                 'Affected: ' + ', '.join(stale))
+        else:
+            for path in orphans:
+                path.unlink()
+            for path, content in outputs.items():
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text(content, encoding='utf-8')
+        print(f'{len(campaigns)} campaigns; {sum(len(c["records"]) for c in campaigns)} '
+              f'evidence records; {len(outputs)} artifacts {args.command} OK')
 
 
 if __name__ == '__main__':

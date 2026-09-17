@@ -2,9 +2,9 @@
 :toc: left
 :source-highlighter: highlightjs
 
-Define variables over Spark data, add a linear objective and constraints, then solve.
-Scala 2.12; Spark is supplied by your application. This checkout builds against Spark
-2.4.8 and 3.0.2–3.5.3; run the tests on the version you deploy.
+Define variables over Spark data, add a linear or continuous convex quadratic objective and linear
+constraints, then solve. Scala 2.12; Spark is supplied by your application. Supported Spark versions are
+2.4.8 and 3.0.2–3.5.3; test on the version you deploy.
 
 == Start here
 
@@ -20,19 +20,17 @@ For a Spark 3.5.3 application using that local build:
 
 [source,scala]
 ----
-libraryDependencies += "com.github.vbmacher" %% "spark-lp" % "3.5.3_1.2.0"
+libraryDependencies += "com.github.vbmacher" %% "spark-lp" % "3.5.3_1.5.0"
 ----
 
-Remote releases use the same `<spark-version>_<library-version>` scheme; choose an
-available release matching your Spark version. Native BLAS/LAPACK improves performance;
-the Java fallback also works.
+Releases use the `<spark-version>_<library-version>` scheme; pick one matching your Spark
+version. Native BLAS/LAPACK improves performance; the Java fallback also works.
 
-== Blend ingredients at minimum cost
+== Example: blend ingredients at minimum cost
 
-Each ingredient gets a nonnegative decision variable. Minimize the cost of a 100-gram
-blend subject to protein, fat, fibre and salt requirements. The runnable source lives
-in the link:../examples/README.md[examples module], alongside the other PuLP case
-studies and the MPS file importer.
+Each ingredient gets a nonnegative variable. Minimize the cost of a 100-gram blend subject
+to protein, fat, fibre and salt requirements. Runnable source is in the
+link:../examples/README.md[examples module], with the other PuLP case studies and the MPS importer.
 
 [source,scala]
 ----
@@ -51,29 +49,30 @@ flowchart LR
   S --> R["Beef ≈ 60 g; gel ≈ 40 g; cost ≈ 0.52"]
 ----
 
-== Small vocabulary
+Mermaid blocks need a Mermaid-capable AsciiDoc renderer; plain Asciidoctor shows their source.
+
+== DSL vocabulary
 
 [cols="1,2",options="header"]
 |===
 |Expression |Meaning
 |`model.variable("x")` |One nonnegative continuous variable.
 |`model.variables("x", df, $"id")` |One variable per unique, non-null key; use `struct(...)` for a composite key.
-|`x + 2.0 * y` |Scalar linear expression. Multiplying two decision variables is unsupported.
+|`x + 2.0 * y` |Scalar linear expression. Multiplying two variables is unsupported.
 |`amount.sum` |Total of a variable set.
-|`amount.sum($"cost")` |Total weighted by a Spark column from the variable domain.
+|`amount.sum($"cost")` |Total weighted by a column from the variable domain.
 |`amount.sumBy("region")()` |One unweighted total per group.
 |`amount.sumBy("region")($"cost")` |One weighted total per group.
-|`expr <= rhs`, `expr >= rhs`, `expr === rhs` |Add with `model += ...`. Use `===` for equality; `==` produces a Boolean.
+|`expr <= rhs`, `>= rhs`, `=== rhs` |Add with `model += ...`. Use `===`; `==` yields a Boolean.
 |`constraint.named("capacity")` |Readable diagnostics; expanded names must be unique.
-|`model.setObjective(expr)` |Replace the objective deliberately; adding a second objective with `+=` fails.
+|`model.setObjective(expr)` |Replace the objective; adding a second with `+=` fails.
 |===
 
-Scalar RHS values apply to every group. A grouped RHS DataFrame contains the grouping
-columns and a numeric `rhs` column, exactly once per key. Terms without a matching RHS
-are errors; an RHS-only group represents a zero-term constraint.
-The existing `lpSum(...)` and `lpSumBy(...)` syntax remains supported.
+A scalar RHS applies to every group. A grouped RHS DataFrame holds the grouping columns and
+a numeric `rhs` column, once per key. Terms without a matching RHS are errors; an RHS-only
+group is a zero-term constraint. `lpSum(...)` / `lpSumBy(...)` provide alternative expression syntax.
 
-== Bounds, integer choices, and typed data
+== Bounds, integers, and typed data
 
 [source,scala]
 ----
@@ -85,65 +84,107 @@ val solution = model.solve(SolveConfig(mip = MipConfig(maxNodes = 200)))
 try println(solution.status) finally solution.close()
 ----
 
-`Binary` means 0 or 1, intersected with declared bounds. `Integer` requires finite
-explicit bounds, for example `model.variable("units", upperBound = Some(10.0), category = Integer)`.
-Bounds enclose whole integers; they are never widened by the rounding tolerance.
-Integer bounds must be within `+/- (2^53 - 1)` because values use `Double`.
+`Binary` is 0/1 intersected with declared bounds. `Integer` requires finite explicit bounds,
+e.g. `model.variable("units", upperBound = Some(10.0), category = Integer)`. Bounds enclose
+whole integers and are never widened by the rounding tolerance; they must lie within
+`+/- (2^53 - 1)` because values are `Double`.
 
-Continuous variables accept `lowerBound` and `upperBound = Some(value)`.
-Equal bounds fix a variable exactly. Fully fixed and finite-bound-only models need no
-artificial constraint. For a free variable use `lowerBound = Double.NegativeInfinity`;
-express any finite upper limit as a separate `x <= limit` constraint.
-Other models need at least one nontrivial constraint or finite upper bound.
+Continuous variables take `lowerBound` and `upperBound = Some(value)`. Equal bounds fix a
+variable exactly. Fully fixed or finite-bound-only models need no artificial constraint. For a
+free variable use `lowerBound = Double.NegativeInfinity` and express any finite upper limit as a
+separate `x <= limit` constraint. Other linear models need at least one nontrivial constraint or finite
+upper bound. Nonzero-curvature QP models also support unconstrained objectives.
 
-For `Dataset[Offer]`, declare
-`model.variablesOf("amount", offersDs, (o: Offer) => o.id)` and use
-`lpSum(amount.weightedBy(offersDs)(_.cost))`.
-Typed keys support primitive values, tuples, and custom `LpKeyEncoder` instances.
-Missing weight keys contribute zero; duplicate or foreign keys fail validation.
+For `Dataset[Offer]`, declare `model.variablesOf("amount", offersDs, (o: Offer) => o.id)` and use
+`lpSum(amount.weightedBy(offersDs)(_.cost))`. Typed keys support primitives, tuples, and custom
+`LpKeyEncoder` instances; missing weight keys contribute zero, duplicate or foreign keys fail.
 
 For coefficients from another DataFrame, use
-`lpSumBy(amount.terms(coefficients, Seq($"region"), $"coefficient"), Seq("region"))`.
-That frame must contain the variable key and grouping columns.
-Repeated `(group, variable)` rows add their coefficients. Filter or join with ordinary
-Spark operations before building these terms; use `when(...).otherwise(0.0)` for conditional weights.
+`lpSumBy(amount.terms(coefficients, Seq($"region"), $"coefficient"), Seq("region"))`. That frame
+must contain the variable key and grouping columns; repeated `(group, variable)` rows add their
+coefficients. Use ordinary Spark ops (filter/join, `when(...).otherwise(0.0)`) before building terms.
 
-== Read and release the result
+== Convex quadratic objectives
+
+Use `QpObjective.squaredDeviation(x, target, weight)` for scalar weighted deviations,
+`QpObjective.separable(diagonal, linear)` for scalar/keyed diagonal curvature, and
+`QpObjective.squared(expression, weight)` or `sumSquares` for sparse coupled factors.
+The convention is `0.5*x^T Q*x + c^T*x + k`. Minimize requires convex curvature;
+Maximize requires concave curvature. Integer/binary categories and quadratic
+constraints are unsupported. Separable QP rejects curved free variables; coupled
+factor models with free variables require regularized CG (`Auto` selects it).
+
+[source,scala]
+----
+import com.github.vbmacher.spark_lp.dsl._
+import com.github.vbmacher.spark_lp.dsl.implicits._
+
+val model = LpProblem("fit")
+val x = model.variable("x", lowerBound = -3.0, upperBound = Some(4.0))
+model += QpObjective.squaredDeviation(x, target = 2.0, weight = 3.0)
+val result = model.solve()
+try println(result.value(x)) finally result.close()
+----
+
+Combine sparse factors into one objective before adding it, e.g.
+`model += QpObjective.squared(x + 2.0 * y - 5.0) + QpObjective.squared(x - y - 1.0)`.
+See link:algorithm.adoc#_convex_quadratic_objectives[the QP guide] for representations,
+transformations and limits.
+
+== Reading the result
 
 [cols="1,3",options="header"]
 |===
 |Status |Interpretation
-|`Optimal` |Accepted within configured tolerances; integer search is complete within its gap tolerance.
+|`Optimal` |Accepted within tolerances; integer search complete within its gap tolerance.
 |`IterationLimit` |An LP or node limit, or an unresolved integer branch. Values may be infeasible or fractional.
-|`Stopped` |A continuous solve stopped for time, a user request or lack of progress. Inspect `stopReason` and `candidate`.
-|`Infeasible` |No feasible solution, established by a numerical certificate or integer branch bounds.
+|`Stopped` |A continuous solve stopped for time, user request or lack of progress. Inspect `stopReason` and `candidate`.
+|`Infeasible` |No feasible solution, by numerical certificate or integer branch bounds.
 |`Unbounded` |An improving ray and a feasible point; objective is signed infinity.
 |`InfeasibleOrUnbounded` |An improving ray without a known feasible point; objective is `NaN`.
 |===
 
-`solution.value(x)` reads a scalar; `solution.values(amount)` joins values to domain columns
-and appends `lp_variable`, `lp_value`. Continuous values are approximate.
-`constraints` contains `name`, `group`, `activity`, `sense`, `rhs`, `slack`, `dual`, `note`.
-Slack is `rhs - activity` for `<=` and equality, and `activity - rhs` for `>=`.
-Equality slack should be near zero; negative inequality slack indicates violation.
-`dual` is currently null. Presolve notes explain removed rows.
+`solution.value(x)` reads a scalar; `solution.values(amount)` joins values to domain columns and
+appends `lp_variable`, `lp_value` (continuous values are approximate). `constraints` holds `name`,
+`group`, `activity`, `sense`, `rhs`, `slack`, `dual`, `note`. Slack is `rhs - activity` for `<=`
+and equality, `activity - rhs` for `>=`; equality slack should be near zero, negative inequality
+slack indicates violation. `dual` is null. At a MIP limit, a finite objective marks a
+retained integer-feasible incumbent; otherwise the objective is `NaN` and values show the root
+relaxation.
 
-`Infeasible` objectives are `NaN`. At a MIP limit, a finite objective identifies a retained
-integer-feasible incumbent; otherwise the objective is `NaN` and values show the root relaxation.
-Residuals describe the retained LP relaxation, not a global MIP optimality gap.
+`solution.evidence` optionally exposes typed infeasibility certificates and unbounded
+directions, including a feasible point when available. `proof.verify(tolerance)`
+checks an independent coefficient/bound snapshot, including zero curvature for QP
+rays. Missing or tolerance-sensitive evidence is explicit. Coupled objectives expose
+the equivalent factor-expanded model in the evidence snapshot. See
+link:algorithm.adoc#_verifying_solve_evidence[certificate verification] for signs,
+normalization and ownership.
 
-`LpModelException` identifies invalid input, including an obviously contradictory constant row.
-`LpNumericalException` identifies a failed numerical solve; it does not prove infeasibility.
-Invalid solver settings throw `IllegalArgumentException` before computation.
+[source,scala]
+----
+val solution = model.solve()
+try {
+  solution.evidence.foreach { proof =>
+    val checked = proof.verify(tolerance = 1e-7)
+    println(s"valid=${checked.valid} residual=${checked.residual} margin=${checked.margin}")
+  }
+} finally solution.close()
+----
 
-Finish Spark actions on returned values before calling `solution.close()`.
-The solver releases temporary caches automatically; closing releases the materialised result.
-Iterates and results use Spark local checkpoints: write important outputs to durable storage.
-Keep sources stable during solving and when joining results to domain columns; a later `solve()`
-reads the sources again. Cache or snapshot input data yourself when consistent source contents matter.
+`LpModelException` flags invalid input (including a contradictory constant row);
+`LpNumericalException` flags a failed solve (not a proof of infeasibility); invalid solver settings
+throw `IllegalArgumentException` before computation.
 
-See link:algorithm.adoc[the algorithm and scaling limits]. Mermaid blocks require a
-Mermaid-capable AsciiDoc renderer; ordinary Asciidoctor still displays their source.
+Finish Spark actions on returned values before `solution.close()`, which releases the materialised
+result and evidence. Before solving, set `spark.sparkContext.setCheckpointDir(checkpointUri)` to a distributed
+filesystem reachable by every executor (HDFS or S3 on EMR); local runs may use a local temp dir.
+The library uses the caller's directory and does not choose storage. Checkpoint files follow Spark's
+cleanup policy; `close()` releases cached blocks, not the directory — write important outputs to
+durable storage first. Keep input sources stable during solving and result joins; a later `solve()`
+reads them again, so cache or snapshot yourself if source contents must stay consistent.
+
+See link:algorithm.adoc[how the solver works] for the equality-form compilation, interior-point
+iterations, Newton backends and scaling limits.
 
 == Progress and cooperative stopping (continuous models)
 
@@ -159,89 +200,69 @@ val result = model.solve(SolveConfig(
     timeLimit = Some(20.minutes),
     shouldStop = () => stop.get(),
     onProgress = { event =>
-      event.iterate.foreach { metrics =>
-        println(s"iteration=${event.iteration} objective=${metrics.objectiveValue} " +
-          s"primal=${metrics.primalResidual} gap=${metrics.dualityGap}")
+      event.iterate.foreach { m =>
+        println(s"iteration=${event.iteration} objective=${m.objectiveValue} " +
+          s"primal=${m.primalResidual} gap=${m.dualityGap}")
       }
-      event.work.foreach { work =>
-        println(s"phase=${event.phase} completed=${work.completed} residual=${work.residual}")
+      event.work.foreach { w =>
+        println(s"phase=${event.phase} completed=${w.completed} residual=${w.residual}")
       }
     },
     stagnation = Some(StagnationConfig(patience = 10)))))
 try {
   println(s"status=${result.status} reason=${result.stopReason} candidate=${result.candidate}")
   if (result.candidate.available && result.candidate.feasible) {
-    // Read or persist result.value(x) / result.values(amount) for your model here.
+    // Read or persist result.value(x) / result.values(amount) here.
   }
 } finally result.close()
 ----
 
-Stagnation detection is *disabled by default*. The example opts in; omit `stagnation`
-to use only explicit iteration/time/user limits. The numerical time budget begins after
-DSL compilation, immediately before initialization, and excludes result reconstruction.
-Models solved entirely by fixed-variable presolve return immediately without numerical events.
+Callbacks are ordinary functions with no-op/false defaults (no `Some(...)` wrapper) and run
+synchronously on the driver; keep them quick, and their exceptions propagate after cleanup.
+Stagnation detection is *disabled by default* — omit `stagnation` to use only iteration/time/user
+limits. The time budget starts after DSL compilation, just before initialization, and excludes
+result reconstruction. Models solved entirely by fixed-variable presolve return with no numerical events.
 
-Callbacks are ordinary functions with no-op/false defaults; no `Some(...)` wrapper is needed.
-They execute synchronously on the driver for either backend. Both use the same phases:
+Both backends report the same phases:
 
 [cols="1,2,2",options="header"]
 |===
 |Phase |Cholesky |Conjugate gradient
 |`Initialization` |Construct the initial iterate. |Construct the initial iterate.
 |`SystemSetup` |Factor the normal-equations blocks. |Build or strengthen the preconditioner.
-|`InnerSolve` |Solve a right-hand side by back-substitution. |Solve a right-hand side with CG.
+|`InnerSolve` |Back-substitute one right-hand side. |Solve one right-hand side with CG.
 |`OuterIteration` |Report a complete primal/dual iterate. |Report a complete primal/dual iterate.
 |===
 
-`SolveProgress` always includes `phase`, `iteration` and `elapsedSeconds`.
-`iteration=0` means initialization; later setup/inner events identify the outer iteration
-being computed. Phase-entry events have neither metric group. Completed outer events
-contain `iterate: Option[IterationProgress]`, with objective, primal/dual residuals,
-duality gap and feasibility from the same iterate. Objectives include the user's sense
-and constants. The terminal outer iteration is reported too.
+`SolveProgress` always has `phase`, `iteration`, `elapsedSeconds`. `iteration=0` is initialization.
+Completed outer events carry `iterate: Option[IterationProgress]` (objective with the user's sense
+and constants, primal/dual residuals, duality gap, feasibility). Setup/inner events carry
+`work: Option[WorkProgress]`: `completed` counts Cholesky blocks, CG-setup pivots, or CG steps;
+`total` when known; `residual` is an unpreconditioned norm (`trueResidual` marks a fresh operator
+evaluation); `preconditionerRank` applies only to rank-based preconditioners. Setup may recur inside
+`InnerSolve` when CG strengthens its preconditioner — phases are not a one-way sequence. Reporting
+starts no Spark actions and collects no distributed vectors.
 
-Setup/inner updates contain `work: Option[WorkProgress]`. `completed` counts blocks for
-Cholesky, pivots during CG setup, and CG steps during an inner solve. `total` is present
-when known. Counts reset for each setup or right-hand side; CG step counts continue
-across residual replacement and rank escalation within that solve. `residual` is an
-unpreconditioned norm, with `trueResidual` identifying a fresh operator evaluation;
-other CG residuals come from the recurrence. `preconditionerRank` is optional and
-applies only to backends with a rank-based preconditioner. Setup may recur within
-`InnerSolve` when CG strengthens its preconditioner; phases are not a one-way sequence.
-
-For example, use `event.iterate.map(_.objectiveValue)` and `event.work.map(_.completed)`.
-Reporting itself starts no additional Spark actions and collects no distributed vectors.
-Keep callbacks quick; their exceptions propagate unchanged after cleanup.
-
-Checks occur between initialization operations, CG operations, preconditioner pivots and
-Cholesky blocks. They do not interrupt an already-running Spark action or native call.
-The next safe check can therefore occur after the requested deadline. Convergence and
-certificates already established on a completed iteration take precedence over a coincident
-stop request. `stopAfterIteration` remains available and runs only after nonterminal iterations.
-
-On *every intentional limit*, including `maxIterations`, the result contains the best feasible
-completed iterate if one was retained. `iterations` counts all completed iterations;
-`candidate.iteration` identifies the returned one. Its objective, residuals, values and constraint
-diagnostics describe that same iterate. Tied objectives retain the earlier feasible iterate.
-An iteration limit keeps `IterationLimit`; other intentional stops use `Stopped`, with
-`TimeLimit`, `UserRequested` or `NoProgress` as the reason. A retained candidate does not prove
+Stop checks occur between initialization operations, CG steps, preconditioner pivots and Cholesky
+blocks; they do not interrupt a running Spark action or native call, so a check may land after the
+deadline. Convergence and certificates on a completed iteration take precedence over a coincident
+stop. On every intentional limit (including `maxIterations`), the result keeps the best feasible
+completed iterate if one was retained: `iterations` counts all completed iterations,
+`candidate.iteration` identifies the returned one, and its diagnostics describe that iterate (ties
+keep the earlier feasible one). `maxIterations` keeps `IterationLimit`; other intentional stops use
+`Stopped` with `TimeLimit`, `UserRequested` or `NoProgress`. A retained candidate does not prove
 optimality, and numerical failures do not become graceful stops.
 
-Candidate feasibility uses the original user constraints and variable bounds, including fixed
-variables, merged rows, bound shifts and free-variable splits. Each violation must be at most
-`control.feasibilityTolerance * (1 + abs(rhs_or_bound))` (default tolerance `1e-8`). Dual
-feasibility is not required. Validation adds one distributed action per iteration. For ordinary bounded variables it reduces
-constraint activities and a scalar bound violation using aligned compiled columns. Models with
-free/fixed variables or merged rows reconstruct user values and reduce a scalar violation.
-Solution vectors stay distributed.
-This componentwise feasibility test differs from the normalized L2 residual used for convergence;
-`candidate.feasible=true` does not imply that every convergence residual is below `tolerance`.
-A stricter candidate tolerance can also reject values accepted by convergence or presolve.
-Retention holds at most one additional distributed iterate and closing the result releases its
-materialized values without releasing caller-owned caches.
+Candidate feasibility uses the original user constraints and bounds (fixed variables, merged rows,
+bound shifts, free-variable splits). Each violation must be at most
+`control.feasibilityTolerance * (1 + abs(rhs_or_bound))` (default `1e-8`); dual feasibility is not
+required. Validation adds one distributed action per iteration and keeps solution vectors
+distributed. This componentwise test differs from the normalized L2 convergence residual, so
+`candidate.feasible=true` does not imply every convergence residual is below `tolerance`. If no
+feasible candidate exists but an iteration completed, values are available with
+`candidate.feasible=false`. If stopping preceded any completed iteration, `candidate.available=false`,
+objective/residuals/activities are `NaN`, and `value`/`values` throw — never publish those as
+feasible output. These controls are rejected for integer models; branch-and-bound stopping is separate.
 
-If no feasible candidate exists but an iteration completed, values are available for diagnostics
-with `candidate.feasible=false`. If stopping occurred before any iteration completed,
-`candidate.available=false`, the objective/residuals and constraint activities are `NaN`, and
-`value`/`values` throw an explicit no-iterate error. Never publish those results as feasible output.
-New controls are rejected for integer models; branch-and-bound stopping is a separate contract.
+The link:algorithm.adoc#_opt_in_progress_policy[opt-in progress policy] describes how stagnation
+windows compare successive iterates for both backends.

@@ -12,8 +12,11 @@ import com.typesafe.scalalogging.LazyLogging
 import org.apache.spark.SparkException
 import org.apache.spark.broadcast.Broadcast
 import org.apache.spark.mllib.linalg.DenseVector
+import org.apache.spark.rdd.RDD
 import org.apache.spark.sql.SparkSession
+import org.apache.spark.storage.StorageLevel
 
+import scala.collection.mutable
 import scala.reflect.ClassTag
 import scala.util.control.NonFatal
 
@@ -169,7 +172,8 @@ object LP extends LazyLogging {
     control: SolveControl = SolveControl(),
     candidateViolation: Option[DVector => Double] = None,
     nanoTime: () => Long = () => System.nanoTime(),
-    inspectConverged: Option[(DVector, DenseVector, DVector) => Unit] = None
+    inspectConverged: Option[(DVector, DenseVector, DVector) => Unit] = None,
+    quadratic: Option[DVector] = None
   )(implicit spark: SparkSession): SolveSummary = {
     validateParameters(tolerance, maxIter, etaIter, valueCap, eps, infeasibilityTolerance, cgTolerance)
     require(b.size > 0 && b.values.forall(v => !v.isNaN && !v.isInfinite), "b must be nonempty and finite")
@@ -178,6 +182,8 @@ object LP extends LazyLogging {
     try {
       caches.cache(c)
       caches.cache(AT)
+      quadratic.foreach(caches.cache(_))
+      def gradient(x: DVector): DVector = quadratic.map(q => c.combine(1.0, 1.0, q.entrywiseProd(x))).getOrElse(c)
       // Reuse the wrapper so adjoint products discover the matrix dimensions only once.
       val matrix = new DMatrixOps(AT)
 
@@ -269,13 +275,14 @@ object LP extends LazyLogging {
             var rb = matrix.adjointProduct(x).combine(1.0, -1.0, b)
 
             // A * lambda + s - c
-            var rc = AT.product(lambdaBroadcast).combine(1.0, 1.0, s.diff(c))
+            var rc = AT.product(lambdaBroadcast).combine(1.0, 1.0, s.diff(gradient(x)))
             temporary.cache(rc)
 
             // Proximal references are the current x/lambda. The original residuals are
             // unchanged; only the Newton equations contain Rp and Rd.
             val rho = systemFactory.primalRegularization
-            val weights = if (rho > 0.0) regularizedWeights(x, s, rho)
+            val effectiveSlack = quadratic.map(q => s.combine(1.0, 1.0, q.entrywiseProd(x))).getOrElse(s)
+            val weights = if (rho > 0.0 || quadratic.nonEmpty) regularizedWeights(x, effectiveSlack, rho)
               else normalEquationWeights(x, s, eps, valueCap)
             val D2 = temporary.cache(weights.squared)
             newtonSystem = systemFactory.build(AT, equations, Some(weights))
@@ -288,7 +295,7 @@ object LP extends LazyLogging {
             val (dxAff0, dsAff0) = weights.recoverDirections(
               hAff, rc, AT.product(dLambdaAffBroadcast), rho)
             val dxAff = temporary.cache(dxAff0)
-            val dsAff = temporary.cache(dsAff0)
+            val dsAff = temporary.cache(quadratic.map(q => dsAff0.combine(1.0, 1.0, q.entrywiseProd(dxAff))).getOrElse(dsAff0))
 
             // Calculate following Doubles alphaPriAff, alphaDualAff, muAff (14.32), (14.33)
             val alphaPriAff = math.min(1.0, x.entrywiseNegDiv(dxAff).minValue)
@@ -315,7 +322,7 @@ object LP extends LazyLogging {
             val (dx0, ds0) = weights.recoverDirections(
               h, rc, AT.product(dLambdaBroadcast), rho)
             val dx = temporary.cache(dx0)
-            val ds = temporary.cache(ds0)
+            val ds = temporary.cache(quadratic.map(q => ds0.combine(1.0, 1.0, q.entrywiseProd(dx))).getOrElse(ds0))
 
             val alphaPrimalIterMax = x.entrywiseNegDiv(dx).minValue
             val alphaDualIterMax = s.entrywiseNegDiv(ds).minValue
@@ -334,7 +341,7 @@ object LP extends LazyLogging {
             s = caches.checkpoint(s.combine(1.0, alphaDualIter, ds))
 
             rb = matrix.adjointProduct(x).combine(1.0, -1.0, b)
-            rc = temporary.cache(AT.product(lambdaBroadcast).combine(1.0, 1.0, s.diff(c)))
+            rc = temporary.cache(AT.product(lambdaBroadcast).combine(1.0, 1.0, s.diff(gradient(x))))
             val objectiveAndMin = c.zipPartitions(x) { (costs, values) =>
               val cv = costs.next().values
               val xv = values.next().values
@@ -348,9 +355,10 @@ object LP extends LazyLogging {
               }
               Iterator.single((objective, minimum))
             }.reduce { case ((a, amin), (b, bmin)) => (a + b, math.min(amin, bmin)) }
-            cTx = objectiveAndMin._1
+            val xQx = quadratic.map(q => x.dot(q.entrywiseProd(x))).getOrElse(0.0)
+            cTx = objectiveAndMin._1 + 0.5 * xQx
 
-            val bTlambda = b.dot(lambda)
+            val bTlambda = b.dot(lambda) - 0.5 * xQx
             val normRb = math.sqrt(rb.dot(rb))
             val normRc = math.sqrt(rc.dot(rc))
             val covg1 = normRb / (1 + normB)
@@ -363,7 +371,15 @@ object LP extends LazyLogging {
 
             converged = (covg1 < tolerance) && (covg2 < tolerance) && (covg3 < tolerance)
 
-            if (!converged) {
+            if (!converged && quadratic.nonEmpty) {
+              certificatesOnIterate(c, AT, b, x, lambda, infeasibilityTolerance, quadratic).foreach { cert =>
+                earlyTermination = Some(cert.termination)
+                primalCertificate = cert.primalCertificate
+                dualCertificate = cert.dualCertificate
+                certificateResidual = cert.residual
+              }
+            }
+            if (!converged && quadratic.isEmpty) {
               // Farkas certificate tests on the fresh iterate (see scaladoc). `A^T lambda = rc + c - s`,
               // so the primal test is one distributed pass; `A x = rb + b` is driver-local, so the dual
               // test is free.
@@ -430,7 +446,7 @@ object LP extends LazyLogging {
               // Farkas certificate (at the same public infeasibilityTolerance) that explains the
               // degeneration. Without a certificate, report a numerical failure.
               val certificate =
-                try certificatesOnIterate(c, AT, b, x0, lambda0, infeasibilityTolerance)
+                try certificatesOnIterate(c, AT, b, x0, lambda0, infeasibilityTolerance, quadratic)
                 catch {
                   case NonFatal(_) => None
                 }
@@ -446,7 +462,7 @@ object LP extends LazyLogging {
                   x = x0
                   lambda = lambda0
                   s = s0
-                  cTx = cert.cTx
+                  cTx = cert.cTx + 0.5 * quadratic.map(q => x.dot(q.entrywiseProd(x))).getOrElse(0.0)
                   lastCandidate = CandidateInfo(true, false, Some(completedIterations))
                   logger.info(s"Numerical failure in iteration $iter reclassified as ${cert.termination} " +
                     s"(certificate residual ${cert.residual})")
@@ -484,7 +500,7 @@ object LP extends LazyLogging {
         primalCertificate = primalCertificate,
         dualCertificate = dualCertificate,
         certificateResidual = certificateResidual,
-        dualObjectiveValue = b.dot(lambda),
+        dualObjectiveValue = b.dot(lambda) - 0.5 * quadratic.map(q => x.dot(q.entrywiseProd(x))).getOrElse(0.0),
         innerIterations = systemFactory.innerIterations,
         preconditionerRank = systemFactory.maximumRank,
         candidate = lastCandidate)
@@ -535,7 +551,7 @@ object LP extends LazyLogging {
     b: DenseVector,
     x: DVector,
     lambda: DenseVector,
-    infeasibilityTolerance: Double): Option[Certificate] = {
+    infeasibilityTolerance: Double, quadratic: Option[DVector]): Option[Certificate] = {
     val cTx = c.dot(x)
     val bTlambda = b.dot(lambda)
 
@@ -555,7 +571,8 @@ object LP extends LazyLogging {
     primal.orElse {
       if (cTx < 0) {
         val axInf = AT.adjointProduct(x).values.map(math.abs).max
-        val quality = axInf / math.abs(cTx)
+        val qInf = quadratic.map(q => q.entrywiseProd(x).maxValue).getOrElse(0.0)
+        val quality = math.max(axInf, qInf) / math.abs(cTx)
         if (quality <= infeasibilityTolerance) {
           val cTxAbs = math.abs(cTx)
           Some(Certificate(
@@ -630,4 +647,31 @@ object LP extends LazyLogging {
     }
     newton.Weights(sqrt = squared.mapElements(math.sqrt), squared = squared)
   }
+}
+
+/** Owns only caches created by this operation; never releases a caller's persisted inputs. */
+private[spark_lp] final class CachedRDDs extends AutoCloseable {
+  private val owned = mutable.Set.empty[RDD[_]]
+
+  def cache[T](rdd: RDD[T]): RDD[T] = {
+    if (rdd.getStorageLevel == StorageLevel.NONE) {
+      rdd.cache()
+      owned += rdd
+    }
+    rdd
+  }
+
+  def checkpoint[T](rdd: RDD[T]): RDD[T] = {
+    cache(rdd)
+    rdd.checkpoint()
+    rdd
+  }
+
+  def keep[T](rdd: RDD[T]): RDD[T] = { owned -= rdd; rdd }
+
+  def release(rdd: RDD[_]): Unit = {
+    if (owned.remove(rdd)) rdd.unpersist(blocking = false)
+  }
+
+  override def close(): Unit = owned.toVector.foreach(release)
 }

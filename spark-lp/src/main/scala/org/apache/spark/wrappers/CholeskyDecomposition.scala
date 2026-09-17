@@ -1,26 +1,34 @@
 package org.apache.spark.wrappers
 
-import com.github.fommil.netlib.LAPACK.{getInstance => lapack}
 import org.netlib.util.intW
 
 object CholeskyDecomposition {
 
   /**
     * Factorizes a symmetric positive-definite matrix stored in packed upper-triangular form.
-    * The factor replaces `A` in place.
+    * Expanding to full column-major storage lets optimized LAPACK implementations use their
+    * blocked `dpotrf` path; the returned factor is therefore a full `n * n` matrix.
     */
   def factor(A: Array[Double], n: Int): Array[Double] = {
+    val factor = new Array[Double](n * n)
+    var column = 0
+    var offset = 0
+    while (column < n) {
+      System.arraycopy(A, offset, factor, column * n, column + 1)
+      offset += column + 1
+      column += 1
+    }
     val info = new intW(0)
-    lapack.dpptrf("U", n, A, info)
+    NativeNetlib.lapack.dpotrf("U", n, factor, n, info)
     checkFactorization(info)
-    A
+    factor
   }
 
-  /** Solves using a packed upper-triangular Cholesky factor. `bx` is replaced in place. */
+  /** Solves using a full upper-triangular Cholesky factor. `bx` is replaced in place. */
   def solveFactored(factor: Array[Double], n: Int, bx: Array[Double]): Array[Double] = {
     val info = new intW(0)
-    lapack.dpptrs("U", n, 1, factor, bx, n, info)
-    check("dpptrs", info)
+    NativeNetlib.lapack.dpotrs("U", n, 1, factor, n, bx, n, info)
+    check("dpotrs", info)
     bx
   }
 
@@ -39,6 +47,6 @@ object CholeskyDecomposition {
       throw new IllegalArgumentException(
         s"Matrix is not positive definite (leading minor ${info.`val`}).")
     }
-    check("dpptrf", info)
+    check("dpotrf", info)
   }
 }

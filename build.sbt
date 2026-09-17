@@ -10,14 +10,14 @@ ThisBuild / homepage := Some(url("https://github.com/vbmacher/spark-lp"))
 ThisBuild / versionScheme := Some("semver-spec")
 
 // CHANGE VERSION HERE:
-lazy val productVersion = "1.2.0"
+lazy val productVersion = "1.5.0-SNAPSHOT"
 ThisBuild / version := productVersion // needs to be defined at root, so isSnapshot setting is properly set
 
 lazy val scalaLibVersion = "2.12.20"
 ThisBuild / scalaVersion := scalaLibVersion
 ThisBuild / autoAPIMappings := true
 
-ThisBuild / description := "Library for solving large-scale linear programming using Apache Spark."
+ThisBuild / description := "Linear, mixed-integer linear, and continuous convex quadratic programming using Apache Spark."
 ThisBuild / licenses += "Apache-2.0" -> url("https://opensource.org/license/apache-2-0")
 
 ThisBuild / scmInfo := Some(

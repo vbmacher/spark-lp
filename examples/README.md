@@ -29,8 +29,8 @@ The module supplies Spark 3.5.3 and Scala 2.12.20 through the build. MPS input i
 user-supplied file; all other examples are self-contained. See the
 [usage guide](../docs/usage.adoc) for API syntax, result ownership and solver limits.
 
-The five modeling examples port the standard [PuLP case studies](https://coin-or.github.io/pulp/CaseStudies/index.html)
-using only the DSL. Each source links to its original problem. `ExampleMPS` retains
+The five modeling examples implement the standard [PuLP case studies](https://coin-or.github.io/pulp/CaseStudies/index.html)
+using only the DSL. Each source links to its original problem. `ExampleMPS` uses
 the core solver API for importing external files. Synthetic generated workloads
 belong in the benchmarks module.
 
@@ -48,8 +48,8 @@ longer than the continuous examples. Sudoku explicitly selects the regularized C
 solver because its equality constraints are redundant. Each DSL example checks for
 `Optimal` before presenting a solution and closes its result and Spark session.
 
-The complete wedding model currently reaches `IterationLimit` with default settings
-in local validation: its root LP relaxation converges, but integer optimality is not
-proved. The example reports this status without presenting fractional values as a
+Local validation status for the complete wedding model with default settings is
+`IterationLimit`: the root LP relaxation converges, but integer optimality is
+unproven. The example reports this status without presenting fractional values as a
 seating plan. The reference optimum is 12: 17 guests at at most five tables require
 at least 12 total span, achieved by `ABCD`, `EFG`, `IJKL`, `MNO`, `PQR`.

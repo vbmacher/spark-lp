@@ -113,7 +113,23 @@ The convention is `0.5*x^T Q*x + c^T*x + k`. Minimize requires convex curvature;
 Maximize requires concave curvature. Integer/binary categories and quadratic
 constraints are unsupported. Separable QP rejects curved free variables; coupled
 factor models with free variables require regularized CG (`Auto` selects it).
-See link:quadratic-programming.md[the QP guide] for construction, examples and limits.
+
+[source,scala]
+----
+import com.github.vbmacher.spark_lp.dsl._
+import com.github.vbmacher.spark_lp.dsl.implicits._
+
+val model = LpProblem("fit")
+val x = model.variable("x", lowerBound = -3.0, upperBound = Some(4.0))
+model += QpObjective.squaredDeviation(x, target = 2.0, weight = 3.0)
+val result = model.solve()
+try println(result.value(x)) finally result.close()
+----
+
+Combine sparse factors into one objective before adding it, e.g.
+`model += QpObjective.squared(x + 2.0 * y - 5.0) + QpObjective.squared(x - y - 1.0)`.
+See link:algorithm.adoc#_convex_quadratic_objectives[the QP guide] for representations,
+transformations and limits.
 
 == Reading the result
 
@@ -141,7 +157,19 @@ directions, including a feasible point when available. `proof.verify(tolerance)`
 checks an independent coefficient/bound snapshot, including zero curvature for QP
 rays. Missing or tolerance-sensitive evidence is explicit. Coupled objectives expose
 the equivalent factor-expanded model in the evidence snapshot. See
-link:certificates.md[certificate verification] for signs, normalization and ownership.
+link:algorithm.adoc#_verifying_solve_evidence[certificate verification] for signs,
+normalization and ownership.
+
+[source,scala]
+----
+val solution = model.solve()
+try {
+  solution.evidence.foreach { proof =>
+    val checked = proof.verify(tolerance = 1e-7)
+    println(s"valid=${checked.valid} residual=${checked.residual} margin=${checked.margin}")
+  }
+} finally solution.close()
+----
 
 `LpModelException` flags invalid input (including a contradictory constant row);
 `LpNumericalException` flags a failed solve (not a proof of infeasibility); invalid solver settings

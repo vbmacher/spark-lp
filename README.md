@@ -105,15 +105,17 @@ model.setObjective(
 ```
 
 Factor weights guarantee convexity structurally. Negate a convex objective for a
-concave maximization problem. The [QP guide](docs/quadratic-programming.md) explains
-representations, transformations, backend requirements and numerical checks.
+concave maximization problem. The
+[QP guide](docs/algorithm.adoc#_convex_quadratic_objectives) explains representations,
+transformations, backend requirements and numerical checks.
 
 ## Evidence, progress and limits
 
 `result.evidence` is optional. `proof.verify(tolerance)` independently checks its
 snapshot's coefficients, bounds, normalization and, for QP directions, curvature.
 An unboundedness proof needs a feasible point as well as an improving direction;
-missing evidence remains explicit. See [certificate verification](docs/certificates.md).
+missing evidence remains explicit. See
+[certificate verification](docs/algorithm.adoc#_verifying_solve_evidence).
 
 Use `SolveConfig(control = SolveControl(...))` for progress callbacks, cooperative
 time limits, cancellation and opt-in stagnation detection. Before consuming a
@@ -144,8 +146,6 @@ limited result, inspect `status`, `candidate.available`, `candidate.feasible` an
 
 - [Usage, installation and API vocabulary](docs/usage.adoc)
 - [Algorithm, backend selection and scaling limits](docs/algorithm.adoc)
-- [Quadratic programming](docs/quadratic-programming.md)
-- [Certificate and ray verification](docs/certificates.md)
 - [Runnable examples](examples/README.md)
 - [CPU benchmarks](benchmarks/README.md), [QP comparisons](benchmarks/quadratic/README.md)
   and [GPU investigation](benchmarks/gpu/README.md)

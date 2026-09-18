@@ -1,0 +1,63 @@
+#!/bin/sh
+# sbt supplies Spark's Provided dependencies; arguments are data, never sbt commands.
+set -eu
+cd "$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
+if [ "${1-}" = bencher ]; then
+  shift
+  if [ -f .bencher.env ]; then
+    line_number=0
+    while IFS= read -r line || [ -n "$line" ]; do
+      line_number=$((line_number + 1))
+      line=$(printf '%s' "$line" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+      case "$line" in ''|'#'*) continue ;; esac
+      line=${line#export }
+      case "$line" in
+        *=*) key=${line%%=*}; value=${line#*=} ;;
+        *) printf '.bencher.env:%s: expected KEY=VALUE\n' "$line_number" >&2; exit 2 ;;
+      esac
+      key=$(printf '%s' "$key" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+      case "$key" in
+        BENCHER_TESTBED) printf '.bencher.env:%s: remove BENCHER_TESTBED; testbeds are automatic\n' "$line_number" >&2; exit 2 ;;
+        BENCHER_*) ;;
+        *) printf '.bencher.env:%s: expected a BENCHER_ variable\n' "$line_number" >&2; exit 2 ;;
+      esac
+      case "$key" in
+        *[!A-Z0-9_]*) printf '.bencher.env:%s: invalid variable name\n' "$line_number" >&2; exit 2 ;;
+      esac
+      value=$(printf '%s' "$value" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+      case "$value" in
+        \"*\") value=${value#\"}; value=${value%\"} ;;
+        \'*\') value=${value#\'}; value=${value%\'} ;;
+        \"*|\'*) printf '.bencher.env:%s: unclosed quote\n' "$line_number" >&2; exit 2 ;;
+      esac
+      # Existing exports (including empty values) take precedence. Never eval credentials.
+      if ! printenv "$key" >/dev/null 2>&1; then export "$key=$value"; fi
+    done < .bencher.env
+  fi
+  unset BENCHER_TESTBED
+  if [ "${1-}" = run ]; then
+    for argument do
+      case "$argument" in --testbed|--testbed=*) printf '%s\n' 'Testbeds are automatic; --testbed is not supported' >&2; exit 2 ;; esac
+    done
+    testbed_directory=$(mktemp -d "${TMPDIR:-/tmp}/spark-lp-testbed.XXXXXXXX")
+    trap 'rm -rf "$testbed_directory"' EXIT HUP INT TERM
+    SPARK_LP_BENCH_ARGS=$(printf '%s\n' _testbed "$testbed_directory/name")
+    export SPARK_LP_BENCH_ARGS
+    sbt 'benchmarksSpark_3_52_12/Test/runMain com.github.vbmacher.spark_lp.BenchmarkRunner' >&2
+    IFS= read -r testbed < "$testbed_directory/name"
+    test -n "$testbed"
+    shift
+    set -- run --testbed "$testbed" "$@"
+    unset SPARK_LP_BENCH_ARGS
+    rm -r "$testbed_directory"
+    trap - EXIT HUP INT TERM
+  fi
+  exec bencher "$@"
+fi
+for argument do
+  case "$argument" in *'
+'*) printf '%s\n' 'Arguments cannot contain newlines' >&2; exit 2 ;; esac
+done
+SPARK_LP_BENCH_ARGS=$(printf '%s\n' "$@")
+export SPARK_LP_BENCH_ARGS
+exec sbt 'benchmarksSpark_3_52_12/Test/runMain com.github.vbmacher.spark_lp.BenchmarkRunner'

@@ -131,23 +131,31 @@ representations, backend requirements and numerical checks.
   time and memory. Tolerances and node limits do not guarantee a solution for every model.
 - The optional HiGHS bridge runs a bounded local Python process; it is not a
   distributed solver.
-- **Production GPU acceleration is not included.** The OpenCL prototype lacks hardware
-  FP64 on the documented Apple GPU; see the [GPU report](benchmarks/reports/gpu.md).
+- **Production GPU acceleration is not included.**
 
 ## Documentation and validation
 
 - [Usage, installation and API vocabulary](docs/usage.adoc)
 - [Algorithm, backend selection, scaling and certificate verification](docs/algorithm.adoc)
 - [Runnable examples](examples/src/main/scala/com/github/vbmacher/spark_lp/examples/)
-- [CPU benchmarks](benchmarks/README.md), [QP comparisons](benchmarks/reports/quadratic.md),
-  [presolve](benchmarks/reports/presolve.md), [warm starts](benchmarks/reports/warm-starts.md),
-  [MIP search](benchmarks/reports/mip-search.md) and [GPU investigation](benchmarks/reports/gpu.md)
 
 Run the supported Spark matrix with `sbt +test`, or Spark 3.5 only:
 
 ```sh
 sbt 'spark-lpSpark_3_52_12/test' 'examplesSpark_3_5/compile'
 ```
+
+## Benchmarks
+
+One runner covers LP scaling, accuracy, parallelism, DSL features and native kernels:
+
+```sh
+./benchmarks/bench run --suite smoke --output benchmarks/output/smoke.bmf.json
+```
+
+[Run or extend suites](benchmarks/README.md) · [Methodology and metrics](docs/benchmarks.md).
+[Bencher dashboard](https://bencher.dev/perf/spark-lp) shows performance history.
+CI validates BMF without uploading shared-runner timings.
 
 ## Research references
 

@@ -1,0 +1,13 @@
+{
+  "scenarios": [
+    {
+      "kind": "factorization",
+      "cases": ["5000"],
+      "backends": ["lapack"],
+      "modes": ["full", "packed"],
+      "cores": [1],
+      "partitions": [1],
+      "nativeThreads": [1, 2, 4, 8]
+    }
+  ]
+}

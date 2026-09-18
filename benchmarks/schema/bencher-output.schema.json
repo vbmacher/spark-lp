@@ -1,0 +1,23 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://github.com/vbmacher/spark-lp/benchmarks/schema/bencher-output.schema.json",
+  "$comment": "Strict output subset of https://bencher.dev/v0/bmf.json, checked against Bencher 0.6.12. Bounds are observed minima/maxima.",
+  "type": "object",
+  "minProperties": 1,
+  "propertyNames": {"minLength": 1},
+  "additionalProperties": {
+    "type": "object",
+    "minProperties": 1,
+    "propertyNames": {"minLength": 1},
+    "additionalProperties": {
+      "type": "object",
+      "required": ["value"],
+      "additionalProperties": false,
+      "properties": {
+        "value": {"type": "number"},
+        "lower_value": {"type": "number"},
+        "upper_value": {"type": "number"}
+      }
+    }
+  }
+}

@@ -1,7 +1,0 @@
-id,m,n,nonzeros_per_row,family,seed,tolerance,heap_gib
-emr-rows-1000-vars-100000-width-32,1000,100000,32,well,11,1e-8,16
-emr-rows-5000-vars-1000000-width-32,5000,1000000,32,well,11,1e-8,16
-emr-rows-10000-vars-1000000-width-32,10000,1000000,32,well,11,1e-8,16
-emr-rows-10000-vars-10000000-width-64,10000,10000000,64,well,11,1e-8,16
-emr-rows-50000-vars-10000000-width-64,50000,10000000,64,well,11,1e-8,16
-emr-rows-100000-vars-100000000-width-128,100000,100000000,128,well,11,1e-8,16

@@ -1,0 +1,13 @@
+{
+  "scenarios": [
+    {
+      "kind": "lp",
+      "inventory": "cases/scaling.csv",
+      "cases": ["rows-1000-vars-10000-width-8"],
+      "backends": ["cholesky", "cg"],
+      "cores": [1, 2, 4],
+      "partitions": [4],
+      "baseline": true
+    }
+  ]
+}

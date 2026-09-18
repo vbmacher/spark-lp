@@ -1,0 +1,3 @@
+{
+  "include": ["scaling", "accuracy", "parallelism", "capabilities", "kernels", "distributed"]
+}

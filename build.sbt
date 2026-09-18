@@ -97,6 +97,7 @@ lazy val benchmarks = projectMatrix
           _.settings(
             name := "benchmarks",
             fork := true,
+            Test / baseDirectory := (LocalRootProject / baseDirectory).value,
             Test / parallelExecution := false,
             javaOptions ++= Seq("-Xms4G", "-Xmx4G"),
             libraryDependencies ++= sparkAxes.last._1.sparkLibs.flatMap(r => Seq(r % Provided, r % Test)) ++

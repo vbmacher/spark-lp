@@ -16,7 +16,7 @@ interchange and tuning.
 == A quick example
 
 Each ingredient gets a nonnegative variable. Minimize the cost of a 100-gram blend subject to protein,
-fat, fibre and salt requirements. Runnable source is in the link:../examples/README.md[examples module],
+fat, fibre and salt requirements. Runnable source is in the link:../examples/src/main/scala/com/github/vbmacher/spark_lp/examples/[examples module],
 with the other PuLP case studies and the MPS importer.
 
 [source,scala]
@@ -515,7 +515,7 @@ try {
 } finally initial.close()
 ----
 
-See `benchmarks/reports/warm-starts.md` for equal-tolerance start/no-start measurements, including
+See link:benchmarks.md[benchmark methodology] for equal-tolerance start/no-start comparisons, including
 snapshot/validation overhead. Warm starts can reduce solver work and can also increase total elapsed time.
 
 === MIP progress and cooperative stopping
@@ -583,8 +583,8 @@ while incumbent/global-bound updates stay coordinated. Parallel completion order
 `MipSearchConfig()` for the serial best-first/most-fractional baseline.
 
 The link:algorithm.adoc[algorithm guide] defines cut validity, bound acceptance and memory estimates. The
-link:../benchmarks/reports/mip-search.md[benchmark report] measures the individual options and all
-combinations at equal tolerances, including regressions.
+link:benchmarks.md[benchmark methodology] defines comparisons of individual options and all
+combinations at equal tolerances.
 
 === Presolve and reconstruction
 
@@ -613,8 +613,7 @@ from constraints. Adapter-specific presolve support is part of each adapter's de
 The reductions follow standard LP/MIP presolve methods surveyed in
 https://arxiv.org/abs/2206.10709[PaPILO: A Parallel Presolving Library for Integer and Linear Programming
 with Multiprecision Support]. Spark LP implements the documented subset; it does not embed PaPILO. The
-link:../benchmarks/reports/presolve.md[presolve benchmark report] records equal-tolerance reduction and
-overhead measurements.
+link:benchmarks.md[benchmark methodology] defines equal-tolerance reduction and overhead measurements.
 
 === Integer bounds inferred from constraints
 

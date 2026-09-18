@@ -31,9 +31,3 @@ jobs:
     - name: Check examples
       if: matrix.spark == '3_5'
       run: sbt examplesSpark_3_5/test
-    - name: Check benchmark support
-      if: matrix.spark == '3_5'
-      run: |
-        sbt benchmarksSpark_3_52_12/test
-        python3 benchmarks/scripts/bencher_export.py --check
-        python3 benchmarks/scripts/report.py check

@@ -94,7 +94,7 @@ retry on the last completed iterate before raising.
 |===
 
 The 10000-row cutoff is a conservative heuristic, not a universal crossover; the
-link:../benchmarks/src/results/REPORT.md[benchmark report] documents the workload-dependent tradeoff.
+link:benchmarks.md[benchmark methodology] describes how to measure the workload-dependent tradeoff.
 `maxLocalConstraints` (default 10000) is a separate resource cap: lowering it can switch Auto
 earlier, raising it does not raise the cutoff. To run Cholesky above 10000 rows, select it explicitly
 and raise that cap.
@@ -133,7 +133,7 @@ the operator and preconditioner. Initialization uses `W0 = I/(1+Rp)`, `G0 = A*W0
 `xTilde = W0*A^T*G0^(-1)*b`, `yTilde = G0^(-1)*A*W0*c`, then strictly positive shifts. Cholesky is the
 unregularized reference with an inverse-slack cap; its exact zero-separated blocks are factored
 independently by the same LAPACK routine, dropping no coupling by tolerance. See
-link:../benchmarks/reports/README.md[benchmark results] for measured times and memory.
+link:benchmarks.md[benchmark methodology] for timing and memory interpretation.
 
 `CgConfig` defaults `Rp = Rd = 1e-8` (entries, not square roots), positive throughout a solve. Larger
 values improve conditioning but need more outer iterations; very small values lose their effect to
@@ -227,8 +227,7 @@ regularized normal system and is never applied to the indefinite KKT matrix dire
 is quadratic in the enlarged row count, while CG keeps distributed sparse columns and bounded
 preconditioner storage. Because free-variable splitting can make the coupled Cholesky system singular
 near convergence, `Auto` selects regularized CG for coupled models with free variables and explicit
-Cholesky is rejected (see the link:../benchmarks/reports/quadratic/failed-cholesky-free.txt[conditioning
-evidence]).
+Cholesky is rejected.
 
 Factor lifting supports free, shifted and fixed original variables, and the auxiliary variables are
 created per compilation without mutating the user problem: diagnostics expose `__qp_factor_*` rows (a
@@ -236,8 +235,7 @@ reserved prefix), internal snapshots include the auxiliary columns, and `value`/
 the user variables in original units. Replacing an objective or solving repeatedly does not accumulate
 variables or constraints. Use separable objectives for diagonal Hessians; sparse factors add cross
 terms and a structural convexity contract, not a performance advantage over the diagonal path. The
-link:../benchmarks/reports/quadratic.md[QP validation report] covers lifted-system validation, analytic
-solves and accuracy/memory records.
+link:benchmarks.md[benchmark methodology] defines the analytic QP comparison and accuracy checks.
 
 == Verifying solve evidence
 
@@ -345,6 +343,6 @@ Parallel search uses a fixed worker pool and a single coordinator. Launched node
 
 Cancellation and deadlines use the same cooperative LP stop checks as serial search. Started workers drain before resources are released; accepted incumbents and unresolved-node bounds are retained. No bound is inferred from an incomplete iterate. Callback exceptions trigger worker draining and cleanup before propagation. A deadline is not a hard wall-clock return guarantee: Spark actions already in progress must complete or reach a solver stop check. All user callbacks run on the coordinating driver thread. Worker iteration diagnostics use a bounded queue that can coalesce older events; incumbent and global-bound updates are never discarded through that queue.
 
-The preflight parallel memory budget estimates concurrent driver Newton storage: `16*m*m + 128*m` bytes for Cholesky and `128*m + cgConfig.preconditionerMemoryBytes` for CG, taking the larger estimate for the uncut system and the maximum permitted cut-row count. This includes the uncut Cholesky path even when augmented systems use CG. `MipSummary.search.estimatedPeakLocalBytes` reports the corresponding estimate for concurrently active relaxations. This is not a total process or executor memory cap. Distributed augmented matrices, checkpointed candidates, Spark caches/shuffles, integral-column/cut-domain metadata and baseline JVM storage need additional memory. Each active LP submits Spark jobs; Spark scheduling and available executor cores determine whether those jobs execute concurrently. See the usage guide for controls and the link:../benchmarks/reports/mip-search.md[search benchmark] for measured process memory, bound progress and regressions.
+The preflight parallel memory budget estimates concurrent driver Newton storage: `16*m*m + 128*m` bytes for Cholesky and `128*m + cgConfig.preconditionerMemoryBytes` for CG, taking the larger estimate for the uncut system and the maximum permitted cut-row count. This includes the uncut Cholesky path even when augmented systems use CG. `MipSummary.search.estimatedPeakLocalBytes` reports the corresponding estimate for concurrently active relaxations. This is not a total process or executor memory cap. Distributed augmented matrices, checkpointed candidates, Spark caches/shuffles, integral-column/cut-domain metadata and baseline JVM storage need additional memory. Each active LP submits Spark jobs; Spark scheduling and available executor cores determine whether those jobs execute concurrently. See the usage guide for controls and link:benchmarks.md[benchmark methodology] for comparison scope.
 
 Knapsack covers and branch-and-bound follow the standard methods in https://onlinelibrary.wiley.com/doi/book/10.1002/9781118627372[Integer and Combinatorial Optimization] and the https://onlinelibrary.wiley.com/doi/abs/10.1002/9780470400531.eorms0204[Knapsack Cover Inequalities] reference. https://scipopt.org/doc/html/branch__fullstrong_8c.php[SCIP's full strong branching documentation] describes the established branching technique; Spark LP uses its own bounded probing policy and does not embed SCIP.

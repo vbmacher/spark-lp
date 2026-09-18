@@ -131,23 +131,38 @@ representations, backend requirements and numerical checks.
   time and memory. Tolerances and node limits do not guarantee a solution for every model.
 - The optional HiGHS bridge runs a bounded local Python process; it is not a
   distributed solver.
-- **Production GPU acceleration is not included.** The OpenCL prototype lacks hardware
-  FP64 on the documented Apple GPU; see the [GPU report](benchmarks/reports/gpu.md).
+- **Production GPU acceleration is not included.**
 
 ## Documentation and validation
 
 - [Usage, installation and API vocabulary](docs/usage.adoc)
 - [Algorithm, backend selection, scaling and certificate verification](docs/algorithm.adoc)
 - [Runnable examples](examples/src/main/scala/com/github/vbmacher/spark_lp/examples/)
-- [CPU benchmarks](benchmarks/README.md), [QP comparisons](benchmarks/reports/quadratic.md),
-  [presolve](benchmarks/reports/presolve.md), [warm starts](benchmarks/reports/warm-starts.md),
-  [MIP search](benchmarks/reports/mip-search.md) and [GPU investigation](benchmarks/reports/gpu.md)
 
 Run the supported Spark matrix with `sbt +test`, or Spark 3.5 only:
 
 ```sh
 sbt 'spark-lpSpark_3_52_12/test' 'examplesSpark_3_5/compile'
 ```
+
+## Benchmarks
+
+Local sparse LPs (2026-09-14): Cholesky wins through 1,000 rows; at 5,000,
+CG is **13.6× faster** (11.4 vs 156.0 seconds). Both stay near 4 GiB process RSS.
+These are matched workloads, not a universal crossover; ranges show observed
+variation, not confidence intervals. Cholesky at 10,000 rows was resource-excluded.
+
+[![Cholesky versus CG: solve time by problem size](docs/benchmark-runtime.svg)](https://bencher.dev/perf/spark-lp)
+[![Cholesky versus CG: peak local process memory](docs/benchmark-memory.svg)](https://bencher.dev/perf/spark-lp)
+
+[Bencher dashboard](https://bencher.dev/perf/spark-lp): runtime, memory and convergence
+history, including separate EMR comparisons. Run a small suite locally:
+
+```sh
+./benchmarks/bench run --suite smoke --output benchmarks/output/smoke.bmf.json
+```
+
+[Run or extend suites](benchmarks/README.md) · [Methodology and metrics](docs/benchmarks.md).
 
 ## Research references
 

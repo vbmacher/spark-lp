@@ -1,0 +1,50 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="460" viewBox="0 0 900 460" role="img" aria-labelledby="title desc">
+<title id="title">Memory: process RSS stays near 4 GiB</title><desc id="desc">Peak local process resident memory in GiB, including preparation and warmup. Both solvers use roughly 3.8 to 4.1 GiB. Cholesky at 10000 rows was excluded and has no memory measurement.</desc>
+<style>text{font-family:Arial,Helvetica,sans-serif;font-size:15px;fill:#24344a}.title{font-size:23px;font-weight:700}.muted{fill:#526276;font-size:14px}.grid{stroke:#dce3eb;stroke-width:1}</style>
+<rect width="900" height="460" rx="8" fill="#fff"/>
+<text x="30" y="35" class="title">Memory: process RSS stays near 4 GiB</text>
+<text x="30" y="61" class="muted">Local · 4 Spark threads · 8 partitions · 4 GiB heap · Java BLAS/LAPACK</text>
+<circle cx="638" cy="90" r="5" fill="#2463a8"/>
+<text x="650" y="95" >Cholesky</text>
+<rect x="775.5" y="85.5" width="9" height="9" fill="#b44c16"/>
+<text x="793" y="95" >CG</text>
+<text x="30" y="95" >Peak process RSS · GiB</text>
+<line x1="80" y1="350" x2="840" y2="350" class="grid"/>
+<text x="65" y="355" text-anchor="end">0</text>
+<line x1="80" y1="305" x2="840" y2="305" class="grid"/>
+<text x="65" y="310" text-anchor="end">1</text>
+<line x1="80" y1="260" x2="840" y2="260" class="grid"/>
+<text x="65" y="265" text-anchor="end">2</text>
+<line x1="80" y1="215" x2="840" y2="215" class="grid"/>
+<text x="65" y="220" text-anchor="end">3</text>
+<line x1="80" y1="170" x2="840" y2="170" class="grid"/>
+<text x="65" y="175" text-anchor="end">4</text>
+<line x1="80" y1="125" x2="840" y2="125" class="grid"/>
+<text x="65" y="130" text-anchor="end">5</text>
+<text x="160" y="378" text-anchor="middle">100</text>
+<rect x="117" y="173.55" width="39" height="176.45" fill="#2463a8"/>
+<text x="136.5" y="164.55" text-anchor="middle">3.92</text>
+<rect x="162" y="172.92" width="39" height="177.08" fill="#b44c16"/>
+<text x="181.5" y="163.92" text-anchor="middle">3.94</text>
+<text x="305" y="378" text-anchor="middle">500</text>
+<rect x="262" y="165.96" width="39" height="184.04" fill="#2463a8"/>
+<text x="281.5" y="156.96" text-anchor="middle">4.09</text>
+<rect x="307" y="178.79" width="39" height="171.21" fill="#b44c16"/>
+<text x="326.5" y="169.79" text-anchor="middle">3.80</text>
+<text x="450" y="378" text-anchor="middle">1,000</text>
+<rect x="407" y="172.62" width="39" height="177.38" fill="#2463a8"/>
+<text x="426.5" y="163.62" text-anchor="middle">3.94</text>
+<rect x="452" y="173.3" width="39" height="176.7" fill="#b44c16"/>
+<text x="471.5" y="164.3" text-anchor="middle">3.93</text>
+<text x="595" y="378" text-anchor="middle">5,000</text>
+<rect x="552" y="173.53" width="39" height="176.47" fill="#2463a8"/>
+<text x="571.5" y="164.53" text-anchor="middle">3.92</text>
+<rect x="597" y="165.47" width="39" height="184.53" fill="#b44c16"/>
+<text x="616.5" y="156.47" text-anchor="middle">4.10</text>
+<text x="740" y="378" text-anchor="middle">10,000</text>
+<text x="717" y="331" text-anchor="middle" class="muted" transform="rotate(-90 717 331)">excluded</text>
+<rect x="742" y="176.08" width="39" height="173.92" fill="#b44c16"/>
+<text x="761.5" y="167.08" text-anchor="middle">3.86</text>
+<text x="448" y="405" text-anchor="middle">Rows (variables = 10 × rows)</text>
+<text x="30" y="437" class="muted">2026-09-14 · Whole application, including preparation and warmup; not solver-only memory</text>
+</svg>

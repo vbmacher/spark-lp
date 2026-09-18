@@ -1,0 +1,14 @@
+{
+  "scenarios": [
+    {
+      "kind": "lp",
+      "inventory": "cases/local.csv",
+      "cases": ["well"],
+      "backends": ["cholesky", "cg"],
+      "cores": [2],
+      "partitions": [2],
+      "warmups": 0,
+      "repetitions": 1
+    }
+  ]
+}

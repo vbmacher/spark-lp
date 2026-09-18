@@ -1,0 +1,123 @@
+name: Benchmarks
+
+on:
+  pull_request:
+  push:
+    branches: [master]
+  schedule:
+    - cron: '23 3 * * 1'
+  workflow_dispatch:
+    inputs:
+      suite:
+        description: Suite to run on the dedicated testbed
+        type: choice
+        default: scaling
+        options: [smoke, scaling, parallelism, accuracy, capabilities, kernels, distributed, full]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: benchmark-${{ github.event_name == 'pull_request' && github.ref || 'dedicated' }}
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          java-version: '11'
+          distribution: temurin
+          cache: sbt
+      - uses: sbt/setup-sbt@v1
+      - run: sh benchmarks/src/test/sh/bencher-env-test.sh
+      - run: sbt 'benchmarksSpark_3_52_12/test'
+      - run: ./benchmarks/bench validate
+      - run: ./benchmarks/bench run --suite smoke --output benchmarks/output/smoke.bmf.json
+      - uses: bencherdev/bencher@8d75325c3bc59403a2186a056b472c4f49d42838 # v0.6.12
+        with:
+          version: 0.6.12
+      - name: Check pinned Bencher submission syntax (no upload)
+        run: ./benchmarks/bench bencher run --dry-run --adapter json --project spark-lp-validation --branch validation --file benchmarks/output/smoke.bmf.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: benchmark-validation
+          path: |
+            benchmarks/output/*.bmf.json
+            benchmarks/output/*.raw/*/complete.json
+            benchmarks/output/*.raw/*/application.log
+          if-no-files-found: ignore
+
+  publish:
+    needs: validate
+    if: github.event_name != 'pull_request'
+    runs-on: [self-hosted, linux, spark-lp-bench]
+    timeout-minutes: 1440
+    env:
+      BENCHER_API_KEY: ${{ secrets.BENCHER_API_KEY }}
+      BENCHER_PROJECT: ${{ vars.BENCHER_PROJECT }}
+      BENCHER_BRANCH: ${{ github.ref_name }}
+      BENCHER_HASH: ${{ github.sha }}
+      BENCHMARK_SUITE: ${{ inputs.suite || 'scaling' }}
+      BENCHMARK_OUTPUT: benchmarks/output/ci.bmf.json
+      BENCHMARK_EXIT: benchmarks/output/ci.exit
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          clean: true
+      - uses: actions/setup-java@v4
+        with:
+          java-version: '11'
+          distribution: temurin
+          cache: sbt
+      - uses: sbt/setup-sbt@v1
+      - uses: bencherdev/bencher@8d75325c3bc59403a2186a056b472c4f49d42838 # v0.6.12
+        with:
+          version: 0.6.12
+      - name: Check publication configuration
+        shell: bash
+        run: |
+          test -n "$BENCHER_PROJECT"
+          test -n "$BENCHER_API_KEY"
+          test "$(bencher --version)" = 'bencher 0.6.12'
+      - name: Package distributed workloads
+        if: inputs.suite == 'distributed' || inputs.suite == 'full'
+        run: sbt 'benchmarksSpark_3_52_12/assembly'
+      - name: Run and submit native BMF
+        shell: bash
+        run: |
+          baseline=()
+          if [ "$BENCHER_BRANCH" != master ]; then
+            baseline=(--start-point master --start-point-hash "$(git rev-parse origin/master)" --start-point-clone-thresholds)
+          fi
+          command='./benchmarks/bench run --suite "$BENCHMARK_SUITE" --output "$BENCHMARK_OUTPUT"'
+          if [[ "$BENCHMARK_SUITE" == distributed || "$BENCHMARK_SUITE" == full ]]; then
+            jars=(benchmarks/target/spark_3.5-jvm-2.12/benchmarks-assembly-*.jar)
+            test "${#jars[@]}" = 1
+            export BENCHMARK_JAR="${jars[0]}"
+            command+=' --jar "$BENCHMARK_JAR"'
+          fi
+          command+='; status=$?; printf "%s\n" "$status" > "$BENCHMARK_EXIT"; exit "$status"'
+          ./benchmarks/bench bencher run --project "$BENCHER_PROJECT" --branch "$BENCHER_BRANCH" --hash "$BENCHER_HASH" \
+            "${baseline[@]}" --adapter json --file "$BENCHMARK_OUTPUT" --allow-failure \
+            --threshold-measure solve-seconds --threshold-test t_test --threshold-min-sample-size 5 \
+            --threshold-max-sample-size 64 --threshold-upper-boundary 0.99 "$command"
+          test "$(cat "$BENCHMARK_EXIT")" -eq 0
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: benchmark-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            benchmarks/output/*.bmf.json
+            benchmarks/output/*.raw/manifest.json
+            benchmarks/output/*.raw/*/scenario.json
+            benchmarks/output/*.raw/*/complete.json
+            benchmarks/output/*.raw/*/exit.json
+            benchmarks/output/*.raw/*/attempts.jsonl
+            benchmarks/output/*.raw/*/application.log
+          if-no-files-found: ignore

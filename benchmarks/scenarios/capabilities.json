@@ -1,0 +1,40 @@
+{
+  "scenarios": [
+    {
+      "kind": "presolve",
+      "cases": ["fixed_rows", "singleton_columns", "irreducible"],
+      "modes": ["off", "full"],
+      "repetitions": 3
+    },
+    {
+      "kind": "start",
+      "cases": ["lp_coordinates", "mip_knapsack"],
+      "modes": ["cold", "started"],
+      "repetitions": 3
+    },
+    {
+      "kind": "mip",
+      "cases": ["knapsack4", "knapsack6"],
+      "modes": ["baseline", "cuts", "strong", "cuts+strong", "parallel", "cuts+parallel", "strong+parallel", "cuts+strong+parallel"],
+      "repetitions": 3
+    },
+    {
+      "kind": "qp",
+      "cases": ["4", "12"],
+      "backends": ["cholesky", "cg"],
+      "modes": ["separable", "factor"],
+      "cores": [2],
+      "partitions": [2],
+      "repetitions": 1
+    },
+    {
+      "kind": "lp",
+      "inventory": "cases/local.csv",
+      "cases": ["sparse", "dense"],
+      "backends": ["cholesky", "cg"],
+      "cores": [4],
+      "partitions": [4],
+      "repetitions": 2
+    }
+  ]
+}

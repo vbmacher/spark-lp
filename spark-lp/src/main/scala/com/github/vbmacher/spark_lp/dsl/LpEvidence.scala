@@ -1,5 +1,6 @@
 package com.github.vbmacher.spark_lp.dsl
 
+import com.github.vbmacher.spark_lp.Numerics
 import org.apache.spark.rdd.RDD
 
 /** Original row, before shifts, slack introduction or duplicate-row elimination. */
@@ -54,9 +55,8 @@ final case class UnboundedDirection(model: EvidenceModel,
   * `valid` is a numerical witness at the requested absolute tolerance, not an exact-arithmetic proof.
   */
 object LpEvidenceVerifier {
-  private def finite(v: Double): Boolean = !v.isNaN && !v.isInfinite
-  private def checked(v: Double): Double = if (finite(v)) math.max(0.0, v) else Double.PositiveInfinity
-  private def checkTolerance(t: Double): Unit = require(finite(t) && t > 0, "tolerance must be finite and positive")
+  private def checked(v: Double): Double = if (Numerics.isFinite(v)) math.max(0.0, v) else Double.PositiveInfinity
+  private def checkTolerance(t: Double): Unit = require(Numerics.isFinite(t) && t > 0, "tolerance must be finite and positive")
   private def keysMatch[A: scala.reflect.ClassTag, B: scala.reflect.ClassTag](a: RDD[((Int, String), A)], b: RDD[((Int, String), B)]): Boolean =
     a.mapValues(_ => 1).cogroup(b.mapValues(_ => 1)).filter { case (_, (x, y)) => x.size != 1 || y.size != 1 }.take(1).isEmpty
 
@@ -64,7 +64,7 @@ object LpEvidenceVerifier {
     checkTolerance(tolerance)
     val model = proof.model
     val y = proof.rows
-    if (y.size != model.rows.size || !y.forall(finite) || !keysMatch(model.variables, proof.bounds))
+    if (y.size != model.rows.size || !y.forall(Numerics.isFinite) || !keysMatch(model.variables, proof.bounds))
       return EvidenceVerification(false, Double.PositiveInfinity, Double.NaN)
     val rowError = model.rows.zip(y).map { case (r, v) =>
       r.sense match { case "<=" => checked(v); case ">=" => checked(-v); case _ => 0.0 }
@@ -94,7 +94,7 @@ object LpEvidenceVerifier {
         val lo = if (v.lower.isNegInfinity) 0.0 else (if (ray) -x else v.lower - x)
         val hi = v.upper.map(u => if (ray) x else x - u).getOrElse(0.0)
         val curvatureError = if (ray) checked(math.abs(v.curvature * x)) else 0.0
-        (if (finite(x)) math.max(curvatureError, math.max(checked(lo), checked(hi)))
+        (if (Numerics.isFinite(x)) math.max(curvatureError, math.max(checked(lo), checked(hi)))
           else Double.PositiveInfinity, v.cost * x)
       }.fold((0.0, 0.0)) { case ((a, b), (c, d)) => (math.max(a, c), b + d) }
       val activities = joined.flatMap { case (_, (v, x)) =>
@@ -102,7 +102,7 @@ object LpEvidenceVerifier {
       }.reduceByKey(_ + _).collectAsMap()
       val rowError = model.rows.zipWithIndex.map { case (r, i) =>
         val d = activities.getOrElse(i, 0.0) - (if (ray) 0.0 else r.rhs)
-        checked(r.sense match { case "<=" => d; case ">=" => -d; case _ => math.abs(d) })
+        checked(LpSense.violation(r.sense, d))
       }.foldLeft(0.0)(math.max)
       (math.max(scalar._1, rowError), scalar._2)
     }

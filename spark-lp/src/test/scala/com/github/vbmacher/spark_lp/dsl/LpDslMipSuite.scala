@@ -106,14 +106,15 @@ class LpDslMipSuite extends AnyFunSuite with DataFrameSuiteBase {
     assert(solution.value(y) ~== 1.0 absTol 1e-5)
   }
 
-  test("Integer without an explicit finite upper bound is rejected") {
+  test("a separable Integer objective needs no finite upper bound") {
     implicit val ss: SparkSession = spark
     val model = LpProblem("noUb", Minimize)
     val x = model.variable("x", category = Integer)
     model += lpSum(x)
     model += (x >= 1.0).named("floor")
-    val e = intercept[LpModelException](model.solve())
-    assert(e.getMessage.contains("finite upper bound"))
+    val solution = model.solve()
+    try { assert(solution.status == LpStatus.Optimal); assert(solution.value(x) == 1.0) }
+    finally solution.close()
   }
 
   test("Binary whose declared bounds exclude {0, 1} entirely is rejected") {

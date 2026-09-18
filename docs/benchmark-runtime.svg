@@ -1,0 +1,73 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="460" viewBox="0 0 900 460" role="img" aria-labelledby="title desc">
+<title id="title">Runtime: CG pulls ahead at 5,000 rows</title><desc id="desc">Median solve seconds, with observed minimum and maximum. Cholesky is faster at 100 through 1000 rows; CG is 13.6 times faster at 5000 rows. Cholesky at 10000 rows was resource-excluded, not timed.</desc>
+<style>text{font-family:Arial,Helvetica,sans-serif;font-size:15px;fill:#24344a}.title{font-size:23px;font-weight:700}.muted{fill:#526276;font-size:14px}.grid{stroke:#dce3eb;stroke-width:1}</style>
+<rect width="900" height="460" rx="8" fill="#fff"/>
+<text x="30" y="35" class="title">Runtime: CG pulls ahead at 5,000 rows</text>
+<text x="30" y="61" class="muted">Local · 4 Spark threads · 8 partitions · 4 GiB heap · Java BLAS/LAPACK</text>
+<circle cx="638" cy="90" r="5" fill="#2463a8"/>
+<text x="650" y="95" >Cholesky</text>
+<rect x="775.5" y="85.5" width="9" height="9" fill="#b44c16"/>
+<text x="793" y="95" >CG</text>
+<text x="30" y="95" >Solve seconds · log scale</text>
+<line x1="80" y1="350" x2="815" y2="350" class="grid"/>
+<text x="65" y="355" text-anchor="end">1</text>
+<line x1="80" y1="306.66" x2="815" y2="306.66" class="grid"/>
+<text x="65" y="311.66" text-anchor="end">3</text>
+<line x1="80" y1="259.17" x2="815" y2="259.17" class="grid"/>
+<text x="65" y="264.17" text-anchor="end">10</text>
+<line x1="80" y1="215.83" x2="815" y2="215.83" class="grid"/>
+<text x="65" y="220.83" text-anchor="end">30</text>
+<line x1="80" y1="168.34" x2="815" y2="168.34" class="grid"/>
+<text x="65" y="173.34" text-anchor="end">100</text>
+<line x1="80" y1="125" x2="815" y2="125" class="grid"/>
+<text x="65" y="130" text-anchor="end">300</text>
+<text x="80" y="378" text-anchor="middle">100</text>
+<text x="336.87" y="378" text-anchor="middle">500</text>
+<text x="447.5" y="378" text-anchor="middle">1,000</text>
+<text x="704.37" y="378" text-anchor="middle">5,000</text>
+<text x="815" y="378" text-anchor="middle">10,000</text>
+<polyline points="80,298.48 336.87,293.63 447.5,285.12 704.37,150.78" fill="none" stroke="#2463a8" stroke-width="2.5" />
+<line x1="80" y1="311.41" x2="80" y2="297.87" stroke="#2463a8" stroke-width="1.5"/>
+<line x1="75" y1="311.41" x2="85" y2="311.41" stroke="#2463a8"/>
+<line x1="75" y1="297.87" x2="85" y2="297.87" stroke="#2463a8"/>
+<circle cx="80" cy="298.48" r="5" fill="#2463a8"/>
+<line x1="336.87" y1="299.07" x2="336.87" y2="289.1" stroke="#2463a8" stroke-width="1.5"/>
+<line x1="331.87" y1="299.07" x2="341.87" y2="299.07" stroke="#2463a8"/>
+<line x1="331.87" y1="289.1" x2="341.87" y2="289.1" stroke="#2463a8"/>
+<circle cx="336.87" cy="293.63" r="5" fill="#2463a8"/>
+<line x1="447.5" y1="289.38" x2="447.5" y2="284.06" stroke="#2463a8" stroke-width="1.5"/>
+<line x1="442.5" y1="289.38" x2="452.5" y2="289.38" stroke="#2463a8"/>
+<line x1="442.5" y1="284.06" x2="452.5" y2="284.06" stroke="#2463a8"/>
+<circle cx="447.5" cy="285.12" r="5" fill="#2463a8"/>
+<line x1="704.37" y1="150.89" x2="704.37" y2="149.48" stroke="#2463a8" stroke-width="1.5"/>
+<line x1="699.37" y1="150.89" x2="709.37" y2="150.89" stroke="#2463a8"/>
+<line x1="699.37" y1="149.48" x2="709.37" y2="149.48" stroke="#2463a8"/>
+<circle cx="704.37" cy="150.78" r="5" fill="#2463a8"/>
+<polyline points="80,264.72 336.87,255.41 447.5,258.7 704.37,253.87 815,262.15" fill="none" stroke="#b44c16" stroke-width="2.5" stroke-dasharray="7 4"/>
+<line x1="80" y1="269.49" x2="80" y2="262.77" stroke="#b44c16" stroke-width="1.5"/>
+<line x1="75" y1="269.49" x2="85" y2="269.49" stroke="#b44c16"/>
+<line x1="75" y1="262.77" x2="85" y2="262.77" stroke="#b44c16"/>
+<rect x="75.5" y="260.22" width="9" height="9" fill="#b44c16"/>
+<line x1="336.87" y1="263.77" x2="336.87" y2="252.41" stroke="#b44c16" stroke-width="1.5"/>
+<line x1="331.87" y1="263.77" x2="341.87" y2="263.77" stroke="#b44c16"/>
+<line x1="331.87" y1="252.41" x2="341.87" y2="252.41" stroke="#b44c16"/>
+<rect x="332.37" y="250.91" width="9" height="9" fill="#b44c16"/>
+<line x1="447.5" y1="261.61" x2="447.5" y2="253.09" stroke="#b44c16" stroke-width="1.5"/>
+<line x1="442.5" y1="261.61" x2="452.5" y2="261.61" stroke="#b44c16"/>
+<line x1="442.5" y1="253.09" x2="452.5" y2="253.09" stroke="#b44c16"/>
+<rect x="443" y="254.2" width="9" height="9" fill="#b44c16"/>
+<line x1="704.37" y1="270.95" x2="704.37" y2="244.07" stroke="#b44c16" stroke-width="1.5"/>
+<line x1="699.37" y1="270.95" x2="709.37" y2="270.95" stroke="#b44c16"/>
+<line x1="699.37" y1="244.07" x2="709.37" y2="244.07" stroke="#b44c16"/>
+<rect x="699.87" y="249.37" width="9" height="9" fill="#b44c16"/>
+<line x1="815" y1="265.42" x2="815" y2="255.14" stroke="#b44c16" stroke-width="1.5"/>
+<line x1="810" y1="265.42" x2="820" y2="265.42" stroke="#b44c16"/>
+<line x1="810" y1="255.14" x2="820" y2="255.14" stroke="#b44c16"/>
+<rect x="810.5" y="257.65" width="9" height="9" fill="#b44c16"/>
+<text x="692.37" y="136.79" text-anchor="end">156.0 s</text>
+<text x="692.37" y="282.88" text-anchor="end">11.4 s</text>
+<text x="815" y="205" text-anchor="end" class="muted">Cholesky excluded</text>
+<text x="815" y="224" text-anchor="end" class="muted">at 10,000 rows</text>
+<text x="448" y="405" text-anchor="middle">Rows · log scale (variables = 10 × rows)</text>
+<text x="30" y="437" class="muted">2026-09-14 · Width 8, well-conditioned, seed 11 · Bars: observed min–max, not confidence intervals</text>
+</svg>

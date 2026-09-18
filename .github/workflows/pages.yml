@@ -1,0 +1,53 @@
+name: Documentation
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - docs/**
+      - examples/src/main/scala/com/github/vbmacher/spark_lp/examples/ExampleWhiskas.scala
+      - .github/workflows/pages.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/configure-pages@v5
+      - name: Install Asciidoctor
+        run: gem install asciidoctor --version 2.0.26 --no-document
+      - name: Build documentation
+        run: |
+          mkdir _site
+          asciidoctor \
+            --failure-level WARN \
+            --attribute docinfo=shared \
+            --attribute docinfodir=. \
+            --attribute reproducible \
+            --destination-dir _site \
+            docs/*.adoc
+          cp docs/*.svg _site/
+      - uses: actions/upload-pages-artifact@v4
+        with:
+          path: _site
+
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

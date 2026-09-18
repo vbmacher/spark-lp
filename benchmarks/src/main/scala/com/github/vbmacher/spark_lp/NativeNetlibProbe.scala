@@ -9,6 +9,7 @@ object NativeNetlibProbe {
   def main(args: Array[String]): Unit = {
     val partitions = args.headOption.map(_.toInt).getOrElse(1)
     val requireNativeLapack = args.contains("--require-native") || args.contains("--require-native-lapack")
+    val requireNativeBlas = args.contains("--require-native-blas")
     val conf = new SparkConf()
     if (!conf.contains("spark.master")) conf.setMaster("local[2]")
     sys.env.get("SPARK_HOME").foreach(conf.set("spark.home", _))
@@ -26,6 +27,9 @@ object NativeNetlibProbe {
       if (requireNativeLapack) {
         require((driver +: executors).forall(nativeLapack), "Native LAPACK was not selected in every JVM")
       }
+      if (requireNativeBlas) {
+        require((driver +: executors).forall(nativeBlas), "Native BLAS was not selected in every JVM")
+      }
     } finally spark.stop()
   }
 
@@ -33,4 +37,5 @@ object NativeNetlibProbe {
     s"$process\tblas=${NativeNetlib.blas.getClass.getName}\tlapack=${NativeNetlib.lapack.getClass.getName}"
 
   private def nativeLapack(observation: String): Boolean = observation.contains("NativeSystemLAPACK")
+  private def nativeBlas(observation: String): Boolean = observation.contains("NativeSystemBLAS")
 }

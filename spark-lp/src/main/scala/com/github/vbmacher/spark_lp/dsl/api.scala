@@ -10,8 +10,8 @@ sealed trait VariableCategory
 case object Continuous extends VariableCategory
 
 /**
-  * Integral decision variable. Its effective domain is the integral values within its declared
-  * finite bounds.
+  * Integral decision variable. Omitted bounds retain their mathematical meaning; the built-in
+  * solver infers finite search bounds from constraints where supported.
   */
 case object Integer extends VariableCategory
 
@@ -21,10 +21,24 @@ case object Integer extends VariableCategory
   */
 case object Binary extends VariableCategory
 
+object VariableCategory {
+  /** Declared bounds intersected with the category's domain: [[Binary]] clamps them to `{0, 1}`;
+    * [[Integer]] and [[Continuous]] pass through unchanged. */
+  def domainBounds(category: VariableCategory, lower: Double, upper: Option[Double]): (Double, Option[Double]) =
+    if (category == Binary) (math.max(0.0, lower), Some(math.min(1.0, upper.getOrElse(1.0)))) else (lower, upper)
+
+  /** As [[domainBounds]] but reports an unbounded upper as `+Infinity` instead of `None`. */
+  def domainBoundsFinite(category: VariableCategory, lower: Double, upper: Option[Double]): (Double, Double) = {
+    val (lo, hi) = domainBounds(category, lower, upper)
+    (lo, hi.getOrElse(Double.PositiveInfinity))
+  }
+}
+
 /**
-  * Truthful outcome of one solve. `Infeasible` and the two unboundedness-related members are
-  * claimed only when a Farkas certificate backs them (see each member); everything else that did
-  * not converge is reported as [[LpStatus.IterationLimit]] or [[LpStatus.Stopped]].
+  * Outcome of one solve. Built-in infeasibility/unboundedness requires a supported analytical
+  * deduction, presolve contradiction or numerical certificate. Unresolved solves report
+  * [[LpStatus.IterationLimit]] or [[LpStatus.Stopped]]. Adapter outcomes retain backend provenance;
+  * independent candidate validation does not prove a backend's optimality or infeasibility claim.
   *
   * For models containing [[Integer]] or [[Binary]] variables, the same members retain their
   * truthful meaning across the discrete search: [[LpStatus.Optimal]] requires every candidate
@@ -145,7 +159,11 @@ final case class SolveConfig(
   mip: MipConfig = MipConfig(),
   stopAfterIteration: Option[Int => Boolean] = None,
   cgConfig: com.github.vbmacher.spark_lp.newton.CgConfig = com.github.vbmacher.spark_lp.newton.CgConfig(),
-  control: com.github.vbmacher.spark_lp.SolveControl = com.github.vbmacher.spark_lp.SolveControl()) {
+  control: com.github.vbmacher.spark_lp.SolveControl = com.github.vbmacher.spark_lp.SolveControl(),
+  relaxIntegrality: Boolean = false,
+  boundInference: BoundInferenceConfig = BoundInferenceConfig(),
+  presolve: PresolveConfig = PresolveConfig(),
+  start: Option[LpStart] = None) {
 
   com.github.vbmacher.spark_lp.LP.validateParameters(
     tolerance, maxIterations, etaIteration, valueCap, epsilon, infeasibilityTolerance, cgTolerance)
@@ -160,7 +178,14 @@ final case class SolveConfig(
 final case class MipConfig(
   maxNodes: Int = 1000,
   integralityTolerance: Double = 1e-6,
-  gapTolerance: Double = 1e-9) {
+  gapTolerance: Double = 1e-9,
+  absoluteGapTolerance: Double = 0.0,
+  control: MipControl = MipControl(),
+  sosZeroTolerance: Double = 1e-6,
+  search: MipSearchConfig = MipSearchConfig()) {
+  require(java.lang.Double.isFinite(sosZeroTolerance) && sosZeroTolerance >= 0.0, "SOS zero tolerance must be finite and nonnegative")
+  require(absoluteGapTolerance >= 0.0 && !absoluteGapTolerance.isInfinite,
+    "absoluteGapTolerance must be finite and nonnegative")
   require(maxNodes > 0, "maxNodes must be positive")
   require(integralityTolerance > 0.0 && integralityTolerance < 0.5,
     "integralityTolerance must be between 0 and 0.5 (exclusive)")
@@ -177,3 +202,20 @@ final case class MipConfig(
   * models these describe the retained LP relaxation, not the global search gap.
   */
 final case class LpResiduals(primal: Double, dual: Double, gap: Double)
+
+/** Certified-search metadata in original objective units; absent values are not zero gaps. */
+final case class MipSummary(incumbent: Option[Double], bestBound: Option[Double],
+  absoluteGap: Option[Double], relativeGap: Option[Double], processedNodes: Int,
+  openNodes: Int, termination: String, elapsedSeconds: Double = 0.0,
+  search: MipSearchStatistics = MipSearchStatistics())
+
+private[dsl] object MipGap {
+  def absolute(incumbent: Double, bound: Double): Double = math.max(0.0, incumbent - bound)
+  def relative(absolute: Double, originalIncumbent: Double): Double =
+    absolute / math.max(1.0, math.abs(originalIncumbent))
+  def accepted(incumbent: Double, bound: Double, originalIncumbent: Double, config: MipConfig): Boolean =
+    !incumbent.isNaN && !incumbent.isInfinite && !bound.isNaN && !bound.isInfinite && {
+      val gap = absolute(incumbent, bound)
+      gap <= config.absoluteGapTolerance || relative(gap, originalIncumbent) <= config.gapTolerance
+    }
+}

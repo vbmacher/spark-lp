@@ -10,7 +10,7 @@ ThisBuild / homepage := Some(url("https://github.com/vbmacher/spark-lp"))
 ThisBuild / versionScheme := Some("semver-spec")
 
 // CHANGE VERSION HERE:
-lazy val productVersion = "1.5.0"
+lazy val productVersion = "2.0.0"
 ThisBuild / version := productVersion // needs to be defined at root, so isSnapshot setting is properly set
 
 lazy val scalaLibVersion = "2.12.20"
@@ -97,6 +97,7 @@ lazy val benchmarks = projectMatrix
           _.settings(
             name := "benchmarks",
             fork := true,
+            Test / baseDirectory := (LocalRootProject / baseDirectory).value,
             Test / parallelExecution := false,
             javaOptions ++= Seq("-Xms4G", "-Xmx4G"),
             libraryDependencies ++= sparkAxes.last._1.sparkLibs.flatMap(r => Seq(r % Provided, r % Test)) ++

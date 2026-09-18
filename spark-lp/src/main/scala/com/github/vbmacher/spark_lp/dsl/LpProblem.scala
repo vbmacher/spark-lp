@@ -29,6 +29,17 @@ final class LpProblem private[dsl](
   val sense: ObjectiveSense,
   private[dsl] val spark: SparkSession) {
 
+  private var activeSolves = 0
+  private[dsl] def requireEditable(): Unit = synchronized {
+    if (activeSolves != 0) throw new LpModelException("Model edits are unsupported during an active solve")
+  }
+
+  private[dsl] val sosGroups = mutable.ArrayBuffer.empty[LpSosGroup]
+  def addSos1(name: String, members: Seq[(LpVariable, Double)]): LpSosGroup =
+    LpSos.add(this, name, SosKind.Sos1, members)
+  def addSos2(name: String, members: Seq[(LpVariable, Double)]): LpSosGroup =
+    LpSos.add(this, name, SosKind.Sos2, members)
+
   private[dsl] val handles = mutable.ArrayBuffer.empty[VarSetHandle]
   private[dsl] var quadratic: Option[QpObjective] = None
   private[dsl] var objective: Option[LpExpr] = None
@@ -40,10 +51,36 @@ final class LpProblem private[dsl](
     upperBound: Option[Double],
     category: VariableCategory,
     domain: DomainAccess): VarSetHandle = {
+    requireEditable()
     val handle = new VarSetHandle(this, handles.size, name, lowerBound, upperBound, category, domain)
     handles += handle
     handle
   }
+
+  /** Checks a complete independent assignment against original rows, bounds and categories. */
+  def validateCandidate(values: RDD[LpCandidateValue],
+    config: CandidateValidationConfig = CandidateValidationConfig()): LpCandidateReport =
+    LpCandidateValidation.validate(this, values, config)
+
+  /** Creates a local scalar/member assignment without accepting foreign model handles. */
+  def candidateValues(values: Seq[(LpVariable, Double)]): RDD[LpCandidateValue] = {
+    val mapped = values.map { case (variable, value) =>
+      if (variable.handle.problem ne this) throw new LpModelException("Candidate contains a foreign variable")
+      LpCandidateValue(LpVariableId(variable.handle.setIndex, variable.selectedKey.getOrElse("")), value)
+    }
+    spark.sparkContext.parallelize(mapped)
+  }
+
+  /** Read-only declaration snapshot; source plans are evaluated only by expanded inspection methods. */
+  def inspect: LpModelView = new LpModelView(this)
+
+  /** Copies declarations and returns identity mappings; lazy Spark sources are shared. */
+  def copy(name: String = this.name): LpModelCopy =
+    new LpModelCopy(this, new LpProblem(name, sense, spark))
+
+  /** Solves priorities in this model's objective sense on an independent copy. Close the result. */
+  def solvePriorities(priorities: Seq[LpPriority], config: SolveConfig = SolveConfig()): LpPriorityResult =
+    LpPriorities.solve(this, priorities, config)
 
   /** Creates one decision variable. */
   def variable(
@@ -52,6 +89,27 @@ final class LpProblem private[dsl](
     upperBound: Option[Double] = None,
     category: VariableCategory = Continuous): LpVariable =
     new LpVariable(register(name, lowerBound, upperBound, category, new ScalarDomain(spark)))
+
+  /** Allocates scalar variables locally in input order; keys must be unique and non-null. */
+  def indexedVariables[K: LpKeyEncoder](
+    name: String, keys: Iterable[K], lowerBound: Double = 0.0,
+    upperBound: Option[Double] = None, category: VariableCategory = Continuous): LpLocalVariables[K] = {
+    val entries = LpLocalVariables.validated(keys)
+    val names = entries.map { case (_, encoded) => s"$name[$encoded]" }
+    require(!names.exists(n => handles.exists(_.name == n)), "Local variable name already exists")
+    new LpLocalVariables(entries.zip(names).map { case ((key, _), n) =>
+      key -> variable(n, lowerBound, upperBound, category)
+    })
+  }
+
+  /** Cartesian product in row-major order; both axes are validated even when the product is empty. */
+  def matrixVariables[R: LpKeyEncoder, C: LpKeyEncoder](
+    name: String, rows: Iterable[R], columns: Iterable[C], lowerBound: Double = 0.0,
+    upperBound: Option[Double] = None, category: VariableCategory = Continuous): LpLocalVariables[(R, C)] = {
+    val r = LpLocalVariables.validated(rows).map(_._1)
+    val c = LpLocalVariables.validated(columns).map(_._1)
+    indexedVariables(name, r.flatMap(row => c.map(column => row -> column)), lowerBound, upperBound, category)
+  }
 
   /** One decision variable per unique value of `key` in `domain`. */
   def variables(
@@ -100,6 +158,7 @@ final class LpProblem private[dsl](
 
   /** Sets the objective. Throws if one is already set; use `setObjective` to replace deliberately. */
   def +=(objective: LpExpr): this.type = {
+    requireEditable()
     if (this.objective.isDefined) {
       throw new LpModelException(
         s"Problem '$name' already has an objective; use setObjective to replace it deliberately")
@@ -109,11 +168,13 @@ final class LpProblem private[dsl](
   }
 
   def +=(objective: QpObjective): this.type = {
+    requireEditable()
     if (this.objective.isDefined) throw new LpModelException("Problem already has an objective; use setObjective")
     setObjective(objective)
   }
 
   def setObjective(objective: QpObjective): this.type = {
+    requireEditable()
     this.objective = Some(objective.linear)
     this.quadratic = Some(objective)
     this
@@ -121,17 +182,20 @@ final class LpProblem private[dsl](
 
   /** Replaces the objective. */
   def setObjective(objective: LpExpr): this.type = {
+    requireEditable()
     this.quadratic = None
     this.objective = Some(objective)
     this
   }
 
   def +=(constraint: LpConstraint): this.type = {
+    requireEditable()
     constraints += Left(constraint)
     this
   }
 
   def +=(constraints: LpConstraintSet): this.type = {
+    requireEditable()
     this.constraints += Right(constraints)
     this
   }
@@ -141,6 +205,36 @@ final class LpProblem private[dsl](
     * repeatedly. Validation failures raise [[LpModelException]]; solver-side numerical failures
     * raise [[LpNumericalException]].
     */
-  def solve(config: SolveConfig = SolveConfig()): LpSolution =
-    new LpCompiler(this, config).solve()
+  def solve(config: SolveConfig = SolveConfig()): LpSolution = {
+    solve(config, LpSolveClock.system)
+  }
+
+  private[dsl] def solve(config: SolveConfig, clock: LpSolveClock): LpSolution = {
+    synchronized { activeSolves += 1 }
+    try new LpCompiler(this, config, clock).solve()
+    finally synchronized { activeSolves -= 1 }
+  }
+
+  def start(values: org.apache.spark.rdd.RDD[LpCandidateValue], config: LpStartConfig = LpStartConfig()): LpStart =
+    LpStart.create(this, values, config)
+
+  def start(values: Seq[(LpVariable, Double)]): LpStart = start(candidateValues(values))
+
+  def solve(adapter: LpSolverAdapter): LpSolution = solve(adapter, LpAdapterOptions())
+
+  def solve(adapter: LpSolverAdapter, options: LpAdapterOptions): LpSolution = {
+    synchronized { activeSolves += 1 }
+    try LpAdapterSolve.run(this, adapter, options)
+    finally synchronized { activeSolves -= 1 }
+  }
+
+  def prepareNative(adapter: LpSolverAdapter, options: LpAdapterOptions = LpAdapterOptions()): Either[LpUnsupported, LpNativeSession] = {
+    if (!adapter.capabilities.nativeSession) Left(LpUnsupported("nativeSession", s"${adapter.name} does not expose native sessions"))
+    else {
+      synchronized { activeSolves += 1 }
+      var released = false
+      val release = () => synchronized { if (!released) { released = true; activeSolves -= 1 } }
+      LpNativeSession.open(this, adapter, options, release)
+    }
+  }
 }

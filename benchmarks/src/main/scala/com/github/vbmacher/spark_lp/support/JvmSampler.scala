@@ -54,6 +54,13 @@ final class JvmSampler extends AutoCloseable {
   def snapshot: Map[String, Any] = Map("peak_heap_bytes" -> heap.get(),
     "peak_rss_bytes" -> (if (rss.get() == 0) None else Some(rss.get())))
 
+  def measurements(scope: String): Map[String, Double] = {
+    require(Set("local", "driver")(scope))
+    sample()
+    Map(s"$scope-heap-bytes-max" -> heap.get().toDouble) ++
+      (if (rss.get() > 0) Map(s"$scope-rss-bytes-max" -> rss.get().toDouble) else Map.empty[String, Double])
+  }
+
   /** Runs `onTimeout` and halts the JVM with code 124 if not cancelled within 30 minutes.
     *
     * @return a handle whose `close` cancels the pending timeout.

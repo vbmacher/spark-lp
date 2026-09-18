@@ -14,7 +14,6 @@ import org.apache.spark.sql.SparkSession
 trait Benchmark {
   def name: String
   def algorithm: NewtonSolver
-  final def suite: String = getClass.getName.stripSuffix("$")
   private[spark_lp] final def solve(costs: RDD[DenseVector], columns: RDD[Vector], rhs: DenseVector,
                   tolerance: Double, progress: SolveProgress => Unit,
                   inspect: (RDD[DenseVector], DenseVector, RDD[DenseVector]) => Unit)
@@ -37,7 +36,7 @@ object Benchmark {
   * residuals and objective are independently checked. The runner records solve
   * time, outer iterations, termination and memory; CG-specific metrics are inapplicable.
   * Dense Gramian storage grows quadratically in m even for a sparse input matrix.
-  * Select this instance with BenchmarkRunner's "cholesky" argument.
+  * Select this instance with a scenario's "cholesky" backend.
   */
 object CholeskyBenchmark extends Benchmark {
   override val name = "cholesky"
@@ -49,7 +48,7 @@ object CholeskyBenchmark extends Benchmark {
   * convergence, outer/inner iterations, restarts, preconditioner rank and solve time.
   * The shared trait pins CG tolerance, step limit and regularization; configuration
   * and actual rank are recorded so results from different settings stay separate.
-  * Select this instance with BenchmarkRunner's "cg" argument.
+  * Select this instance with a scenario's "cg" backend.
   */
 object CGBenchmark extends Benchmark {
   override val name = "cg"

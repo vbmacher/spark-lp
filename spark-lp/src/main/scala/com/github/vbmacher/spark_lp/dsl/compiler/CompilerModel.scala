@@ -1,6 +1,6 @@
 package com.github.vbmacher.spark_lp.dsl.compiler
 
-import com.github.vbmacher.spark_lp.dsl.{LpSense, VarSetHandle}
+import com.github.vbmacher.spark_lp.dsl.{LpSense, LpSubstitution, VarSetHandle, VariableMetadata}
 import com.github.vbmacher.spark_lp.vectors.{DMatrix, DVector}
 import org.apache.spark.Partitioner
 import org.apache.spark.mllib.linalg.{DenseVector, Vector => MLVector}
@@ -30,9 +30,12 @@ private[dsl] final case class ShiftedKind(shift: Double, upper: Option[Double]) 
 /** Free variable, represented as the difference of two non-negative columns `x = x_plus - x_minus`. */
 private[dsl] case object SplitKind extends PlanKind
 
+/** Upper-only variable: x = upper - y, y >= 0. */
+private[dsl] final case class ReflectedKind(upper: Double) extends PlanKind
+
 /**
   * One solver column. `kind`: 0 = plain shifted variable (`x = shift + y`), 1 = positive part of
-  * a free split, 2 = negative part, 3 = internal slack.
+  * a free split, 2 = negative part, 3 = internal slack, 4 = upper reflection (`x = shift - y`).
   */
 private[dsl] final case class ColData(
   setIndex: Int,
@@ -65,11 +68,13 @@ private[dsl] final class RowSpec(
   val name: String,
   val group: Option[String],
   val sense: LpSense,
-  val rhsUser: Double) {
+  val rhsUser: Double,
+  val internalBound: Boolean = false) {
 
   /** RHS after fixed-variable and bound-shift folding. */
   var b0: Double = rhsUser
   var note: Option[String] = None
+  var dualNonUnique: Boolean = false
   var emitted: Boolean = true
   var finalIdx: Int = -1
 }
@@ -80,19 +85,27 @@ private[dsl] final class SetPlan(
   val keys: RDD[(String, Seq[String])],
   val count: Long,
   val kind: PlanKind,
-  val integral: Boolean) {
+  val integral: Boolean,
+  val metadata: VariableMetadata) {
 
   var offset: Long = 0L
+  var excluded: Set[String] = Set.empty
+  def activeCount: Long = count - excluded.size
+  def activeKeys: RDD[(String, Seq[String])] = {
+    val removed = excluded
+    keys.filter(k => !removed(k._1))
+  }
 
   def columns: Long = kind match {
     case FixedKind(_) => 0L
-    case SplitKind => 2 * count
-    case ShiftedKind(_, _) => count
+    case SplitKind => 2 * activeCount
+    case ShiftedKind(_, _) => activeCount
+    case ReflectedKind(_) => activeCount
   }
 
   /** Keys sorted by encoded form; ordering never depends on partition order. */
   lazy val sortedKeys: RDD[(String, (Long, Seq[String]))] =
-    keys.sortBy(_._1).zipWithIndex().map { case ((enc, disp), i) => (enc, (i, disp)) }
+    activeKeys.sortBy(_._1).zipWithIndex().map { case ((enc, disp), i) => (enc, (i, disp)) }
 }
 
 /** Everything the solver call and the solution reconstruction need. */
@@ -111,7 +124,13 @@ private[dsl] final class Compiled(
   val intCols: IndexedSeq[IntColumn],
   val quadratic: Option[DVector] = None,
   val originalCosts: Option[RDD[((Int, String), Double)]] = None,
-  val originalCurvature: Option[RDD[((Int, String), Double)]] = None)
+  val originalCurvature: Option[RDD[((Int, String), Double)]] = None,
+  val direct: Option[DirectResult] = None,
+  val substitutions: Map[Int, LpSubstitution] = Map.empty)
+
+/** Analytic result for a separable linear objective with no active user rows. */
+private[dsl] final case class DirectResult(
+  values: RDD[((Int, String), Double)], objectiveValue: Double, unbounded: Boolean)
 
 /**
   * Deterministic, contiguous range partitioner over column indices `0 until total`. With

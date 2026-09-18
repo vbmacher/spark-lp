@@ -121,6 +121,9 @@ object dmatrix {
         */
       def adjointProduct(x: DVector, depth: Int = 2): DenseVector = {
         val n = columns
+        // Merge two partition-sized accumulators in place: sum1 += sum2. Captures nothing, so it is
+        // safe to reuse across the partition aggregate and the tree reduction closures.
+        val add = (sum1: DenseVector, sum2: DenseVector) => { BLAS.axpy(1.0, sum2, sum1); sum1 }
         matrix.zipPartitions(x)((matrixPartition, xPartition) =>
           Iterator.single(
             matrixPartition
@@ -132,24 +135,9 @@ object dmatrix {
                     BLAS.axpy(x_i, matrix_i, sum)
                     sum
                 },
-                combop = (sum1, sum2) => {
-                  // Add the intermediate sum vectors.
-                  BLAS.axpy(1.0, sum2, sum1)
-                  sum1
-                }
+                combop = add
               ))
-        ).treeAggregate(Vectors.zeros(n).toDense)(
-          seqOp = (sum1, sum2) => {
-            // Add the intermediate sum vectors.  <=== will be always just 1 vector (we created 1 vector per partition above)
-            BLAS.axpy(1.0, sum2, sum1)
-            sum1
-          },
-          combOp = (sum1, sum2) => {
-            // Add the intermediate sum vectors.
-            BLAS.axpy(1.0, sum2, sum1)
-            sum1
-          }, depth
-        )
+        ).treeAggregate(Vectors.zeros(n).toDense)(seqOp = add, combOp = add, depth)
       }
 
       /**
@@ -158,12 +146,7 @@ object dmatrix {
         * @param x The vector on which to apply the multiplication.
         * @return The result of the multiplication
         */
-      def product(x: Broadcast[DenseVector]): DVector = {
-        // Take the dot product of each matrix row with x.
-        // NOTE A DenseVector result is assumed here (not sparse safe).
-        matrix.mapPartitions(partitionRows =>
-          Iterator.single(new DenseVector(partitionRows.map(row => BLAS.dot(row, x.value)).toArray)))
-      }
+      def product(x: Broadcast[DenseVector]): DVector = rowDots(row => BLAS.dot(row, x.value))
 
       /**
         * Compute the product of a DMatrix with a Vector to produce a DVector.
@@ -171,12 +154,14 @@ object dmatrix {
         * @param x The vector on which to apply the multiplication.
         * @return The result of the multiplication
         */
-      def product(x: DenseVector): DVector = {
-        // Take the dot product of each matrix row with x.
-        // NOTE A DenseVector result is assumed here (not sparse safe).
+      def product(x: DenseVector): DVector = rowDots(row => BLAS.dot(row, x))
+
+      // Dot each matrix row with a per-row supplied vector. A broadcast argument stays a broadcast:
+      // its `value` is dereferenced inside `dot`, on the executor, not captured in the task closure.
+      // NOTE A DenseVector result is assumed here (not sparse safe).
+      private def rowDots(dot: Vector => Double): DVector =
         matrix.mapPartitions(partitionRows =>
-          Iterator.single(new DenseVector(partitionRows.map(row => BLAS.dot(row, x)).toArray)))
-      }
+          Iterator.single(new DenseVector(partitionRows.map(dot).toArray)))
 
       /** Apply `A^T diag(w) A x` in one streaming pass over the matrix per partition.
         * Fusing the dot product and scaled-row accumulation avoids reading A twice and
@@ -205,16 +190,35 @@ object dmatrix {
               Iterator.single(sum)
             })
         }
-        def merge(left: DenseVector, right: DenseVector): DenseVector = {
-          if (left == null) right
-          else if (right == null) left
-          else {
-            BLAS.axpy(1.0, right, left)
-            left
-          }
-        }
+        val merge = (left: DenseVector, right: DenseVector) =>
+          if (left == null) right else if (right == null) left else { BLAS.axpy(1.0, right, left); left }
         val result = perPartition.treeAggregate[DenseVector](null)(merge, merge, depth)
         if (result == null) Vectors.zeros(n).toDense else result
+      }
+
+      /** One accumulation pass over the (optionally weighted) matrix rows, reducing per-partition
+        * `size`-length accumulators to a single driver array. `add(acc, row, weight)` folds one row
+        * with its weight (`1.0` when unweighted). Weighted mode requires `w` to share this matrix's
+        * partitioning (see the DMatrix NOTE about consistent partitioning). */
+      private def weightedRowAccumulate(w: Option[DVector], size: Int, depth: Int)(
+        add: (Array[Double], Vector, Double) => Unit): Array[Double] = {
+        val perPartition = w match {
+          case Some(weights) =>
+            matrix.zipPartitions(weights)((rows, wPartition) => {
+              val acc = new Array[Double](size)
+              rows.checkedZip(wPartition.next().values.toIterator).foreach { case (row, wi) => add(acc, row, wi) }
+              Iterator.single(acc)
+            })
+          case None =>
+            matrix.mapPartitions(rows => {
+              val acc = new Array[Double](size)
+              rows.foreach(row => add(acc, row, 1.0))
+              Iterator.single(acc)
+            })
+        }
+        perPartition.treeAggregate(new Array[Double](size))(
+          seqOp = (a, b) => { new BDV(a) += new BDV(b); a },
+          combOp = (a, b) => { new BDV(a) += new BDV(b); a }, depth)
       }
 
       /**
@@ -229,35 +233,10 @@ object dmatrix {
         * @param w     optional per-row weights; `None` computes the diagonal of `A^T A`.
         * @param depth to control the depth in treeAggregate.
         */
-      def gramianDiagonal(w: Option[DVector] = None, depth: Int = 2): DenseVector = {
-        val n = columns
-        val perPartition = w match {
-          case Some(weights) =>
-            matrix.zipPartitions(weights)((matrixPartition, wPartition) => {
-              val acc = new Array[Double](n)
-              matrixPartition.checkedZip(wPartition.next().values.toIterator).foreach {
-                case (row, wi) => row.foreachActive((j, v) => acc(j) += wi * v * v)
-              }
-              Iterator.single(new DenseVector(acc))
-            })
-          case None =>
-            matrix.mapPartitions(matrixPartition => {
-              val acc = new Array[Double](n)
-              matrixPartition.foreach(row => row.foreachActive((j, v) => acc(j) += v * v))
-              Iterator.single(new DenseVector(acc))
-            })
-        }
-        perPartition.treeAggregate(Vectors.zeros(n).toDense)(
-          seqOp = (sum1, sum2) => {
-            BLAS.axpy(1.0, sum2, sum1)
-            sum1
-          },
-          combOp = (sum1, sum2) => {
-            BLAS.axpy(1.0, sum2, sum1)
-            sum1
-          }, depth
-        )
-      }
+      def gramianDiagonal(w: Option[DVector] = None, depth: Int = 2): DenseVector =
+        new DenseVector(weightedRowAccumulate(w, columns, depth) { (acc, row, weight) =>
+          row.foreachActive((j, v) => acc(j) += weight * v * v)
+        })
 
       /**
         * Compute selected columns of the (optionally weighted) Gramian `A^T diag(w) A`, i.e. the
@@ -293,32 +272,7 @@ object dmatrix {
           }
         }
 
-        val perPartition = w match {
-          case Some(weights) =>
-            matrix.zipPartitions(weights)((matrixPartition, wPartition) => {
-              val acc = new Array[Double](n * k)
-              matrixPartition.checkedZip(wPartition.next().values.toIterator).foreach {
-                case (row, wi) => accumulate(acc, row, wi)
-              }
-              Iterator.single(acc)
-            })
-          case None =>
-            matrix.mapPartitions(matrixPartition => {
-              val acc = new Array[Double](n * k)
-              matrixPartition.foreach(row => accumulate(acc, row, 1.0))
-              Iterator.single(acc)
-            })
-        }
-        perPartition.treeAggregate(new Array[Double](n * k))(
-          seqOp = (sum1, sum2) => {
-            new BDV(sum1) += new BDV(sum2)
-            sum1
-          },
-          combOp = (sum1, sum2) => {
-            new BDV(sum1) += new BDV(sum2)
-            sum1
-          }, depth
-        )
+        weightedRowAccumulate(w, n * k, depth)(accumulate)
       }
     }
   }

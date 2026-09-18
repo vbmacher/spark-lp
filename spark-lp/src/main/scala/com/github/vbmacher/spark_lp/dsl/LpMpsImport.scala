@@ -18,7 +18,8 @@ final case class LpMpsModel(model: LpProblem, variables: Map[String, LpVariable]
 /** Bounded driver-side free/fixed-whitespace MPS parser. Does not invoke a solver. */
 object LpMpsImport {
   private final case class Bounds(var lower: Double = 0.0, var upper: Option[Double] = None,
-    var category: VariableCategory = Continuous, var explicitLower: Boolean = false, var explicitUpper: Boolean = false)
+    var category: VariableCategory = Continuous, markerInteger: Boolean = false,
+    var explicitLower: Boolean = false, var explicitUpper: Boolean = false)
 
   def read(path: Path, options: MpsReadOptions = MpsReadOptions())(implicit spark: SparkSession): LpMpsModel = {
     if (Files.size(path) > options.maxBytes) throw new LpModelException(s"MPS exceeds maxBytes=${options.maxBytes}: $path")
@@ -108,7 +109,8 @@ object LpMpsImport {
               } else {
                 val entries = pairs(tokens)
                 if (!columns.contains(first) && columns.size >= options.maxVariables) fail(s"Exceeded maxVariables=${options.maxVariables}")
-                val b = columns.getOrElseUpdate(first, Bounds(category = if (integerRegion) Integer else Continuous))
+                val b = columns.getOrElseUpdate(first,
+                  Bounds(category = if (integerRegion) Integer else Continuous, markerInteger = integerRegion))
                 if ((b.category == Integer) != integerRegion) fail(s"Column '$first' appears inside and outside integer markers")
                 entries.foreach { case (row, value) =>
                   records += 1
@@ -164,7 +166,7 @@ object LpMpsImport {
         .foreach { case (requested, found, label) => requested.foreach(n => if (!found(n)) fail(s"Requested $label set '$n' does not exist")) }
       val model = LpProblem(modelName, options.objectiveSense.getOrElse(sense))
       val variables = columns.map { case (name, b) =>
-        if (b.category == Integer && !b.explicitUpper) b.upper = Some(1.0)
+        if (b.category == Integer && b.markerInteger && !b.explicitUpper) b.upper = Some(1.0)
         if (b.upper.exists(_ < b.lower)) fail(s"Inconsistent bounds for '$name'")
         name -> model.variable(name, b.lower, b.upper, b.category)
       }.toMap

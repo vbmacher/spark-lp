@@ -47,8 +47,7 @@ object LpMps extends Serializable {
         .map { case (_, ((name, value), row)) => ((2, name, 2, row), s" $name  $row  ${LpExport.number(value)}") }
       val rhs = namedRows.map { case (_, (r, name)) => ((3, name, 2, ""), s" RHS1  $name  ${LpExport.number(r.rhs)}") }
       val bounds = namedVars.flatMap { case (_, (v, name)) =>
-        val lower = if (v.category == Binary) math.max(0.0, v.lower) else v.lower
-        val upper = if (v.category == Binary) Some(math.min(1.0, v.upper.getOrElse(1.0))) else v.upper
+        val (lower, upper) = VariableCategory.domainBounds(v.category, v.lower, v.upper)
         def record(kind: String, value: Option[Double] = None): String =
           s" $kind  BND1  $name" + value.map(n => s"  ${LpExport.number(n)}").getOrElse("")
         val entries = if (upper.contains(lower)) Vector(record("FX", Some(lower)))

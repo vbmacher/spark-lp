@@ -1,7 +1,8 @@
 = Benchmarks
 
 https://bencher.dev/perf/spark-lp[Bencher: spark-lp] compares solver time, memory
-and convergence across use cases. link:../benchmarks/README.md[Running and extending benchmarks].
+and convergence across use cases.
+https://github.com/vbmacher/spark-lp/blob/master/benchmarks/README.md[Running and extending benchmarks].
 
 Compare Cholesky and CG on the *same case, resources and testbed*. Scenario names
 identify dimensions, density/conditioning, tolerance, backend, CPU allocation,

@@ -38,8 +38,7 @@ private[dsl] object LpCandidateValidation {
       val bad = malformed.take(1).nonEmpty
       val joined = variables.join(source)
       val limits = joined.flatMap { case (id, (v, x)) =>
-        val lower = if (v.category == Binary) math.max(0.0, v.lower) else v.lower
-        val upper = if (v.category == Binary) Some(math.min(1.0, v.upper.getOrElse(1.0))) else v.upper
+        val (lower, upper) = VariableCategory.domainBounds(v.category, v.lower, v.upper)
         val bound = math.max(0.0, math.max(if (lower.isNegInfinity) 0.0 else lower - x, upper.map(x - _).getOrElse(0.0)))
         val integral = if (config.relaxIntegrality || v.category == Continuous) 0.0 else math.abs(x - math.rint(x))
         Seq(LpCandidateViolation(Some(id), None, "bound", bound, bound <= config.tolerance),

@@ -21,6 +21,19 @@ case object Integer extends VariableCategory
   */
 case object Binary extends VariableCategory
 
+object VariableCategory {
+  /** Declared bounds intersected with the category's domain: [[Binary]] clamps them to `{0, 1}`;
+    * [[Integer]] and [[Continuous]] pass through unchanged. */
+  def domainBounds(category: VariableCategory, lower: Double, upper: Option[Double]): (Double, Option[Double]) =
+    if (category == Binary) (math.max(0.0, lower), Some(math.min(1.0, upper.getOrElse(1.0)))) else (lower, upper)
+
+  /** As [[domainBounds]] but reports an unbounded upper as `+Infinity` instead of `None`. */
+  def domainBoundsFinite(category: VariableCategory, lower: Double, upper: Option[Double]): (Double, Double) = {
+    val (lo, hi) = domainBounds(category, lower, upper)
+    (lo, hi.getOrElse(Double.PositiveInfinity))
+  }
+}
+
 /**
   * Outcome of one solve. Built-in infeasibility/unboundedness requires a supported analytical
   * deduction, presolve contradiction or numerical certificate. Unresolved solves report

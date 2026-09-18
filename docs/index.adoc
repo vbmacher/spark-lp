@@ -1,0 +1,36 @@
+= spark-lp documentation
+:toc: left
+:source-highlighter: highlightjs
+
+`spark-lp` is a Scala DSL for linear, mixed-integer linear and convex quadratic
+optimization over Apache Spark data.
+
+== Guides
+
+[cols="1,3",options="header"]
+|===
+|Guide |Contents
+|xref:usage.adoc[Using spark-lp]
+|Installation, modelling, solving, diagnostics, interchange and tuning.
+
+|xref:algorithm.adoc[How spark-lp solves a model]
+|Equality-form compilation, interior-point solving, backend selection, integer search and certificates.
+
+|xref:benchmarks.adoc[Benchmarks]
+|Benchmark coverage, measures, testbeds and interpretation.
+|===
+
+== Performance
+
+The https://bencher.dev/perf/spark-lp[live benchmark dashboard] tracks solver time,
+memory and convergence. The charts below summarize the current Cholesky and
+conjugate-gradient comparison.
+
+image::benchmark-runtime.svg[Cholesky versus conjugate gradient solve time]
+
+image::benchmark-memory.svg[Cholesky versus conjugate gradient peak local process memory]
+
+== Project
+
+Source code, releases and issue tracking are available in the
+https://github.com/vbmacher/spark-lp[spark-lp GitHub repository].

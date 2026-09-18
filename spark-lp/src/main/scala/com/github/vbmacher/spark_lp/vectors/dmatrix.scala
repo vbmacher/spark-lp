@@ -121,6 +121,9 @@ object dmatrix {
         */
       def adjointProduct(x: DVector, depth: Int = 2): DenseVector = {
         val n = columns
+        // Merge two partition-sized accumulators in place: sum1 += sum2. Captures nothing, so it is
+        // safe to reuse across the partition aggregate and the tree reduction closures.
+        val add = (sum1: DenseVector, sum2: DenseVector) => { BLAS.axpy(1.0, sum2, sum1); sum1 }
         matrix.zipPartitions(x)((matrixPartition, xPartition) =>
           Iterator.single(
             matrixPartition
@@ -132,24 +135,9 @@ object dmatrix {
                     BLAS.axpy(x_i, matrix_i, sum)
                     sum
                 },
-                combop = (sum1, sum2) => {
-                  // Add the intermediate sum vectors.
-                  BLAS.axpy(1.0, sum2, sum1)
-                  sum1
-                }
+                combop = add
               ))
-        ).treeAggregate(Vectors.zeros(n).toDense)(
-          seqOp = (sum1, sum2) => {
-            // Add the intermediate sum vectors.  <=== will be always just 1 vector (we created 1 vector per partition above)
-            BLAS.axpy(1.0, sum2, sum1)
-            sum1
-          },
-          combOp = (sum1, sum2) => {
-            // Add the intermediate sum vectors.
-            BLAS.axpy(1.0, sum2, sum1)
-            sum1
-          }, depth
-        )
+        ).treeAggregate(Vectors.zeros(n).toDense)(seqOp = add, combOp = add, depth)
       }
 
       /**
@@ -158,12 +146,7 @@ object dmatrix {
         * @param x The vector on which to apply the multiplication.
         * @return The result of the multiplication
         */
-      def product(x: Broadcast[DenseVector]): DVector = {
-        // Take the dot product of each matrix row with x.
-        // NOTE A DenseVector result is assumed here (not sparse safe).
-        matrix.mapPartitions(partitionRows =>
-          Iterator.single(new DenseVector(partitionRows.map(row => BLAS.dot(row, x.value)).toArray)))
-      }
+      def product(x: Broadcast[DenseVector]): DVector = rowDots(row => BLAS.dot(row, x.value))
 
       /**
         * Compute the product of a DMatrix with a Vector to produce a DVector.
@@ -171,12 +154,14 @@ object dmatrix {
         * @param x The vector on which to apply the multiplication.
         * @return The result of the multiplication
         */
-      def product(x: DenseVector): DVector = {
-        // Take the dot product of each matrix row with x.
-        // NOTE A DenseVector result is assumed here (not sparse safe).
+      def product(x: DenseVector): DVector = rowDots(row => BLAS.dot(row, x))
+
+      // Dot each matrix row with a per-row supplied vector. A broadcast argument stays a broadcast:
+      // its `value` is dereferenced inside `dot`, on the executor, not captured in the task closure.
+      // NOTE A DenseVector result is assumed here (not sparse safe).
+      private def rowDots(dot: Vector => Double): DVector =
         matrix.mapPartitions(partitionRows =>
-          Iterator.single(new DenseVector(partitionRows.map(row => BLAS.dot(row, x)).toArray)))
-      }
+          Iterator.single(new DenseVector(partitionRows.map(dot).toArray)))
 
       /** Apply `A^T diag(w) A x` in one streaming pass over the matrix per partition.
         * Fusing the dot product and scaled-row accumulation avoids reading A twice and

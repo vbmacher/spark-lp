@@ -51,8 +51,10 @@ private[dsl] object LpBoundPropagation extends Serializable {
   }
   private def domain(v: LpExpandedVariable): LpExpandedVariable = {
     if (v.category == Continuous) v
-    else v.copy(lower = math.ceil(if (v.category == Binary) math.max(0.0, v.lower) else v.lower),
-      upper = (if (v.category == Binary) Some(math.min(1.0, v.upper.getOrElse(1.0))) else v.upper).map(math.floor))
+    else {
+      val (lower, upper) = VariableCategory.domainBounds(v.category, v.lower, v.upper)
+      v.copy(lower = math.ceil(lower), upper = upper.map(math.floor))
+    }
   }
 
   def run(view: LpModelView, config: BoundInferenceConfig): BoundPropagationResult = {

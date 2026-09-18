@@ -1,11 +1,12 @@
 package com.github.vbmacher.spark_lp.dsl
 
+import com.github.vbmacher.spark_lp.Numerics
 import org.apache.spark.rdd.RDD
 
 final case class LpCandidateValue(variable: LpVariableId, value: Double)
 final case class CandidateValidationConfig(tolerance: Double = 1e-8,
   integralityTolerance: Double = 1e-6, relaxIntegrality: Boolean = false, sosZeroTolerance: Double = 1e-6) {
-  require(Seq(tolerance, integralityTolerance).forall(t => LpExpressionData.finite(t) && t > 0.0),
+  require(Seq(tolerance, integralityTolerance).forall(t => Numerics.isFinite(t) && t > 0.0),
     "Candidate tolerances must be finite and positive")
   require(java.lang.Double.isFinite(sosZeroTolerance) && sosZeroTolerance >= 0.0, "SOS zero tolerance must be finite and nonnegative")
   require(integralityTolerance < 0.5, "Integrality tolerance must be below 0.5")
@@ -32,7 +33,7 @@ private[dsl] object LpCandidateValidation {
         val vs = metadata.toVector
         val xs = candidates.toVector
         val kind = if (vs.isEmpty) Some("foreign") else if (xs.isEmpty) Some("missing")
-          else if (xs.size != 1) Some("duplicate") else if (!LpExpressionData.finite(xs.head)) Some("non-finite") else None
+          else if (xs.size != 1) Some("duplicate") else if (!Numerics.isFinite(xs.head)) Some("non-finite") else None
         kind.map(k => LpCandidateViolation(Some(id), None, k, Double.PositiveInfinity, false))
       }
       val bad = malformed.take(1).nonEmpty
@@ -40,7 +41,7 @@ private[dsl] object LpCandidateValidation {
       val limits = joined.flatMap { case (id, (v, x)) =>
         val (lower, upper) = VariableCategory.domainBounds(v.category, v.lower, v.upper)
         val bound = math.max(0.0, math.max(if (lower.isNegInfinity) 0.0 else lower - x, upper.map(x - _).getOrElse(0.0)))
-        val integral = if (config.relaxIntegrality || v.category == Continuous) 0.0 else math.abs(x - math.rint(x))
+        val integral = if (config.relaxIntegrality || v.category == Continuous) 0.0 else LpIntegrality.fractionality(x)
         Seq(LpCandidateViolation(Some(id), None, "bound", bound, bound <= config.tolerance),
           LpCandidateViolation(Some(id), None, "integrality", integral, integral <= config.integralityTolerance))
       }
@@ -48,11 +49,7 @@ private[dsl] object LpCandidateValidation {
         .map { case (_, ((row, coefficient), value)) => row -> (coefficient * value) }.reduceByKey(_ + _)
       val rows = view.constraints.map(c => c.id -> c).leftOuterJoin(activities).map { case (id, (row, activity)) =>
         val delta = activity.getOrElse(0.0) - row.rhs
-        val violation = if (!LpExpressionData.finite(delta)) Double.PositiveInfinity else row.sense match {
-          case "<=" => math.max(0.0, delta)
-          case ">=" => math.max(0.0, -delta)
-          case _ => math.abs(delta)
-        }
+        val violation = if (!Numerics.isFinite(delta)) Double.PositiveInfinity else LpSense.violation(row.sense, delta)
         LpCandidateViolation(None, Some(id), "constraint", violation, violation <= config.tolerance)
       }
       val groups = view.sosGroups
@@ -81,7 +78,7 @@ private[dsl] object LpCandidateValidation {
             f.weight * value * value
           }.sum
           val total = linear + diagonal + factors
-          if (LpExpressionData.finite(total)) Some(total) else None
+          if (Numerics.isFinite(total)) Some(total) else None
         }
         new LpCandidateReport(feasible, objective, model.sense, config.relaxIntegrality, maximum, records)
       } catch {

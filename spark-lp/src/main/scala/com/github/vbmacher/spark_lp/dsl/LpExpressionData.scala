@@ -2,15 +2,15 @@ package com.github.vbmacher.spark_lp.dsl
 
 import org.apache.spark.rdd.RDD
 import org.apache.spark.sql.SparkSession
+import com.github.vbmacher.spark_lp.Numerics
 
 /** Stable identity within one model: declaration index and canonical key (empty for a scalar). */
 final case class LpVariableId(family: Int, key: String)
 final case class LpCoefficient(variable: LpVariableId, value: Double)
 
 private[dsl] object LpExpressionData {
-  def finite(value: Double): Boolean = !value.isNaN && !value.isInfinite
   def check(value: Double): Unit =
-    if (!finite(value)) throw new LpModelException("Expression coefficients and constants must be finite")
+    if (!Numerics.isFinite(value)) throw new LpModelException("Expression coefficients and constants must be finite")
 
   def owner(expression: LpExpr, expected: Option[LpProblem]): Option[LpProblem] = {
     val owners = expression.terms.map(_.handle.problem).distinct
@@ -54,13 +54,13 @@ private[dsl] object LpExpressionData {
         case FilteredCoeffTerm(inner, excluded) =>
           return term(inner).filter { case ((_, key), _) => !excluded(key) }
       }
-      if (pairs.values.filter(v => !finite(v)).take(1).nonEmpty)
+      if (pairs.values.filter(v => !Numerics.isFinite(v)).take(1).nonEmpty)
         throw new LpModelException(s"Variable '${h.name}': non-finite expression coefficient")
       pairs.map { case (key, c) => ((si, key), c) }
     }
     val pieces = expression.terms.map(term)
     val result = if (pieces.isEmpty) sc.emptyRDD[((Int, String), Double)] else sc.union(pieces).reduceByKey(_ + _)
-    if (result.values.filter(v => !finite(v)).take(1).nonEmpty)
+    if (result.values.filter(v => !Numerics.isFinite(v)).take(1).nonEmpty)
       throw new LpModelException("Repeated expression coefficients overflow")
     result.filter(_._2 != 0.0)
   }

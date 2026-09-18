@@ -1,5 +1,6 @@
 package com.github.vbmacher.spark_lp.dsl
 
+import com.github.vbmacher.spark_lp.Numerics
 import com.fasterxml.jackson.databind.{JsonNode, ObjectMapper}
 import com.fasterxml.jackson.databind.node.ObjectNode
 import org.apache.hadoop.fs.{FileAlreadyExistsException, FileContext, Options, Path}
@@ -51,7 +52,7 @@ object LpJson {
     node.textValue()
   }
   private def number(node: JsonNode): Double = {
-    if (!node.isNumber || !LpExpressionData.finite(node.doubleValue()))
+    if (!node.isNumber || !Numerics.isFinite(node.doubleValue()))
       throw new LpModelException("Expected a finite JSON number")
     node.doubleValue()
   }

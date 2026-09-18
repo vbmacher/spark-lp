@@ -6,22 +6,12 @@ import org.apache.spark.rdd.RDD
 /** Free MPS with OBJSENSE, a negative RHS objective offset, and explicit bounds. */
 object LpMps extends Serializable {
   def write(view: LpModelView, path: Path, naming: ExportNaming = ExportNaming.Normalized,
-    relaxIntegrality: Boolean = false, overwrite: Boolean = false): LpExportMapping = {
-    if (view.sosGroups.nonEmpty) throw new LpModelException("This export dialect cannot preserve SOS groups; use JSON")
-    if (view.hasQuadraticObjective) throw new LpModelException("MPS export supports linear objectives only")
-    view.statistics()
-    val mapping = LpExport.mappings(view, naming)
-    val variables = view.variables.persist()
-    val rows = view.constraints.persist()
-    val coefficients = view.coefficients.persist()
-    val costs = view.objectiveCoefficients.persist()
-    type Order = (Int, String, Int, String)
-    try {
-      val sc = variables.sparkContext
-      val names = mapping.variables.map(v => v.id -> v.exportedName)
-      val rowNames = mapping.constraints.map(r => r.id -> r.exportedName)
+    relaxIntegrality: Boolean = false, overwrite: Boolean = false): LpExportMapping =
+    LpExport.render(view, path, naming, overwrite, "MPS") { ctx =>
+      import ctx.{view => _, _}
+      type Order = (Int, String, Int, String)
       val namedVars = variables.map(v => v.id -> v).join(names)
-      val namedRows = rows.map(r => r.id -> r).join(rowNames)
+      val namedRows = constraints.map(r => r.id -> r).join(rowNames)
       val header: RDD[(Order, String)] = sc.parallelize(Seq(
         ((0, "", 0, ""), "NAME          SPARKLP"),
         ((0, "", 1, ""), "OBJSENSE"),
@@ -31,7 +21,7 @@ object LpMps extends Serializable {
         ((3, "", 1, ""), s" RHS1  __objective  ${LpExport.number(-view.objectiveConstant)}"),
         ((4, "", 0, ""), "BOUNDS"), ((5, "", 0, ""), "ENDATA")), 1)
       val rowLines = namedRows.map { case (_, (r, name)) =>
-        val sense = r.sense match { case "==" => "E"; case "<=" => "L"; case ">=" => "G" }
+        val sense = LpSense.fromSymbol(r.sense).mpsCode
         ((1, name, 2, ""), s" $sense  $name")
       }
       // A zero objective record declares even unused columns. Markers wrap each integer column.
@@ -57,10 +47,6 @@ object LpMps extends Serializable {
         val binary = if (v.category == Binary && !relaxIntegrality) Vector(record("BV")) else Vector.empty
         (binary ++ entries).zipWithIndex.map { case (line, index) => ((4, name, index + 1, ""), line) }
       }
-      val lines = sc.union(Seq(header, rowLines, objective, matrix, rhs, bounds)).sortBy(_._1).values
-      LpExport.writeFile(path, overwrite)(writer => lines.toLocalIterator.foreach { line => writer.write(line); writer.write("\n") })
-      mapping
-    } catch { case scala.util.control.NonFatal(e) => mapping.close(); throw e }
-    finally { variables.unpersist(false); rows.unpersist(false); coefficients.unpersist(false); costs.unpersist(false) }
-  }
+      sc.union(Seq(header, rowLines, objective, matrix, rhs, bounds))
+    }
 }

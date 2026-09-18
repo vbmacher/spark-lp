@@ -461,7 +461,7 @@ private[dsl] final class BranchAndBound(
     while (j < n) {
       if (node.lower(j) < node.upper(j)) {
         val v = userValue(node, vals, j)
-        val frac = math.abs(v - math.rint(v))
+        val frac = LpIntegrality.fractionality(v)
         if (frac > bestFrac) {
           best = j
           bestFrac = frac
@@ -529,8 +529,8 @@ private[dsl] final class BranchAndBound(
       return
     }
     val candidates = intCols.indices.filter(j => node.lower(j) < node.upper(j))
-      .map(j => (j, userValue(node, values, j))).filter { case (_, x) => math.abs(x - math.rint(x)) > config.mip.integralityTolerance }
-      .sortBy { case (j, x) => (-math.abs(x - math.rint(x)), j) }.take(policy.maxCandidates)
+      .map(j => (j, userValue(node, values, j))).filter { case (_, x) => !LpIntegrality.isIntegral(x, config.mip.integralityTolerance) }
+      .sortBy { case (j, x) => (-LpIntegrality.fractionality(x), j) }.take(policy.maxCandidates)
     var best = children(node, fallbackIndex, fallbackValue, bound)
     var bestScore = Double.NegativeInfinity
     candidates.iterator.takeWhile(_ => strongProbes < policy.maxProbes && !stopped()).foreach { case (j, value) =>

@@ -18,7 +18,7 @@ package object dsl {
     var result = LpExpr.zero
     while (cs.hasNext && vs.hasNext) {
       val coefficient = cs.next()
-      LpArithmetic.requireFinite(coefficient, "Dot-product coefficient")
+      Numerics.requireFinite(coefficient, "Dot-product coefficient")
       result = result.plus(toExpression(vs.next()).scaledBy(coefficient))
     }
     if (cs.hasNext || vs.hasNext)

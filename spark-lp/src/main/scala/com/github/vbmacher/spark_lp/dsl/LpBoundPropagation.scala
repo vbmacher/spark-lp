@@ -52,8 +52,8 @@ private[dsl] object LpBoundPropagation extends Serializable {
   private def domain(v: LpExpandedVariable): LpExpandedVariable = {
     if (v.category == Continuous) v
     else {
-      val (lower, upper) = VariableCategory.domainBounds(v.category, v.lower, v.upper)
-      v.copy(lower = math.ceil(lower), upper = upper.map(math.floor))
+      val (lower, upper) = LpIntegrality.integralBounds(v.category, v.lower, v.upper)
+      v.copy(lower = lower, upper = upper)
     }
   }
 

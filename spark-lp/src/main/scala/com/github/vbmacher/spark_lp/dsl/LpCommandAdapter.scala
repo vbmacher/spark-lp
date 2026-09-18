@@ -69,6 +69,14 @@ object LpCommandRunner {
     try stream.iterator().asScala.toVector.sortBy(_.getNameCount).reverse.foreach(Files.deleteIfExists)
     finally stream.close()
   }
+
+  /** Create a fresh adapter workspace directory, honouring an optional caller-provided root. */
+  private[dsl] def createWorkspace(options: LpCommandOptions, prefix: String): Path =
+    options.temporaryRoot.map(Files.createTempDirectory(_, prefix)).getOrElse(Files.createTempDirectory(prefix))
+
+  /** Close the export mapping (if present), then delete the workspace unless the caller retains artifacts. */
+  private[dsl] def discardWorkspace(mapping: Option[LpExportMapping], directory: Path, retainArtifacts: Boolean): Unit =
+    try mapping.foreach(_.close()) finally if (!retainArtifacts) removeDirectory(directory)
 }
 
 /** Local LP-file adapter template. Implement command construction and parsing using public mappings.
@@ -80,8 +88,7 @@ abstract class LpCommandAdapter(val commandOptions: LpCommandOptions = LpCommand
 
   final override def prepare(model: LpModelView, options: LpAdapterOptions): LpAdapterSession = {
     if (model.hasQuadraticObjective) throw new IllegalArgumentException("LP command adapter cannot export a quadratic objective")
-    val directory = commandOptions.temporaryRoot.map(Files.createTempDirectory(_, "spark-lp-adapter-"))
-      .getOrElse(Files.createTempDirectory("spark-lp-adapter-"))
+    val directory = LpCommandRunner.createWorkspace(commandOptions, "spark-lp-adapter-")
     var mapping: Option[LpExportMapping] = None
     try {
       val input = directory.resolve("model.lp")
@@ -111,13 +118,12 @@ abstract class LpCommandAdapter(val commandOptions: LpCommandOptions = LpCommand
         }
         override def close(): Unit = if (!closed) {
           closed = true
-          try identities.close() finally if (!commandOptions.retainArtifacts) LpCommandRunner.removeDirectory(directory)
+          LpCommandRunner.discardWorkspace(Some(identities), directory, commandOptions.retainArtifacts)
         }
       }
     } catch {
       case scala.util.control.NonFatal(e) =>
-        mapping.foreach(_.close())
-        if (!commandOptions.retainArtifacts) LpCommandRunner.removeDirectory(directory)
+        LpCommandRunner.discardWorkspace(mapping, directory, commandOptions.retainArtifacts)
         throw e
     }
   }

@@ -1,5 +1,6 @@
 package com.github.vbmacher.spark_lp.dsl
 
+import com.github.vbmacher.spark_lp.Numerics
 import org.apache.spark.rdd.RDD
 import org.apache.spark.sql.functions.col
 import org.apache.spark.sql.types.DoubleType
@@ -101,7 +102,7 @@ final class LpModelView private[dsl](problem: LpProblem) {
       ((group, key), (display, value))
     }
     if (raw.filter { case ((group, key), (_, value)) =>
-      group == null || key == null || !LpExpressionData.finite(value)
+      group == null || key == null || !Numerics.isFinite(value)
     }.take(1).nonEmpty) throw new LpModelException(s"Constraint '${d.name}': null keys or non-finite coefficients")
     val domainKeys = t.handle.domain.keyPairs().keys
     if (raw.keys.map(_._2).subtract(domainKeys).take(1).nonEmpty)
@@ -115,7 +116,7 @@ final class LpModelView private[dsl](problem: LpProblem) {
           KeyCodec.encodeParts(parts) -> (parts.flatMap(KeyCodec.displayParts),
             if (row.isNullAt(n)) Double.NaN else row.getDouble(n))
         }
-        if (values.filter { case (key, (_, value)) => key == null || !LpExpressionData.finite(value) }.take(1).nonEmpty ||
+        if (values.filter { case (key, (_, value)) => key == null || !Numerics.isFinite(value) }.take(1).nonEmpty ||
           values.mapValues(_ => 1).reduceByKey(_ + _).filter(_._2 > 1).take(1).nonEmpty ||
           groups.keys.subtract(values.keys).take(1).nonEmpty)
           throw new LpModelException(s"Constraint '${d.name}': invalid, duplicate or missing RHS keys")
@@ -123,7 +124,7 @@ final class LpModelView private[dsl](problem: LpProblem) {
     }
     val family = t.handle.setIndex
     val coefficients = raw.mapValues(_._2).reduceByKey(_ + _)
-    if (coefficients.values.filter(v => !LpExpressionData.finite(v)).take(1).nonEmpty)
+    if (coefficients.values.filter(v => !Numerics.isFinite(v)).take(1).nonEmpty)
       throw new LpModelException(s"Constraint '${d.name}': coefficient overflow")
     (rhs.map { case (key, (display, value)) =>
       LpExpandedConstraint(LpConstraintId(d.id, key), KeyCodec.displayName(d.name, display), d.sense, value, display)

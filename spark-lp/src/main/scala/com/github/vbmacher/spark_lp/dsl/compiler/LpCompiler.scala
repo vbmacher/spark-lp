@@ -1,6 +1,6 @@
 package com.github.vbmacher.spark_lp.dsl.compiler
 
-import com.github.vbmacher.spark_lp.{CachedRDDs, CandidateInfo, LP, SolveControl, StopReason}
+import com.github.vbmacher.spark_lp.{CachedRDDs, CandidateInfo, LP, Numerics, SolveControl, StopReason}
 import com.github.vbmacher.spark_lp.dsl._
 import com.github.vbmacher.spark_lp.vectors.{DMatrix, DVector}
 import org.apache.spark.mllib.linalg.{DenseVector, Vectors}
@@ -23,7 +23,7 @@ import scala.util.hashing.MurmurHash3
   */
 private[dsl] final class LpCompiler(problem: LpProblem, config: SolveConfig,
   clock: LpSolveClock = LpSolveClock.system) extends AutoCloseable {
-  import LpCompiler.notFinite
+  import LpCompiler.{notFinite, relativeBoundViolation, relativeRowViolation}
 
   /** Tolerance for presolved zero-term rows (`0 <sense> rhs`). */
   private val PresolveTolerance = 1e-11
@@ -1410,11 +1410,7 @@ private[dsl] final class LpCompiler(problem: LpProblem, config: SolveConfig,
         if (data.kind == 0) {
           val value = data.shift + values(i)
           val (lower, upper) = bounds(data.setIndex)
-          if (notFinite(value)) violation = Double.PositiveInfinity
-          else {
-            violation = math.max(violation, (lower - value) / (1.0 + math.abs(lower)))
-            upper.foreach(u => violation = math.max(violation, (value - u) / (1.0 + math.abs(u))))
-          }
+          violation = math.max(violation, relativeBoundViolation(value, Some(lower), upper))
           data.vector.foreachActive { (row, coefficient) =>
             if (row < rowCount) activity(row) += coefficient * value
           }
@@ -1432,9 +1428,7 @@ private[dsl] final class LpCompiler(problem: LpProblem, config: SolveConfig,
     }
     compiled.rowSpecs.foldLeft(boundViolation) { (worst, row) =>
       val residual = activity(row.finalIdx) - row.rhsUser
-      val violation = if (notFinite(residual)) Double.PositiveInfinity
-        else row.sense.violation(residual) / (1.0 + math.abs(row.rhsUser))
-      math.max(worst, violation)
+      math.max(worst, relativeRowViolation(row.sense, residual, row.rhsUser))
     }
   }
 
@@ -1459,20 +1453,14 @@ private[dsl] final class LpCompiler(problem: LpProblem, config: SolveConfig,
       p.handle.setIndex -> limits
     }.toMap
     val boundViolations = values.map { case ((si, _), value) =>
-      if (notFinite(value)) Double.PositiveInfinity
-      else {
-        val (lower, upper) = bounds(si)
-        math.max(lower.map(l => (l - value) / (1.0 + math.abs(l))).getOrElse(0.0),
-          upper.map(u => (value - u) / (1.0 + math.abs(u))).getOrElse(0.0))
-      }
+      val (lower, upper) = bounds(si)
+      relativeBoundViolation(value, lower, upper)
     }
     val rows = sc.parallelize(compiled.rowSpecs.map(r => (r.rowId, (r.rhsUser, r.sense))))
     val activity = compiled.userTermsAgg.map { case ((si, enc, row), c) => ((si, enc), (row, c)) }
       .join(values).map { case (_, ((row, c), value)) => (row, c * value) }.reduceByKey(_ + _)
     val violations = activity.rightOuterJoin(rows).map { case (_, (act, (rhs, sense))) =>
-      val residual = act.getOrElse(0.0) - rhs
-      if (notFinite(residual)) Double.PositiveInfinity
-      else sense.violation(residual) / (1.0 + math.abs(rhs))
+      relativeRowViolation(sense, act.getOrElse(0.0) - rhs, rhs)
     }
     boundViolations.union(violations).fold(0.0)(math.max)
   }
@@ -1594,5 +1582,24 @@ private[dsl] final class LpCompiler(problem: LpProblem, config: SolveConfig,
 
 private[dsl] object LpCompiler {
   /** True for a NaN or infinite value; the compiler rejects non-finite user data. */
-  private[compiler] def notFinite(value: Double): Boolean = value.isNaN || value.isInfinite
+  private[compiler] def notFinite(value: Double): Boolean = !Numerics.isFinite(value)
+
+  /**
+    * Worst relative bound violation of `value` against optional lower/upper bounds, scaled by
+    * `1 + |bound|`; `0.0` when feasible and `+Inf` for a non-finite value. Safe to call inside Spark
+    * closures because it lives on the singleton object.
+    */
+  private[compiler] def relativeBoundViolation(value: Double, lower: Option[Double], upper: Option[Double]): Double =
+    if (notFinite(value)) Double.PositiveInfinity
+    else math.max(
+      lower.map(l => (l - value) / (1.0 + math.abs(l))).getOrElse(0.0),
+      upper.map(u => (value - u) / (1.0 + math.abs(u))).getOrElse(0.0))
+
+  /**
+    * Relative constraint-row violation for a signed residual `activity - rhs`, scaled by `1 + |rhs|`;
+    * `+Inf` for a non-finite residual. Safe inside Spark closures (singleton object).
+    */
+  private[compiler] def relativeRowViolation(sense: LpSense, residual: Double, rhs: Double): Double =
+    if (notFinite(residual)) Double.PositiveInfinity
+    else sense.violation(residual) / (1.0 + math.abs(rhs))
 }

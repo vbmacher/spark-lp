@@ -16,8 +16,7 @@ final class HighsPythonAdapter(python: String = "python3", artifacts: LpCommandO
     reducedCosts = true, nativeSession = true)
 
   override def prepare(model: LpModelView, options: LpAdapterOptions): LpAdapterSession = {
-    val directory = artifacts.temporaryRoot.map(Files.createTempDirectory(_, "spark-lp-highs-"))
-      .getOrElse(Files.createTempDirectory("spark-lp-highs-"))
+    val directory = LpCommandRunner.createWorkspace(artifacts, "spark-lp-highs-")
     var mapping: Option[LpExportMapping] = None
     var process: Option[Process] = None
     try {
@@ -34,8 +33,7 @@ final class HighsPythonAdapter(python: String = "python3", artifacts: LpCommandO
     } catch {
       case scala.util.control.NonFatal(e) =>
         process.foreach(p => if (p.isAlive) LpCommandRunner.terminate(p))
-        mapping.foreach(_.close())
-        if (!artifacts.retainArtifacts) LpCommandRunner.removeDirectory(directory)
+        LpCommandRunner.discardWorkspace(mapping, directory, artifacts.retainArtifacts)
         throw e
     }
   }
@@ -169,7 +167,7 @@ final class HighsPythonAdapter(python: String = "python3", artifacts: LpCommandO
         try {
           if (process.isAlive) LpCommandRunner.terminate(process)
           reader.close(); writer.close()
-        } finally try identities.close() finally if (!artifacts.retainArtifacts) LpCommandRunner.removeDirectory(directory)
+        } finally LpCommandRunner.discardWorkspace(Some(identities), directory, artifacts.retainArtifacts)
       }
     }
   }

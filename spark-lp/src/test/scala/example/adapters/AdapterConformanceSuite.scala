@@ -140,6 +140,27 @@ class AdapterConformanceSuite extends AnyFunSuite with DataFrameSuiteBase {
     val stopped = model.solve(adapter(LpAdapterResult(LpStatus.Stopped)))
     try assert(!stopped.candidate.available && stopped.objectiveValue.isNaN) finally stopped.close()
   }
+
+  test("required duals cover every constraint") {
+    implicit val ss: SparkSession = spark
+    val model = LpProblem("partial duals")
+    val x = model.variable("x", lowerBound = -1.0, upperBound = Some(1.0))
+    model += x
+    model += (x >= -1.0).named("lower")
+    model += (x <= 1.0).named("upper")
+    val values = Some(model.candidateValues(Seq(x -> 0.0)))
+    val oneDual = Some(sc.parallelize(Seq(model.inspect.constraints.first().id -> 0.0)))
+    val adapter = new LpSolverAdapter {
+      override val name = "partial-dual-fixture"
+      override val capabilities = LpSolverCapabilities(duals = true)
+      override def prepare(view: LpModelView, options: LpAdapterOptions): LpAdapterSession = new LpAdapterSession {
+        override def solve(): LpAdapterResult = LpAdapterResult(LpStatus.Optimal, values, rowDuals = oneDual)
+        override def close(): Unit = ()
+      }
+    }
+
+    intercept[LpModelException](model.solve(adapter, LpAdapterOptions(requireDuals = true)))
+  }
   private var closedCount = 0
 
   test("CLI failure, missing executable, malformed output, timeout, cancellation and retained artifacts") {

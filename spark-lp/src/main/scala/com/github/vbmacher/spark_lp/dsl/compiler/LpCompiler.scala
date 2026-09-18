@@ -170,7 +170,6 @@ private[dsl] final class LpCompiler(problem: LpProblem, config: SolveConfig) ext
     preparedStart = config.start.map(LpStartProcessing.prepare(problem, _, CandidateValidationConfig(
       tolerance = config.tolerance, integralityTolerance = config.mip.integralityTolerance,
       relaxIntegrality = config.relaxIntegrality, sosZeroTolerance = config.mip.sosZeroTolerance)))
-    if (problem.quadratic.nonEmpty) unusedStart("Built-in user starts currently support LP and MIP objectives")
     inferIntegerBounds().foreach(reason => return infeasibleFromBounds(reason))
     val compiled = compile()
     if (compiled.direct.nonEmpty || compiled.numCols == 0) unusedStart("Analytical solve does not use an iterative initialization")
@@ -1550,7 +1549,7 @@ private[dsl] final class LpCompiler(problem: LpProblem, config: SolveConfig) ext
       caches.keep(result)
     }
 
-    val publicValues = if (problem.sosGroups.isEmpty) userValues else {
+    val publicValues = if (compiled.plans.size == problem.handles.size) userValues else {
       val limit = problem.handles.size
       val visible = caches.checkpoint(userValues.filter(_._1._1 < limit))
       visible.count(); visible

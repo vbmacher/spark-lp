@@ -326,6 +326,32 @@ explicit error. An available stopped or infeasible iterate can be evaluated for 
 not a feasibility or optimality claim. Complete evaluation before closing the solution. Variables declared
 after the solve have no values in the retained assignment.
 
+=== Final solve timings
+
+Every returned `LpSolution` exposes `timings: LpSolveTimings`. All values are fractional seconds sampled
+from monotonic nanosecond readings; the effective precision remains that of the JVM and operating system.
+
+[cols="1,3",options="header"]
+|===
+|Field |Scope
+|`compilationWallSeconds` |Start preparation, validation, bound inference, presolve and DSL/backend compilation.
+|`numericalSolveWallSeconds` |The continuous numerical solve or the whole branch-and-bound search. MIP node durations are not summed.
+|`resultReconstructionWallSeconds` |Status/evidence assembly, original-coordinate reconstruction and the existing result-materialisation actions.
+|`totalWallSeconds` |The contiguous interval from solve entry through the fully materialised returned result; it is the sum of the three wall phases apart from clock precision.
+|`driverProcessCpuSeconds` |Optional JVM driver-process CPU over the same total interval. It includes concurrent driver threads and excludes executor and cluster CPU.
+|===
+
+Analytical and presolve-only results report zero numerical-solve time. Intentionally stopped continuous
+and MIP solves retain timings like any other returned result. Reused native sessions do not reattribute
+their earlier preparation to each solve. CPU time is `None` when the JVM cannot provide it; it must never be
+reported as total Spark or cluster CPU. Failures that throw instead of returning an `LpSolution` have no
+timing result.
+
+Timing reads are driver-local and add no Spark actions. The reconstruction phase includes actions already
+required to detach and validate the result, but later caller-triggered actions such as `value`, `values`,
+`evaluate`, persistence and output are excluded. Deadline clocks and their documented boundaries are
+unchanged.
+
 === Progress and cooperative stopping (continuous models)
 
 [source,scala]

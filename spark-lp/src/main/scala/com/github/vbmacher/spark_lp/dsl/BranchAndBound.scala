@@ -583,6 +583,7 @@ private[dsl] final class BranchAndBound(
   }
 
   private def assemble(searchComplete: Boolean): LpSolution = {
+    compiler.startReconstruction()
     unboundedProof match {
       case Some(proof) =>
         compiler.buildSolution(

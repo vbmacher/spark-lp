@@ -206,8 +206,12 @@ final class LpProblem private[dsl](
     * raise [[LpNumericalException]].
     */
   def solve(config: SolveConfig = SolveConfig()): LpSolution = {
+    solve(config, LpSolveClock.system)
+  }
+
+  private[dsl] def solve(config: SolveConfig, clock: LpSolveClock): LpSolution = {
     synchronized { activeSolves += 1 }
-    try new LpCompiler(this, config).solve()
+    try new LpCompiler(this, config, clock).solve()
     finally synchronized { activeSolves -= 1 }
   }
 

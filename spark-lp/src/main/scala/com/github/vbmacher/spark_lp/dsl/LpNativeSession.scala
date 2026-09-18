@@ -56,7 +56,12 @@ final class LpNativeSession private[dsl](problem: LpProblem, adapter: LpSolverAd
   def solve(): LpSolution = {
     check(); invalidate(); busy = true
     try {
-      val result = LpAdapterSolve.normalize(problem, adapter, options, prepared.solve())
+      val timing = new LpSolveTiming(LpSolveClock.system)
+      timing.start()
+      timing.startNumericalSolve()
+      val raw = prepared.solve()
+      timing.startReconstruction()
+      val result = LpAdapterSolve.normalize(problem, adapter, options, raw, timing)
       current = Some(result); results += result; result
     } catch {
       case scala.util.control.NonFatal(e) =>

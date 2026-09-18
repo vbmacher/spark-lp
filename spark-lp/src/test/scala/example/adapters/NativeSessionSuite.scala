@@ -148,4 +148,38 @@ class NativeSessionSuite extends AnyFunSuite with DataFrameSuiteBase {
     assert(noOperations.readSolution(java.nio.file.Paths.get("unused")).isLeft)
     assert(noOperations.writeSolution(java.nio.file.Paths.get("unused")).isLeft)
   }
+
+  test("rejected native operations and callbacks preserve the current solution") {
+    implicit val ss: SparkSession = spark
+    val model = LpProblem("native revision fixture")
+    val x = model.variable("x", upperBound = Some(1.0))
+    model += x
+    val access = new LpNativeAccess {
+      override def mapping: LpExportMapping = throw new UnsupportedOperationException
+      override def setParameter(name: String, value: String): Either[LpUnsupported, Unit] =
+        Left(LpUnsupported(name, "unsupported"))
+      override def parameter(name: String): Either[LpUnsupported, String] = Left(LpUnsupported(name, "unsupported"))
+      override def information(name: String): Either[LpUnsupported, String] = Left(LpUnsupported(name, "unsupported"))
+      override def callback(handler: LpNativeEvent => Unit): Either[LpUnsupported, Unit] = Right(())
+    }
+    val adapter = new LpSolverAdapter {
+      override val name = "native-revision-fixture"
+      override val capabilities = LpSolverCapabilities(nativeSession = true)
+      override def prepare(view: LpModelView, options: LpAdapterOptions): LpAdapterSession = new LpAdapterSession {
+        override def solve(): LpAdapterResult =
+          LpAdapterResult(LpStatus.Optimal, Some(model.candidateValues(Seq(x -> 0.0))))
+        override def nativeAccess: Option[LpNativeAccess] = Some(access)
+        override def close(): Unit = ()
+      }
+    }
+    val session = model.prepareNative(adapter).right.get
+    try {
+      val result = session.solve()
+      val revision = session.modelRevision
+      assert(session.setParameter("unsupported", "1").isLeft)
+      assert(session.readSolution(java.nio.file.Paths.get("unused")).isLeft)
+      assert(session.callback(_ => ()).isRight)
+      assert(session.modelRevision == revision && session.isCurrent(result))
+    } finally session.close()
+  }
 }

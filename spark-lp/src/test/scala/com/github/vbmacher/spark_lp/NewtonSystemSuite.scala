@@ -69,6 +69,27 @@ class NewtonSystemSuite extends AnyFunSuite with DataFrameSuiteBase {
     } finally system.release()
   }
 
+  test("CG drops a previous solution when it worsens the next right-hand side residual") {
+    val events = scala.collection.mutable.ArrayBuffer.empty[SolveProgress]
+    val monitor = new SolveMonitor(SolveControl(onProgress = p => events += p))
+    val rows = sc.parallelize(Seq(Vectors.dense(1.0, 2.0),
+      Vectors.dense(2.0, -0.5), Vectors.dense(0.0, 1.0)), 2)
+    val factory = new newton.CgFactory(1e-12, 10,
+      CgConfig(preconditionerRank = 2), monitor)(spark)
+    val system = factory.build(rows, 2, None)
+    try {
+      system.solve(new DenseVector(Array(1e8, -2e8)))
+      events.clear()
+      val rhs = BDV(1e-8, -2e-8)
+      system.solve(new DenseVector(rhs.toArray))
+      val initialResidual = events.collectFirst {
+        case SolveProgress(SolvePhase.InnerSolve, _, _, _, Some(work))
+          if work.completed == 0 && work.trueResidual => work.residual
+      }.flatten
+      assert(initialResidual.exists(value => math.abs(value - norm(rhs)) < 1e-20))
+    } finally system.release()
+  }
+
   test("Auto uses the 10000-row cutoff across the historical boundaries") {
     assert(NewtonSolver.AutoCholeskyLimit == 10000)
     assert(LP.resolveNewtonSolver(NewtonSolver.Auto, 10000) == NewtonSolver.Cholesky)

@@ -1,5 +1,10 @@
 # Coupled QP validation
 
+[All benchmark reports](README.md) · [Study source](quadratic/README.md)
+
+Evidence coverage: **16 Spark attempts and 3 lifted-system cases**.
+
+
 ## Lifted system validation
 
 `strategy.py` uses seed 7000 to validate a matrix-free lifted normal solve against a dense reference formed only for verification.
@@ -7,7 +12,7 @@ For `C=[[A,0,0],[F,-I,I]]`, `W=diag(I,0.5I,0.5I)`, the Schur complement of
 `C W C^T` is `A (I+F^T F)^(-1) A^T`. Eliminating auxiliary dual rows therefore
 matches the coupled Newton reduction without forming/inverting the Hessian in
 production. The validation records show relative dual errors below `8e-12` in 23–63
-diagonally preconditioned CG iterations. `strategy-results.json` contains all three cases, including sparse payload/reference dense memory and timings.
+diagonally preconditioned CG iterations. [`strategy-results.json`](quadratic/strategy-results.json) contains all three cases, including sparse payload/reference dense memory and timings.
 Validation covers the algebra and small-case feasibility; Spark performance requires
 end-to-end measurements.
 
@@ -22,7 +27,7 @@ Both representations minimize `sum((x_i-t_i)^2)`, with exact optimum
 **Status: 16/16 attempts Optimal, zero failures.** Maximum original-value error is
 `6.27e-10`, objective error `6.53e-10`; all normalized primal/stationarity/gap
 residuals are below `1e-8`. Complete attempt records are in
-`comparison.csv`. Repetition zero is retained and includes warmup effects. Repetition-one end-to-end timings:
+[`comparison.csv`](quadratic/comparison.csv). Repetition zero is retained and includes warmup effects. Repetition-one end-to-end timings:
 
 | Variables | Backend | Separable, s | Factors, s |
 |---:|---|---:|---:|
@@ -42,7 +47,7 @@ Large Spark workload crossover is unmeasured.
 ## Conditioning and backend restrictions
 
 Coupled models with free variables require regularized CG; Auto selects it and
-explicit Cholesky is rejected. The [conditioning record](failed-cholesky-free.txt)
+explicit Cholesky is rejected. The [conditioning record](quadratic/failed-cholesky-free.txt)
 documents a Cholesky positive-definiteness failure after 61 completed iterations
 for a transformed free-variable model.
 `CoupledQpSuite` covers off-diagonal PSD, rank-deficient PSD, free/shifted/fixed
@@ -54,7 +59,7 @@ Run from the repository root. The standalone strategy environment uses NumPy 2.3
 and SciPy 1.16.3:
 
 ```sh
-python3 benchmarks/quadratic/strategy.py
+python3 benchmarks/reports/quadratic/strategy.py
 sbt 'spark-lpSpark_3_52_12/testOnly *CoupledQpSuite *QpSuite'
 sbt 'spark-lpSpark_3_52_12/Test/runMain com.github.vbmacher.spark_lp.dsl.QpComparison /tmp/new-qp-comparison.csv'
 ```

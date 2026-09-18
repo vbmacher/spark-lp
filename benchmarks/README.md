@@ -2,10 +2,11 @@
 
 This module measures Cholesky and CG on reproducible linear programs generated with Spark DataFrames. Campaigns are CSV case inventories; all algorithm suites share the same generation, execution and validation code.
 
-- [Benchmark report (charts + tables)](reports/README.md)
+- [Consolidated benchmark reports (charts, tables, and capability studies)](reports/README.md)
 - [Interactive dashboard](reports/index.html)
 - [CG partition performance and recommended settings](reports/README.md#cg-partition-tuning)
-- [AArch64 native netlib package and factorization comparison](native/README.md)
+- [MIP search](reports/mip-search.md), [presolve](reports/presolve.md), [warm starts](reports/warm-starts.md), and [quadratic objectives](reports/quadratic.md)
+- [GPU acceleration status](reports/gpu.md) and [AArch64 native linear algebra](reports/native-aarch64.md)
 - [Bencher data format](#bencher-data-format)
 - [Case inventories](src/main/resources/)
 
@@ -20,7 +21,7 @@ This module measures Cholesky and CG on reproducible linear programs generated w
 | [support/JvmSampler.scala](src/main/scala/com/github/vbmacher/spark_lp/support/JvmSampler.scala), [SolveMeasurements.scala](src/main/scala/com/github/vbmacher/spark_lp/support/SolveMeasurements.scala), [RuntimeEnvironment.scala](src/main/scala/com/github/vbmacher/spark_lp/support/RuntimeEnvironment.scala) | JVM sampling, timing, progress phases, environment capture and watchdog |
 | `src/main/resources/*.csv` | Inputs for local and EMR runs, all one schema |
 | `src/results/data/*.bmf.json` | Bencher metrics per campaign and testbed, with failure and exclusion counts |
-| [`reports/`](reports/README.md) | Generated human report, interactive dashboard and SVG charts |
+| [`reports/`](reports/README.md) | Generated consolidated reports, interactive dashboard and SVG charts |
 | `scripts/` | Campaign launch, artifact analysis, normalization and report generation |
 
 Benchmarks explicitly select Cholesky or CG (not the `Auto` policy) so comparisons identify the algorithm used. Adding an algorithm needs a `Benchmark` implementation and a registry entry; the generator and campaigns stay shared.
@@ -149,7 +150,7 @@ python3 benchmarks/scripts/report.py check
 
 The importer writes self-contained Bencher Metric Format files under `src/results/data/` and refuses an existing campaign ID. Embedded evidence keeps every attempt's dimensions, algorithm/suite, configuration, environment, repetition, status, timing, accuracy, memory observations and source path/hash/line, so the report can preserve partial batches and validate aggregate BMF metrics without a second CSV. Published results omit infrastructure identifiers, provider metadata and storage locations. `check` verifies BMF metrics against captured attempts and the Markdown report against the same bundle.
 
-The report groups only homogeneous cases/configurations, excludes warmups, reports successful solve-time median/range, and shows failure duration where nothing converged; no failure becomes a successful timing. Constant columns move above each table; ID and Env stay explicit. The environment table describes the recorded machine, not the one rendering Markdown. Case inventories in `src/main/resources/` define the inputs; planned cases and missing repetitions are not successful measurements. Separate [QP validation](quadratic/README.md) and [GPU status](gpu/README.md) reports contain their own evidence.
+The report groups only homogeneous cases/configurations, excludes warmups, reports successful solve-time median/range, and shows failure duration where nothing converged; no failure becomes a successful timing. Constant columns move above each table; ID and Env stay explicit. The environment table describes the recorded machine, not the one rendering Markdown. Case inventories in `src/main/resources/` define the inputs; planned cases and missing repetitions are not successful measurements. Separate [QP validation](reports/quadratic.md) and [GPU status](reports/gpu.md) reports contain their own evidence.
 
 ## Bencher data format
 

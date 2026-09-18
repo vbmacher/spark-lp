@@ -157,4 +157,4 @@ spark-warehouse/
 benchmarks/artifacts/
 
 .venv-gpu/
-benchmarks/gpu/results/*/events/
+benchmarks/reports/gpu/results/*/events/

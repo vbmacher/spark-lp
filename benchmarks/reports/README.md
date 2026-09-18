@@ -42,6 +42,19 @@ flowchart LR
 Coverage: 41 campaigns, 167 distinct cases, families degenerate, dense, dependent, well, wide; rows m 100-100,000, variables n up to 100,000,000. Every solve is independently re-validated (primal/dual/gap/objective); timing never includes a failed run.
 
 
+## Capability studies
+
+These focused reports consolidate the benchmark evidence that uses dedicated runners or hardware rather than the shared Cholesky/CG campaign format. Each report keeps its environment, limitations, raw evidence links and reproduction command next to the measured conclusion.
+
+| Study | Status | Evidence | Result | Important limit |
+|---|---|---|---|---|
+| [MIP search](mip-search.md) | Validated locally | 64 samples and 562 progress events | Two-node parallel search was fastest on both control fixtures; enabling every option was slower than baseline. | Small knapsack fixtures do not establish large-MIP scalability. |
+| [Presolve](presolve.md) | Validated locally | 24 independently validated samples | Full presolve removed every solver row and column in two reducible fixtures, but its setup cost exceeded the saved solve time. | Small local fixtures do not establish cluster-scale speedups. |
+| [Warm starts](warm-starts.md) | Validated locally | 16 independently validated samples | The LP start saved one outer iteration but increased elapsed time; the MIP start retained an incumbent without reducing searched nodes. | The measured fixtures show behavior, not a universal speedup. |
+| [Quadratic objectives](quadratic.md) | Validated locally | 16 Spark attempts and 3 lifted-system cases | All Spark attempts were optimal; diagonal curvature favored the separable path, while coupled free-variable models required regularized CG. | Large distributed QP crossover remains unmeasured. |
+| [GPU acceleration](gpu.md) | Production deferred | 4 GPU operator cases and 12 CPU solver attempts | The tested Apple GPU lacked FP64 and FP32 missed the accuracy target, so the CPU implementation remains the supported path. | Other GPU vendors and end-to-end FP64 acceleration remain untested. |
+| [AArch64 native linear algebra](native-aarch64.md) | Validated on one host | 10 factorization configurations and 24 solver records | Native LAPACK made the 5,000-row Cholesky solve 8.58x faster; native BLAS made the tested CG solve 1.53x slower. | Results are specific to the retained AArch64/OpenBLAS environment. |
+
 ## Environment
 
 | ID | Computer | OS | Spark version | Java version | Spark master |

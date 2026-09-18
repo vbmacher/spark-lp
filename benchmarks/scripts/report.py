@@ -650,7 +650,7 @@ def _fold(section_md):
     return (f'<details>\n<summary><b>{heading}</b></summary>\n\n{body}\n\n</details>')
 
 
-def render_report(campaigns, executor_memory=(), media=None):
+def render_report(campaigns, executor_memory=(), media=None, capability_overview=''):
     measured = [r for c in campaigns for r in c['records'] if not r['warmup']]
     warmups = sum(r['warmup'] for c in campaigns for r in c['records'])
     intro = (f'# Benchmarks\n\nCholesky (direct) vs CG (matrix-free) linear-program solvers on '
@@ -660,11 +660,13 @@ def render_report(campaigns, executor_memory=(), media=None):
     if media is not None:
         # Published human report: hero summary, chunked sections, folded appendices.
         report = (intro + '\n' + media['at_a_glance'] + '\n\n' +
+                  capability_overview + '\n\n' +
                   render_tables(campaigns, media['section_media']) + '\n\n' +
                   _fold(PHASE_TIMING_SUMMARY) + '\n\n' + _fold(WIDEST_RUN_TELEMETRY) + '\n\n' +
                   _fold(BACKEND_RECOMMENDATION) + '\n')
     else:
-        report = (intro + '\n' + render_tables(campaigns) + '\n\n' +
+        report = (intro + '\n' + capability_overview + '\n\n' +
+                  render_tables(campaigns) + '\n\n' +
                   PHASE_TIMING_SUMMARY + '\n\n' + WIDEST_RUN_TELEMETRY + '\n\n' +
                   BACKEND_RECOMMENDATION + '\n')
     if executor_memory:
@@ -709,11 +711,16 @@ POINTER_STUB = (
 def artifacts(campaigns, executor_memory=()):
     """Map every generated file to its exact bytes. Single source of truth used by
     both `render` (write) and `check` (byte-compare), so nothing can drift."""
+    import specialized_reports
     import visualize
-    built = visualize.build(campaigns)
+    specialized = specialized_reports.build(ROOT, REPORTS)
+    built = visualize.build(campaigns, specialized['studies'])
     files = {}
-    files[REPORTS / 'README.md'] = render_report(campaigns, executor_memory, media=built)
+    files[REPORTS / 'README.md'] = render_report(
+        campaigns, executor_memory, media=built,
+        capability_overview=specialized['overview'])
     files[REPORTS / 'index.html'] = built['dashboard']
+    files.update(specialized['files'])
     for rel, svg in built['charts'].items():
         files[REPORTS / rel] = svg
     files[LEGACY_REPORT] = POINTER_STUB
@@ -871,7 +878,9 @@ def main():
         campaigns, executor_memory = read_bundle(args.data)
         outputs = artifacts(campaigns, executor_memory)
         expected = set(outputs)
-        orphans = sorted(p for p in REPORTS.rglob('*') if p.is_file() and p not in expected)
+        managed = [p for p in REPORTS.iterdir() if p.is_file()]
+        managed += [p for p in (REPORTS / 'charts').rglob('*') if p.is_file()]
+        orphans = sorted(p for p in managed if p not in expected)
         if args.command == 'check':
             stale = []
             for path, content in sorted(outputs.items()):

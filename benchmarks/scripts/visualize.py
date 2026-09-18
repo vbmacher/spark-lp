@@ -7,6 +7,7 @@ same normalized ``campaigns`` structure the Markdown tables use, so published
 views can never expose more than the evidence bundle already does.
 """
 import collections
+import html
 import json
 import statistics
 
@@ -208,7 +209,7 @@ def _img(path, alt):
     return f'![{alt}]({path})'
 
 
-def build(campaigns):
+def build(campaigns, studies=()):
     """Return chart files, at-a-glance markdown, per-section media and dashboard."""
     rows = case_summaries(campaigns)
     chart_files, media = {}, {}
@@ -254,7 +255,7 @@ def build(campaigns):
             'charts/family-difficulty.svg', 'CG cost by fixture family',
             _family_takeaways(rows))
 
-    dashboard = build_dashboard(rows)
+    dashboard = build_dashboard(rows, studies)
     return dict(charts=chart_files, at_a_glance=glance, section_media=media,
                 dashboard=dashboard)
 
@@ -377,7 +378,22 @@ def _coverage_mermaid(rows):
 
 # --- Interactive dashboard ------------------------------------------------
 
-def build_dashboard(rows):
+def _study_cards(studies):
+    if not studies:
+        return ''
+    cards = []
+    for study in studies:
+        cards.append(
+            '<a class="study" href="{href}"><span class="study-status">{status}</span>'
+            '<strong>{title}</strong><span>{finding}</span><small>{evidence}</small></a>'.format(
+                **{key: html.escape(str(study[key]), quote=True)
+                   for key in ('href', 'status', 'title', 'finding', 'evidence')}))
+    return ('<section class="study-section"><h2>Capability studies</h2>'
+            '<p>Focused benchmark reports for features and hardware outside the shared LP campaign.</p>'
+            '<div class="study-grid">' + ''.join(cards) + '</div></section>')
+
+
+def build_dashboard(rows, studies=()):
     """Self-contained, offline HTML: embedded JSON + a small vanilla-JS SVG
     renderer with filters. No network, no external libraries, deterministic."""
     records = [dict(section=r['section'], prefix=r['prefix'], campaign=r['campaign'],
@@ -393,7 +409,8 @@ def build_dashboard(rows):
     data = json.dumps(records, sort_keys=True, separators=(',', ':'), allow_nan=False)
     # Keep the embedded literal from prematurely closing the <script> element.
     data = data.replace('<', '\\u003c').replace('>', '\\u003e')
-    return _DASHBOARD_TEMPLATE.replace('/*DATA*/', data)
+    return (_DASHBOARD_TEMPLATE.replace('/*DATA*/', data)
+            .replace('<!--STUDIES-->', _study_cards(studies)))
 
 
 _DASHBOARD_TEMPLATE = r"""<!DOCTYPE html>
@@ -415,6 +432,7 @@ p.sub{margin:4px 0 0;color:var(--muted);font-size:13px}
 .controls label{display:block;font-size:12px;color:var(--muted);margin:12px 0 4px;text-transform:uppercase;letter-spacing:.03em}
 select,.chk{width:100%;font-size:14px;padding:6px 8px;border:1px solid var(--grid);border-radius:6px;background:#fff}
 .chart{flex:1 1 560px;min-width:320px}
+.chart svg{display:block;max-width:100%;height:auto}
 .legend{font-size:12px;margin-top:8px;color:var(--muted)}
 .legend span{display:inline-block;margin-right:14px}
 .legend i{display:inline-block;width:11px;height:11px;border-radius:2px;vertical-align:middle;margin-right:5px}
@@ -423,13 +441,24 @@ select,.chk{width:100%;font-size:14px;padding:6px 8px;border:1px solid var(--gri
 #tip{position:fixed;pointer-events:none;background:#111;color:#fff;font-size:12px;padding:6px 8px;border-radius:6px;opacity:0;transition:opacity .08s;max-width:260px}
 .count{font-size:12px;color:var(--muted);margin-top:10px}
 a{color:#1f77b4}
+.study-section{padding:16px 22px 0}
+.study-section h2{font-size:17px;margin:0 0 4px}
+.study-section>p{font-size:13px;color:var(--muted);margin:0 0 10px}
+.study-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px}
+.study{display:flex;flex-direction:column;gap:5px;background:var(--card);border:1px solid var(--grid);border-radius:10px;padding:12px;text-decoration:none;color:var(--fg)}
+.study:hover{border-color:#9ab9d3}
+.study strong{font-size:14px}
+.study span{font-size:12px;line-height:1.35}
+.study small{color:var(--muted)}
+.study-status{color:#1f77b4;text-transform:uppercase;letter-spacing:.04em;font-size:10px!important}
 </style>
 </head>
 <body>
 <header>
 <h1>spark-lp benchmark dashboard</h1>
-<p class="sub">Cholesky vs CG on Apache Spark linear programs. Data embedded from the committed BMF evidence &mdash; no network. Back to the <a href="README.md">report</a>.</p>
+<p class="sub">LP scaling plus focused solver and hardware studies. Data comes from committed evidence &mdash; no network. Back to the <a href="README.md">report</a>.</p>
 </header>
+<!--STUDIES-->
 <div class="wrap">
   <div class="panel controls">
     <label>Chart</label>

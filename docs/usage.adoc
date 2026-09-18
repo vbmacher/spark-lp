@@ -697,7 +697,7 @@ try println(result.value(amount)) finally result.close() // 12
 
 `solution.presolve` reports original variable/row counts, remaining original variable/row counts, actual solver dimensions, fixed-variable counts, bound-change records and substitution records. Values and constraint activities are reconstructed in original units. Tightened-bound sensitivity and certificate artifacts are unavailable; removed/merged row sensitivity is explicitly nullable. Repeated solves rebuild reductions from the declared model. Fully reduced models return an analytical result. Continuous relaxation skips integer deductions from constraints. Adapter-specific presolve support is part of each adapter's declared capabilities.
 
-The reductions follow standard LP/MIP presolve methods surveyed in https://arxiv.org/abs/2206.10709[PaPILO: A Parallel Presolving Library for Integer and Linear Programming with Multiprecision Support]. Spark LP implements the documented subset; it does not embed PaPILO. The link:../benchmarks/presolve/README.md[presolve benchmark report] records equal-tolerance reduction and overhead measurements.
+The reductions follow standard LP/MIP presolve methods surveyed in https://arxiv.org/abs/2206.10709[PaPILO: A Parallel Presolving Library for Integer and Linear Programming with Multiprecision Support]. Spark LP implements the documented subset; it does not embed PaPILO. The link:../benchmarks/reports/presolve.md[presolve benchmark report] records equal-tolerance reduction and overhead measurements.
 
 == Custom solver adapters
 
@@ -781,7 +781,7 @@ try {
 } finally initial.close()
 ----
 
-See `benchmarks/starts/README.md` for equal-tolerance start/no-start measurements, including snapshot/validation overhead. Warm starts can reduce solver work and can also increase total elapsed time.
+See `benchmarks/reports/warm-starts.md` for equal-tolerance start/no-start measurements, including snapshot/validation overhead. Warm starts can reduce solver work and can also increase total elapsed time.
 
 == MIP search tuning
 
@@ -808,4 +808,4 @@ Strong branching considers up to `maxCandidates` fractional variables and up to 
 
 Warm starts, absolute/relative gaps, `MipControl` deadlines, cancellation and progress remain active in every mode. Global bounds include running nodes, and a stop retains independently feasible incumbents, including a validated start. Cleanup waits for cooperative worker completion. Callbacks run on the driver coordinator; keep them short. Under backpressure, older node-iteration diagnostic events can be coalesced, while incumbent/global-bound updates remain coordinated. Parallel completion order is nondeterministic. Use `MipSearchConfig()` for the serial best-first/most-fractional baseline.
 
-The link:algorithm.adoc[algorithm guide] defines cut validity, bound acceptance and memory estimates. The link:../benchmarks/mip-search/README.md[benchmark report] measures the individual options and all combinations at equal tolerances, including regressions.
+The link:algorithm.adoc[algorithm guide] defines cut validity, bound acceptance and memory estimates. The link:../benchmarks/reports/mip-search.md[benchmark report] measures the individual options and all combinations at equal tolerances, including regressions.

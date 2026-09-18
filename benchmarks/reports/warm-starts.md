@@ -1,8 +1,13 @@
 # Warm-start benchmark
 
+[All benchmark reports](README.md) · [Study source](warm-starts/README.md)
+
+Evidence coverage: **16 independently validated samples**.
+
+
 All 16 samples pass independent original-model validation. The LP start reduces outer iterations from four to three. Its validation and conversion overhead increases total time on this local fixture. The MIP start seeds a feasible incumbent, but does not reduce the 17 searched nodes and adds one relaxation iteration in this knapsack case.
 
-The campaign uses Spark 3.5.3, Scala 2.12.20, Java 11, `local[4]`, four partitions, solver tolerance `1e-8`, and independent validation tolerance `1e-6`. Each case/mode has one excluded warmup and three measured repetitions, with alternating mode order. Runs are isolated from other validation jobs. Total time includes assignment snapshot creation, start validation/conversion, compilation and solving; independent final candidate validation is excluded. [Raw samples](results/records.csv) include warmups; [environment.txt](results/environment.txt) records the runtime.
+The campaign uses Spark 3.5.3, Scala 2.12.20, Java 11, `local[4]`, four partitions, solver tolerance `1e-8`, and independent validation tolerance `1e-6`. Each case/mode has one excluded warmup and three measured repetitions, with alternating mode order. Runs are isolated from other validation jobs. Total time includes assignment snapshot creation, start validation/conversion, compilation and solving; independent final candidate validation is excluded. [Raw samples](warm-starts/results/records.csv) include warmups; [environment.txt](warm-starts/results/environment.txt) records the runtime.
 
 | Case | Mode | Median seconds | Range seconds | Outer iterations | Nodes | Median start validation seconds |
 |---|---|---:|---:|---:|---:|---:|

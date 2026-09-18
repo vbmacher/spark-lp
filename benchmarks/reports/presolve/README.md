@@ -21,4 +21,4 @@ Run from the repository worktree, supplying a new absolute output directory:
 sbt 'benchmarksSpark_3_52_12/Test/runMain com.github.vbmacher.spark_lp.PresolveBenchmark /absolute/new/output'
 ```
 
-The [runner](../src/main/scala/com/github/vbmacher/spark_lp/PresolveBenchmark.scala) defines every fixture and verifies the retained candidate against the original model. No external solver package is required.
+The [runner](../../src/main/scala/com/github/vbmacher/spark_lp/PresolveBenchmark.scala) defines every fixture and verifies the retained candidate against the original model. No external solver package is required.

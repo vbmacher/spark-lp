@@ -274,6 +274,7 @@ object BenchmarkRunner {
       } else diagnostic(Map("java" -> System.getProperty("java.version"), "lapack" -> org.apache.spark.wrappers.NativeNetlib.lapack.getClass.getName))
       val workload = Workloads.open(s, diagnostic)
       try { (0 until s.warmups + s.repetitions).foreach { repetition =>
+        sampler.reset()
         val timer = sampler.watchdog { System.err.println("Benchmark solve timed out") }
         val attempt = try {
           val metrics = workload.measure()

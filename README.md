@@ -74,20 +74,21 @@ import org.apache.spark.sql.SparkSession
 
 implicit val spark: SparkSession = SparkSession.builder()
   .master("local[2]").appName("spark-lp-example").getOrCreate()
+import spark.implicits._
 
 try {
+  val costs = Seq(("x", 2.0), ("y", 1.0)).toDF("id", "cost")
   val model = LpProblem("minimum cost", Minimize)
-  val x = model.variable("x")
-  val y = model.variable("y")
-  model += 2.0 * x + y
-  model += (x + y >= 10.0).named("demand")
+  val amount = model.variables("amount", costs, key = $"id")
+  model += lpSum(amount * $"cost")
+  model += (lpSum(amount) >= 10.0).named("demand")
 
   val result = model.solve()
   try {
     if (result.status == LpStatus.Optimal) {
       println(result.objectiveValue) // approximately 10.0
-      println(result.value(x))       // approximately 0.0
-      println(result.value(y))       // approximately 10.0
+      result.values(amount).orderBy("id").show(truncate = false)
+      // x is approximately 0.0; y is approximately 10.0
     }
   } finally result.close()
 } finally spark.stop()
@@ -99,18 +100,31 @@ objectives with `amount.sum(col("cost"))`. Typed datasets use `variablesOf` and
 
 ## Quadratic objectives
 
-Separable weighted deviations use the same model:
+Existing typed data can also supply distributed quadratic and linear coefficients:
 
 ```scala
+import com.github.vbmacher.spark_lp.dsl._
+import com.github.vbmacher.spark_lp.dsl.implicits._
+
+final case class QuadraticTerm(id: String, curvature: Double, linear: Double)
+
+import spark.implicits._
+val terms = Seq(
+  QuadraticTerm("a", curvature = 2.0, linear = -4.0),
+  QuadraticTerm("b", curvature = 4.0, linear = -12.0)
+).toDS()
+
 val model = LpProblem("weighted fit")
-val x = model.variable("x")
-val y = model.variable("y")
-model += QpObjective.squaredDeviation(x, target = 2.0) +
-         QpObjective.squaredDeviation(y, target = 4.0, weight = 2.0)
-model += (x + y === 3.0).named("total")
+val value = model.variablesOf("value", terms, (term: QuadraticTerm) => term.id)
+model += QpObjective.separable(
+  value.weightedBy(terms)(_.curvature),
+  value.weightedBy(terms)(_.linear))
 
 val result = model.solve()
-try println(result.objectiveValue) finally result.close() // approximately 6.0
+try {
+  result.values(value).orderBy("id").show(truncate = false)
+  // a is approximately 2.0; b is approximately 3.0
+} finally result.close()
 ```
 
 `QpObjective.separable(diagonal, linear)` expresses `0.5 * sum(q_i*x_i^2) + c^T*x + k`.
@@ -162,7 +176,7 @@ history, including separate EMR comparisons. Run a small suite locally:
 ./benchmarks/bench run --suite smoke --output benchmarks/output/smoke.bmf.json
 ```
 
-[Run or extend suites](benchmarks/README.md) · [Methodology and metrics](docs/benchmarks.md).
+[Run or extend suites](benchmarks/README.md) · [Methodology and metrics](docs/benchmarks.adoc).
 
 ## Research references
 

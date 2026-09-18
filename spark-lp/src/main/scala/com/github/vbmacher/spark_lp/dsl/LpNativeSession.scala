@@ -40,14 +40,22 @@ final class LpNativeSession private[dsl](problem: LpProblem, adapter: LpSolverAd
   def latestSolution: Option[LpSolution] = { check(); current }
   def isCurrent(solution: LpSolution): Boolean = { check(); current.exists(_ eq solution) }
   def setParameter(name: String, value: String): Either[LpUnsupported, Unit] = {
-    check(); invalidate(); access.setParameter(name, value)
+    check()
+    val result = access.setParameter(name, value)
+    if (result.isRight) invalidate()
+    result
   }
   def parameter(name: String): Either[LpUnsupported, String] = { check(); access.parameter(name) }
   def information(name: String): Either[LpUnsupported, String] = { check(); access.information(name) }
   def callback(handler: LpNativeEvent => Unit): Either[LpUnsupported, Unit] = {
-    check(); invalidate(); access.callback(handler)
+    check(); access.callback(handler)
   }
-  def readSolution(path: Path): Either[LpUnsupported, Unit] = { check(); invalidate(); access.readSolution(path) }
+  def readSolution(path: Path): Either[LpUnsupported, Unit] = {
+    check()
+    val result = access.readSolution(path)
+    if (result.isRight) invalidate()
+    result
+  }
   def writeSolution(path: Path): Either[LpUnsupported, Unit] = {
     check()
     if (current.isEmpty) throw new IllegalStateException("Solve the current native session before writing its solution")

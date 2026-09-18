@@ -61,16 +61,14 @@ private[dsl] object LpStartProcessing {
     val config = start.config
     val joined = variables.join(source)
     val outside = joined.filter { case (_, (v, x)) =>
-      val lower = if (v.category == Binary) math.max(0.0, v.lower) else v.lower
-      val upper = if (v.category == Binary) math.min(1.0, v.upper.getOrElse(1.0)) else v.upper.getOrElse(Double.PositiveInfinity)
+      val (lower, upper) = VariableCategory.domainBoundsFinite(v.category, v.lower, v.upper)
       x < lower || x > upper
     }.take(1).nonEmpty
     val rejected = invalid.orElse(if (missing && !config.allowPartial) Some("full start is missing variable assignments") else None)
       .orElse(if (outside && (!config.repairBounds || config.requireFeasible)) Some("start violates variable bounds") else None)
     val normalized = if (rejected.nonEmpty) problem.spark.sparkContext.emptyRDD[((Int, String), Double)]
       else joined.map { case (id, (v, x)) =>
-        val lower = if (v.category == Binary) math.max(0.0, v.lower) else v.lower
-        val upper = if (v.category == Binary) math.min(1.0, v.upper.getOrElse(1.0)) else v.upper.getOrElse(Double.PositiveInfinity)
+        val (lower, upper) = VariableCategory.domainBoundsFinite(v.category, v.lower, v.upper)
         val clipped = math.max(lower, math.min(upper, x))
         val rounded = if (!validation.relaxIntegrality && v.category != Continuous &&
           math.abs(clipped - math.rint(clipped)) <= validation.integralityTolerance) math.rint(clipped) else clipped

@@ -21,8 +21,7 @@ private[dsl] object LpVariableEditing {
       throw new LpModelException("The upper bound must be finite when defined")
     if (bounds.upper.exists(_ < lo))
       throw new LpModelException("lowerBound must not exceed upperBound")
-    val lower = if (category == Binary) math.max(0.0, lo) else lo
-    val upper = if (category == Binary) math.min(1.0, bounds.upper.getOrElse(1.0)) else bounds.upper.getOrElse(Double.PositiveInfinity)
+    val (lower, upper) = VariableCategory.domainBoundsFinite(category, lo, bounds.upper)
     if (category != Continuous && math.ceil(lower) > math.floor(upper))
       throw new LpModelException("Bounds contain no integral values in the variable's integer/binary domain")
   }

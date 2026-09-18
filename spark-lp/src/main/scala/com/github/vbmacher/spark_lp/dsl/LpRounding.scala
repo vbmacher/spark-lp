@@ -13,10 +13,9 @@ final case class LpRounding(integerTolerance: Double = 1e-6, boundTolerance: Dou
                          lower: Double, upper: Option[Double]): Double = {
     if (value.isNaN || value.isInfinite) value
     else {
-      val lo = if (category == Continuous) lower
-        else math.ceil(if (category == Binary) math.max(0.0, lower) else lower)
-      val hi = if (category == Continuous) upper
-        else (if (category == Binary) Some(math.min(1.0, upper.getOrElse(1.0))) else upper).map(math.floor)
+      val (clampedLower, clampedUpper) = VariableCategory.domainBounds(category, lower, upper)
+      val lo = if (category == Continuous) lower else math.ceil(clampedLower)
+      val hi = if (category == Continuous) upper else clampedUpper.map(math.floor)
       val integer = if (category != Continuous && math.abs(value - math.rint(value)) <= integerTolerance)
         math.rint(value) else value
       val nearby = (if (lo.isNegInfinity) Vector.empty else Vector(lo)) ++ hi.toVector

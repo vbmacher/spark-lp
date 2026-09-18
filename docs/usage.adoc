@@ -16,7 +16,8 @@ interchange and tuning.
 == A quick example
 
 Each ingredient gets a nonnegative variable. Minimize the cost of a 100-gram blend subject to protein,
-fat, fibre and salt requirements. Runnable source is in the link:../examples/src/main/scala/com/github/vbmacher/spark_lp/examples/[examples module],
+fat, fibre and salt requirements. Runnable source is in the
+https://github.com/vbmacher/spark-lp/tree/master/examples/src/main/scala/com/github/vbmacher/spark_lp/examples[examples module],
 with the other PuLP case studies and the MPS importer.
 
 [source,scala]
@@ -24,7 +25,7 @@ with the other PuLP case studies and the MPS importer.
 include::../examples/src/main/scala/com/github/vbmacher/spark_lp/examples/ExampleWhiskas.scala[]
 ----
 
-[mermaid]
+[source,mermaid]
 ----
 flowchart LR
   O["Ingredients: cost and nutrients"] --> V["Grams of each ingredient"]
@@ -183,7 +184,7 @@ try println(result.value(x)) finally result.close()
 
 Combine sparse factors into one objective before adding it, e.g.
 `model += QpObjective.squared(x + 2.0 * y - 5.0) + QpObjective.squared(x - y - 1.0)`. See
-link:algorithm.adoc#_convex_quadratic_objectives[the QP guide] for representations, transformations and
+xref:algorithm.adoc#_convex_quadratic_objectives[the QP guide] for representations, transformations and
 limits.
 
 === Special ordered sets
@@ -290,7 +291,7 @@ policy; `close()` releases cached blocks, not the directory — write important 
 first. Keep input sources stable during solving and result joins; a later `solve()` reads them again, so
 cache or snapshot yourself if source contents must stay consistent.
 
-See link:algorithm.adoc[how the solver works] for the equality-form compilation, interior-point
+See xref:algorithm.adoc[how the solver works] for the equality-form compilation, interior-point
 iterations, Newton backends and scaling limits.
 
 === Solve evidence and certificates
@@ -299,7 +300,7 @@ iterations, Newton backends and scaling limits.
 including a feasible point when available. `proof.verify(tolerance)` checks an independent
 coefficient/bound snapshot, including zero curvature for QP rays; missing or tolerance-sensitive evidence
 is explicit, and coupled objectives expose the equivalent factor-expanded model. See
-link:algorithm.adoc#_verifying_solve_evidence[certificate verification] for signs, normalization and
+xref:algorithm.adoc#_verifying_solve_evidence[certificate verification] for signs, normalization and
 ownership.
 
 [source,scala]
@@ -402,7 +403,7 @@ completed iteration, `candidate.available=false`, objective/residuals/activities
 `value`/`values` throw — never publish those as feasible output. These controls are rejected for integer
 models; branch-and-bound stopping is separate.
 
-The link:algorithm.adoc#_opt_in_progress_policy[opt-in progress policy] describes how stagnation windows
+The xref:algorithm.adoc#_opt_in_progress_policy[opt-in progress policy] describes how stagnation windows
 compare successive iterates for both backends.
 
 == Solve-time controls and tuning
@@ -515,7 +516,7 @@ try {
 } finally initial.close()
 ----
 
-See link:benchmarks.adoc[benchmark methodology] for equal-tolerance start/no-start comparisons, including
+See xref:benchmarks.adoc[benchmark methodology] for equal-tolerance start/no-start comparisons, including
 snapshot/validation overhead. Warm starts can reduce solver work and can also increase total elapsed time.
 
 === MIP progress and cooperative stopping
@@ -582,8 +583,8 @@ coordinator; keep them short. Under backpressure, older node-iteration diagnosti
 while incumbent/global-bound updates stay coordinated. Parallel completion order is nondeterministic. Use
 `MipSearchConfig()` for the serial best-first/most-fractional baseline.
 
-The link:algorithm.adoc[algorithm guide] defines cut validity, bound acceptance and memory estimates. The
-link:benchmarks.adoc[benchmark methodology] defines comparisons of individual options and all
+The xref:algorithm.adoc[algorithm guide] defines cut validity, bound acceptance and memory estimates. The
+xref:benchmarks.adoc[benchmark methodology] defines comparisons of individual options and all
 combinations at equal tolerances.
 
 === Presolve and reconstruction
@@ -613,7 +614,7 @@ from constraints. Adapter-specific presolve support is part of each adapter's de
 The reductions follow standard LP/MIP presolve methods surveyed in
 https://arxiv.org/abs/2206.10709[PaPILO: A Parallel Presolving Library for Integer and Linear Programming
 with Multiprecision Support]. Spark LP implements the documented subset; it does not embed PaPILO. The
-link:benchmarks.adoc[benchmark methodology] defines equal-tolerance reduction and overhead measurements.
+xref:benchmarks.adoc[benchmark methodology] defines equal-tolerance reduction and overhead measurements.
 
 === Integer bounds inferred from constraints
 

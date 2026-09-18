@@ -55,8 +55,7 @@ private[dsl] object LpSos extends Serializable {
         constraints += Left(expression.compare(sense, rhs).withName(s"__sos_${gi}_$suffix"))
       add(selectors.foldLeft(LpExpr.zero)((sum, h) => sum.plus(h.toExpr(1.0))), LpSense.Le, 1.0, "selection")
       group.members.zipWithIndex.foreach { case ((v, _), i) =>
-        val lower = if (v.handle.category == Binary) math.max(0.0, v.lowerBound) else v.lowerBound
-        val upper = if (v.handle.category == Binary) Some(math.min(1.0, v.upperBound.getOrElse(1.0))) else v.upperBound
+        val (lower, upper) = VariableCategory.domainBounds(v.handle.category, v.lowerBound, v.upperBound)
         if (!java.lang.Double.isFinite(lower) || upper.isEmpty || !java.lang.Double.isFinite(upper.get))
           throw new LpModelException(s"SOS '${group.name}' requires finite declared bounds for member '${v.name}'")
         val active = if (group.kind == SosKind.Sos1) selectors(i).toExpr(1.0)

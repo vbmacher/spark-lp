@@ -5,45 +5,62 @@
 [![License: Apache 2.0](https://img.shields.io/badge/license-Apache%202.0-blue)](LICENSE)
 
 Linear, mixed-integer linear, and continuous convex quadratic programming over
-Apache Spark data. Version **2.0.0** provides a sparse modeling compiler, a
-predictor-corrector interior-point solver ([Mehrotra][mehrotra]), and branch-and-bound
-for integer variables.
+Apache Spark. Version **2.0.0** provides a sparse modeling compiler, a
+predictor-corrector interior-point solver ([Mehrotra][mehrotra]), and
+[branch-and-bound][landdoig] for integer variables.
 
 ## Features
 
-- **LP & MILP** — [interior-point solving][mehrotra], feasibility models, rowless models, continuous/integer/binary domains.
+- **LP & MILP** — [interior-point solving][mehrotra], feasibility/rowless models, continuous/integer/binary domains.
 - **Convex QP** — [separable quadratics][gondzio], coupled PSD factors, weighted least squares.
-- **MIP search** — branch-and-bound, SOS1/SOS2, cover cuts, strong branching, parallel nodes, continuous relaxation.
-- **Scala & Spark DSL** — DataFrames, typed Datasets, keyed lookup, local dictionaries/matrices, grouped constraints, dot products, scalar division, combinatorics.
-- **Editable models** — coefficient/RHS updates, bounds, fixing/unfixing, renaming, independent copies, prioritized objectives.
-- **Sparse compilation & presolve** — distributed coefficients, fixed/free/upper-only variables, inferred integer bounds, propagation, substitution, original-coordinate reconstruction.
-- **Matrix-free solving** — [regularized CG, adaptive preconditioning][gondzio], automatic Cholesky/CG selection, LP warm starts, MIP starts.
-- **Runtime controls** — progress callbacks, deadlines, cancellation, stagnation detection, absolute/relative MIP gaps.
-- **Solution analysis** — expression evaluation, explicit rounding, independent candidate validation, slack, residuals, dual prices, reduced costs.
-- **Model interchange** — LP export, MPS import/export, portable JSON, structured serialization, algebra printing, distributed introspection.
-- **Solver extensions** — custom adapters, optional HiGHS native sessions, parameters, callbacks, solution files, managed resources.
-- **Verifiable evidence** — infeasibility certificates, unbounded rays, independent numerical checks, CPU/QP/MIP benchmarks, experimental GPU investigation.
+- **MIP search** — [branch-and-bound][landdoig], SOS1/SOS2, cover cuts, strong branching, parallel nodes.
+- **Scala & Spark DSL** — DataFrames, typed Datasets, grouped constraints, dot products, combinatorics.
+- **Editable models** — coefficient/RHS/bound updates, fixing, renaming, copies, prioritized objectives.
+- **Sparse compilation & presolve** — distributed coefficients, propagation, substitution, original-coordinate reconstruction.
+- **Matrix-free solving** — [regularized CG, adaptive preconditioning][gondzio], automatic Cholesky/CG selection, warm starts.
+- **Runtime controls** — progress callbacks, deadlines, cancellation, stagnation detection, MIP gaps.
+- **Solution analysis & interchange** — slack, residuals, dual prices, reduced costs; LP/MPS/JSON import/export.
+- **Solver extensions** — custom adapters, optional HiGHS native sessions, infeasibility/unbounded certificates.
 
-## Build and use 2.0.0
+## Usage
 
-Use **JDK 11** and **Scala 2.12**; Spark is provided by the application. The
-release builds seven Spark variants (**2.4.8, 3.0.2, 3.1.3, 3.2.4, 3.3.2, 3.4.2,
-3.5.3**) with artifact versions `<spark-version>_<library-version>`.
+Requires **JDK 11** and **Scala 2.12**; Spark is provided by your application.
+Artifacts are published for seven Spark variants (**2.4.8, 3.0.2, 3.1.3, 3.2.4,
+3.3.2, 3.4.2, 3.5.3**), each versioned `<spark-version>_<library-version>`.
 
-Build the Spark 3.5.3 artifact locally, then depend on it:
-
-```sh
-sbt 'spark-lpSpark_3_52_12/publishLocal'
-```
+Add the coordinate matching your Spark runtime — for example Spark 3.5.3 with
+library 2.0.0:
 
 ```scala
 libraryDependencies += "com.github.vbmacher" %% "spark-lp" % "3.5.3_2.0.0"
 ```
 
-These coordinates describe the 2.0.0 build; `publishLocal` makes it available on
-this machine. For remote installation, choose a published version matching your
-Spark runtime. Native BLAS/LAPACK can accelerate CPU linear algebra; a Java fallback
-is available.
+Native BLAS/LAPACK can accelerate CPU linear algebra; a Java fallback is available.
+
+## Build and publish
+
+Each Spark variant is a separate sbt module named
+`spark-lpSpark_<major>_<minor>2_12` (Scala 2.12) — e.g. `spark-lpSpark_3_52_12`
+for Spark 3.5. The library version is `productVersion` in `build.sbt`.
+
+Publish one variant to the local Ivy repository, then depend on it as above:
+
+```sh
+sbt 'spark-lpSpark_3_52_12/publishLocal'
+```
+
+Publish every variant locally (the root project aggregates all modules):
+
+```sh
+sbt publishLocal
+```
+
+Publish to Maven Central (needs Sonatype credentials in `~/.sbt/sonatype.sbt`
+and a PGP signing key):
+
+```sh
+sbt publishSigned sonatypeBundleRelease
+```
 
 ## Linear programming example
 
@@ -96,68 +113,34 @@ try println(result.objectiveValue) finally result.close() // approximately 6.0
 ```
 
 `QpObjective.separable(diagonal, linear)` expresses `0.5 * sum(q_i*x_i^2) + c^T*x + k`.
-For sparse cross-variable terms, use factors (weights guarantee convexity
-structurally; negate a convex objective for concave maximization):
+For sparse cross-variable terms, use `QpObjective.squared(...)` factors; factor
+weights guarantee convexity structurally, and negating a convex objective yields
+concave maximization. The [QP guide](docs/algorithm.adoc#_convex_quadratic_objectives) covers
+representations, backend requirements and numerical checks.
 
-```scala
-model.setObjective(
-  QpObjective.squared(x + 2.0 * y - 5.0) +
-  QpObjective.squared(x - y - 1.0))
-```
+## Limits
 
-Factor weights guarantee convexity structurally. Negate a convex objective for a
-concave maximization problem. The [QP guide](docs/quadratic-programming.md) explains
-representations, transformations, backend requirements and numerical checks.
-
-## Evidence, progress and limits
-
-`result.evidence` is optional. `proof.verify(tolerance)` independently checks its
-snapshot's coefficients, bounds, normalization and, for QP directions, curvature.
-An unboundedness proof needs a feasible point as well as an improving direction;
-missing evidence remains explicit. See [certificate verification](docs/certificates.md).
-
-Use `SolveConfig(control = SolveControl(...))` for progress callbacks, cooperative
-time limits, cancellation and opt-in stagnation detection. Before consuming a
-limited result, inspect `status`, `candidate.available`, `candidate.feasible` and
-`stopReason`. Complete Spark actions before closing the result. See
-[progress and result handling](docs/usage.adoc). MIP search uses
-`SolveConfig(mip = MipConfig(control = MipControl(...)))` for its global progress
-and deadline controls; `MipConfig.search` configures cuts, probing and concurrency.
-
-- Quadratic objectives support **continuous variables and linear constraints**.
-  Mixed-integer QP, nonconvex objectives and quadratic constraints are unsupported.
-- Coupled Hessians are supplied as **PSD factors**, not arbitrary unverified matrix
-  entries. Separable QP rejects curved free variables. Coupled QP supports them
-  through factor lifting and uses regularized CG; explicit Cholesky is rejected
-  when a coupled model contains free variables.
-- Cholesky stores its normal matrix on the driver; CG avoids that matrix but still
-  keeps constraint metadata and iteration vectors there. Factor lifting adds rows
-  and columns. `Auto` normally uses Cholesky through 10,000 equality-form rows,
-  subject to `maxLocalConstraints`; this is a heuristic, not a universal crossover.
-- Integer search uses a driver coordinator with optional bounded concurrent LP nodes.
-  It can grow exponentially; cuts, probing and parallelism can increase time and memory.
-  Numerical tolerances and iteration/node limits do not guarantee a solution to every model.
-- SOS groups require finite declared member bounds. Integer domains that remain unbounded
-  after supported inference are rejected when the built-in search cannot handle them.
-  Dual prices and reduced costs are optional and unavailable for unsupported result paths.
-- External adapters declare their own capabilities. The optional HiGHS bridge runs a
-  bounded local Python process; it does not make HiGHS a distributed solver.
-- **Production GPU acceleration is not included.** The optional OpenCL prototype
-  has no hardware FP64 support on the documented Apple GPU configuration; FP32
-  results exceed the accuracy target. The [GPU report](benchmarks/reports/gpu.md) describes the validation
-  status and a proposed multi-vendor approach with optional backends and CPU
-  fallback. This local result does not rule out other GPUs; ND4J, CUDA and OpenCL
-  are not core dependencies.
+- QP supports **continuous variables and linear constraints** only; mixed-integer QP,
+  nonconvex objectives and quadratic constraints are unsupported. Coupled Hessians are
+  supplied as **PSD factors**, not arbitrary matrix entries.
+- `Auto` normally uses Cholesky through ~10,000 equality-form rows (subject to
+  `maxLocalConstraints`); it stores its normal matrix on the driver. CG avoids that
+  matrix. This crossover is a heuristic, not universal.
+- Integer search can grow exponentially; cuts, probing and parallelism can increase
+  time and memory. Tolerances and node limits do not guarantee a solution for every model.
+- The optional HiGHS bridge runs a bounded local Python process; it is not a
+  distributed solver.
+- **Production GPU acceleration is not included.** The OpenCL prototype lacks hardware
+  FP64 on the documented Apple GPU; see the [GPU report](benchmarks/reports/gpu.md).
 
 ## Documentation and validation
 
 - [Usage, installation and API vocabulary](docs/usage.adoc)
-- [Algorithm, backend selection, scaling limits and certificate verification](docs/algorithm.adoc)
-- [Runnable examples](examples/README.md)
-- [CPU benchmarks](benchmarks/README.md), [QP comparisons](benchmarks/reports/quadratic.md)
-  and [GPU investigation](benchmarks/reports/gpu.md)
-- [Presolve](benchmarks/reports/presolve.md), [warm starts](benchmarks/reports/warm-starts.md)
-  and [MIP search](benchmarks/reports/mip-search.md) benchmarks
+- [Algorithm, backend selection, scaling and certificate verification](docs/algorithm.adoc)
+- [Runnable examples](examples/src/main/scala/com/github/vbmacher/spark_lp/examples/)
+- [CPU benchmarks](benchmarks/README.md), [QP comparisons](benchmarks/reports/quadratic.md),
+  [presolve](benchmarks/reports/presolve.md), [warm starts](benchmarks/reports/warm-starts.md),
+  [MIP search](benchmarks/reports/mip-search.md) and [GPU investigation](benchmarks/reports/gpu.md)
 
 Run the supported Spark matrix with `sbt +test`, or Spark 3.5 only:
 
@@ -165,18 +148,13 @@ Run the supported Spark matrix with `sbt +test`, or Spark 3.5 only:
 sbt 'spark-lpSpark_3_52_12/test' 'examplesSpark_3_5/compile'
 ```
 
-Tests cover LP/MIP behavior, both Newton backends, independently checked QP
-solutions and KKT witnesses, transformed variables, certificate verification,
-progress/stopping, model edits and interchange, custom/native adapters, starts,
-presolve, cut validity, parallel search and resource cleanup. Benchmarks retain failed
-attempts as well as successful results; timing alone is not evidence of equal numerical accuracy.
-
 ## Research references
 
 - **Predictor-corrector method:** Mehrotra (1992), [On the Implementation of a Primal-Dual Interior Point Method][mehrotra].
 - **LP Newton equations:** Cui, Morikuni, Tsuchiya and Hayami (2019), [Interior-point methods for LP based on Krylov subspace iterative solvers][cui], §2.1.
-- **Matrix-free regularization, preconditioning and QP equations:** Gondzio (2010, revised technical report), [Matrix-Free Interior Point Method][gondzio], §§2–6.
+- **Matrix-free regularization, preconditioning and QP equations:** Gondzio (2010), [Matrix-Free Interior Point Method][gondzio], §§2–6.
 - **Integer optimization and cover cuts:** Nemhauser and Wolsey, [Integer and Combinatorial Optimization][integer], and [Knapsack Cover Inequalities][covers].
+- **Branch-and-bound:** Land and Doig (1960), [An Automatic Method of Solving Discrete Programming Problems][landdoig].
 - **Presolve:** [PaPILO: A Parallel Presolving Library for Integer and Linear Programming with Multiprecision Support][papilo].
 - **Strong branching:** [SCIP full strong branching documentation][strong].
 
@@ -189,5 +167,6 @@ and his thesis, [Distributed linear programming with Apache Spark](https://open.
 [gondzio]: https://webhomes.maths.ed.ac.uk/~jgondzio/reports/mtxFree.pdf
 [integer]: https://onlinelibrary.wiley.com/doi/book/10.1002/9781118627372
 [covers]: https://onlinelibrary.wiley.com/doi/abs/10.1002/9780470400531.eorms0204
+[landdoig]: https://doi.org/10.2307/1910129
 [papilo]: https://arxiv.org/abs/2206.10709
 [strong]: https://scipopt.org/doc/html/branch__fullstrong_8c.php

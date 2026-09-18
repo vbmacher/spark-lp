@@ -64,6 +64,7 @@ jobs:
       BENCHER_HASH: ${{ github.sha }}
       BENCHMARK_SUITE: ${{ inputs.suite || 'scaling' }}
       BENCHMARK_OUTPUT: benchmarks/output/ci.bmf.json
+      BENCHMARK_EXIT: benchmarks/output/ci.exit
     steps:
       - uses: actions/checkout@v4
         with:
@@ -101,10 +102,12 @@ jobs:
             export BENCHMARK_JAR="${jars[0]}"
             command+=' --jar "$BENCHMARK_JAR"'
           fi
+          command+='; status=$?; printf "%s\n" "$status" > "$BENCHMARK_EXIT"; exit "$status"'
           ./benchmarks/bench bencher run --project "$BENCHER_PROJECT" --branch "$BENCHER_BRANCH" --hash "$BENCHER_HASH" \
-            "${baseline[@]}" --adapter json --file "$BENCHMARK_OUTPUT" \
-            --threshold-measure latency --threshold-test t_test --threshold-min-sample-size 5 \
+            "${baseline[@]}" --adapter json --file "$BENCHMARK_OUTPUT" --allow-failure \
+            --threshold-measure solve-seconds --threshold-test t_test --threshold-min-sample-size 5 \
             --threshold-max-sample-size 64 --threshold-upper-boundary 0.99 "$command"
+          test "$(cat "$BENCHMARK_EXIT")" -eq 0
       - uses: actions/upload-artifact@v4
         if: always()
         with:

@@ -22,7 +22,7 @@ class BenchmarkFrameworkSuite extends AnyFunSuite {
     assert(full.count(_.kind == "qp") == 8)
     assert(full.count(_.kind == "presolve") == 6)
     assert(full.count(_.kind == "start") == 4)
-    assert(full.size == 339)
+    assert(full.size == 592)
     val smoke = Scenarios.read(directory, "smoke")
     Seq("local", "scaling", "accuracy", "distributed").foreach { inventory =>
       val expected = CaseInventory.read(directory.resolve(s"cases/$inventory.csv").toString)
@@ -73,7 +73,7 @@ class BenchmarkFrameworkSuite extends AnyFunSuite {
       s.copy(spec = s.spec.map(_.copy(seed = 12)))).foreach(other => assert(BenchmarkName(s) != BenchmarkName(other)))
     assert(BenchmarkName.comparison(s) == BenchmarkName.comparison(s.copy(cores = 4)))
     assert(BenchmarkName.comparison(s) != BenchmarkName.comparison(s.copy(partitions = 4)))
-    val kernel = Scenarios.read(directory, "kernels").head
+    val kernel = Scenarios.read(directory, "kernels").find(s => s.mode == "full" && s.heapGiB == 4).get
     assert(BenchmarkName(kernel) == "factorization/5000/lapack/full/heap=4g/native-threads=1")
     assert(BenchmarkName(kernel) == BenchmarkName(kernel.copy(cores = 8, partitions = 16)))
     assert(BenchmarkName(kernel) != BenchmarkName(kernel.copy(nativeThreads = 2)))
@@ -93,19 +93,42 @@ class BenchmarkFrameworkSuite extends AnyFunSuite {
     intercept[IllegalArgumentException](BenchmarkResults.parallel(Measurement(1), Measurement(0), 2))
   }
 
-  test("warmups and failures never improve latency, and missing attempts cannot publish") {
+  test("Bencher contains performance outcomes only, with observed memory and configured CPUs") {
+    val s = scenario.copy(warmups = 0, repetitions = 1)
+    val metrics = Map("solve-seconds" -> 1.5, "primal-max" -> 1e-9, "outer-iterations" -> 10.0,
+      "local-heap-bytes-max" -> 1024.0)
+    val result = BenchmarkResults.summarize(s, Vector(Attempt(0, false, "Success", metrics)))
+    assert(result.keySet == Set("solve-seconds", "local-heap-bytes-max", "cpus", "converged"))
+    assert(result("converged").value == 1 && result("cpus").value == s.cores)
+    val excluded = BenchmarkResults.summarize(s, Vector(Attempt(0, false, "ResourceExcluded")))
+    assert(excluded.keySet == Set("converged", "cpus") && excluded("converged").value == 0)
+    val kernel = s.copy(kind = "factorization", nativeThreads = 2, cores = 8)
+    assert(BenchmarkResults.summarize(kernel, Vector(Attempt(0, false, "Success", metrics)))("cpus").value == 2)
+  }
+
+  test("executor memory is observed, excludes the driver and never sums unrelated executor peaks") {
+    val memory = new ExecutorMemory
+    assert(memory.snapshot.isEmpty)
+    memory.observe("driver", 9999, 9999)
+    memory.observe("1", 100, 0)
+    memory.observe("2", 80, 200)
+    memory.observe("1", 90, 180)
+    assert(memory.snapshot == Map("executor-heap-bytes-max" -> 100.0, "executor-rss-bytes-max" -> 200.0))
+  }
+
+  test("warmups and failures never improve solve-seconds, and missing attempts cannot publish") {
     val s = scenario.copy(warmups = 1, repetitions = 2)
-    val attempts = Vector(Attempt(0, true, "Success", Map("latency" -> 999)),
-      Attempt(1, false, "Success", Map("latency" -> 2)), Attempt(2, false, "Success", Map("latency" -> 4)))
-    assert(BenchmarkResults.summarize(s, attempts)("latency").value == 3)
-    assert(!BenchmarkResults.summarize(s, attempts.updated(2, Attempt(2, false, "Failure"))).contains("latency"))
-    assert(!BenchmarkResults.summarize(s, attempts.updated(0, Attempt(0, true, "Failure"))).contains("latency"))
+    val attempts = Vector(Attempt(0, true, "Success", Map("solve-seconds" -> 999)),
+      Attempt(1, false, "Success", Map("solve-seconds" -> 2)), Attempt(2, false, "Success", Map("solve-seconds" -> 4)))
+    assert(BenchmarkResults.summarize(s, attempts)("solve-seconds").value == 3)
+    assert(!BenchmarkResults.summarize(s, attempts.updated(2, Attempt(2, false, "Failure"))).contains("solve-seconds"))
+    assert(!BenchmarkResults.summarize(s, attempts.updated(0, Attempt(0, true, "Failure"))).contains("solve-seconds"))
     intercept[IllegalArgumentException](BenchmarkResults.summarize(s, attempts.drop(1)))
   }
 
   test("BMF escapes names, orders keys deterministically and validates metrics, not just JSON syntax") {
     val name = "quoted\"name\\slash\nline"
-    val a = Map(name -> Map("z" -> Measurement(3), "a" -> Measurement(2, Some(1), Some(3))), "first" -> Map("latency" -> Measurement(1)))
+    val a = Map(name -> Map("z" -> Measurement(3), "a" -> Measurement(2, Some(1), Some(3))), "first" -> Map("solve-seconds" -> Measurement(1)))
     val json = BenchmarkResults.json(a)
     assert(json == BenchmarkResults.json(a.toSeq.reverse.toMap))
     assert((parse(json) \ name \ "a" \ "value").values == 2.0)
@@ -121,7 +144,7 @@ class BenchmarkFrameworkSuite extends AnyFunSuite {
       intercept[IllegalArgumentException](Measurement(value))
       intercept[IllegalArgumentException](BenchmarkResults.aggregate(Vector(1, value)))
     }
-    intercept[IllegalArgumentException](BenchmarkResults.validate("{\"b\":{\"latency\":{\"value\":1e999}}}"))
+    intercept[IllegalArgumentException](BenchmarkResults.validate("{\"b\":{\"solve-seconds\":{\"value\":1e999}}}"))
   }
 
   test("atomic output is absent until commit, remains absent on failure and refuses existing files") {

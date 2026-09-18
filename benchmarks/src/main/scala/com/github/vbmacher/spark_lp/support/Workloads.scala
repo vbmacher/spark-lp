@@ -57,11 +57,7 @@ object Workloads {
               "termination" -> result.termination.toString, "maximum_rank" -> result.preconditionerRank))
             require(result.termination == LP.Termination.Converged, s"Solver terminated: ${result.termination}")
             require(DataGenerator.passes(residuals, spec.tolerance), s"AccuracyFailure: $residuals")
-            Map("latency" -> (seconds * 1e9), "outer-iterations" -> result.iterations.toDouble,
-              "primal-max" -> residuals("primal"), "dual-max" -> residuals("dual"),
-              "gap-max" -> residuals("gap"), "objective-error-max" -> residuals("objective_error")) ++
-              (if (s.backend == "cg") Map("cg-steps" -> result.innerIterations.toDouble,
-                "cg-restarts" -> result.innerRestarts.toDouble) else Map.empty[String, Double])
+            Map("solve-seconds" -> seconds)
           } finally result.x.unpersist(blocking = true)
         } finally sc.getPersistentRDDs.values.filterNot(rdd => fixtureCaches(rdd.id)).foreach(_.unpersist(blocking = true))
       }
@@ -77,8 +73,7 @@ object Workloads {
     try require(report.feasible && result.status == LpStatus.Optimal && BenchmarkResults.finite(error) && error <= 1e-6,
       s"AccuracyFailure: ${result.status}, objective error $error")
     finally report.close()
-    Map("latency" -> (seconds * 1e9), "outer-iterations" -> result.iterations.toDouble,
-      "objective-error-max" -> (error / (1 + math.abs(expected))))
+    Map("solve-seconds" -> seconds)
   }
 
   private def presolve(s: Scenario, diagnostic: Map[String, Any] => Unit)(implicit spark: SparkSession): Map[String, Double] = {
@@ -141,7 +136,7 @@ object Workloads {
     val seconds = clock.seconds
     try {
       diagnostic(Map("mip" -> result.mip))
-      checked(model, xs, expected, result, seconds) ++ result.mip.map(m => "mip-nodes" -> m.processedNodes.toDouble)
+      checked(model, xs, expected, result, seconds)
     } finally result.close()
   }
 
@@ -191,7 +186,7 @@ object Workloads {
         "gap-max" -> result.residuals.gap,
         "solution-error-max" -> variables.zip(targets).map { case (v, t) => math.abs(result.value(v) - (t - 0.25)) }.max)
       require(errors.values.forall(v => BenchmarkResults.finite(v) && v >= 0 && v < 1e-8), s"AccuracyFailure: $errors")
-      checked(model, variables, n * 0.0625, result, seconds) ++ errors
+      checked(model, variables, n * 0.0625, result, seconds)
     } finally result.close()
   }
 
@@ -216,6 +211,6 @@ object Workloads {
     if (s.mode == "full") lapack.dpotrs("U", n, 1, factor, n, rhs, n, info) else lapack.dpptrs("U", n, 1, factor, rhs, n, info)
     val error = rhs.map(v => math.abs(v - 1.0)).max
     require(info.`val` == 0 && BenchmarkResults.finite(error) && error < 1e-8, "Factorization accuracy failure")
-    Map("latency" -> (seconds * 1e9), "solution-error-max" -> error)
+    Map("solve-seconds" -> seconds)
   }
 }

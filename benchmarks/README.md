@@ -57,7 +57,8 @@ executors need write access. Use `--checkpoint-uri URI` only to override this pa
 `full` also requires the assembly JAR and runs the complete matrix. Size and
 isolate the cluster first; the runner uses Spark-submit in YARN client mode and
 never creates or terminates cloud infrastructure. Cases can require 16 GiB driver
-heaps and many hours. Failed or incomplete runs exit nonzero and publish no BMF.
+heaps and many hours. Failed runs exit nonzero; complete outcome files retain
+`converged=0` without partial solve timings.
 
 ## Layout and extension
 
@@ -70,7 +71,6 @@ heaps and many hours. Failed or incomplete runs exit nonzero and publish no BMF.
 | `src/main/scala/.../support/` | Workloads, generation, validation, statistics, names and atomic BMF |
 | `src/test/` | Framework, generator and workload regression tests |
 | `schema/bencher-output.schema.json` | Checked BMF schema |
-| `archive/` | Immutable prior evidence; no live dashboard or conversion pipeline |
 | `output/` | Ignored BMF and per-run diagnostic directories |
 
 Add an LP row under `scenarios/cases/`, select it in a suite JSON and run `validate`.
@@ -85,10 +85,12 @@ A new workload family needs an adapter in `Workloads` and a correctness test.
 sbt 'benchmarksSpark_3_52_12/test'
 ```
 
-The runner writes BMF directly, atomically, after all attempted scenarios succeed.
+The runner writes complete BMF outcomes directly and atomically.
 `FILE.bmf.json.raw/` retains scenario definitions, classpath snapshots and hashes,
 per-attempt diagnostics, commands and logs, including failures. These local artifacts
 may contain environment details; publish only BMF to Bencher. Existing outputs are
 never overwritten. After a forcibly killed supervisor, retain its diagnostics and
 choose a new path. Exit zero means complete measurements or explicit resource
-exclusions; inspect exclusion counts before comparing coverage.
+exclusions. Use `validate --bmf FILE --require-converged true` to require successful
+solutions for every case, including resource-excluded cases. Bencher's
+`--allow-failure` uploads failure outcomes; CI still checks the runner's exit status.

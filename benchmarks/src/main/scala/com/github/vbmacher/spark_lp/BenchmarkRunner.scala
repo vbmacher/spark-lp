@@ -14,17 +14,18 @@ import org.json4s.jackson.JsonMethods.{compact, parse, render}
 import scala.collection.JavaConverters._
 import scala.util.control.NonFatal
 
-/** Public CLI and private worker protocol. BMF is committed after a complete successful run. */
+/** Public CLI and private worker protocol. BMF contains complete outcomes, never partial timings. */
 object BenchmarkRunner {
   private implicit val formats: DefaultFormats.type = DefaultFormats
   private val MainClass = "com.github.vbmacher.spark_lp.BenchmarkRunner"
   private val Usage = "bench list|validate|run|testbed [--suite NAME] [--scenarios DIR] [--case ID] [--backend NAME] " +
-    "[--output FILE] [--bmf FILE] [--jar FILE --spark-submit PATH --checkpoint-uri URI]"
+    "[--output FILE] [--bmf FILE --require-converged true|false] [--jar FILE --spark-submit PATH --checkpoint-uri URI]"
 
   final case class Options(command: String, suite: Option[String] = None, directory: Path = Paths.get("benchmarks/scenarios"),
                            output: Path = Paths.get("benchmarks/output/results.bmf.json"), caseId: Option[String] = None,
                            backend: Option[String] = None, bmf: Option[Path] = None, jar: Option[Path] = None,
-                           sparkSubmit: String = "spark-submit", checkpoint: String = "hdfs:///spark-lp-benchmarks/checkpoints")
+                           sparkSubmit: String = "spark-submit", checkpoint: String = "hdfs:///spark-lp-benchmarks/checkpoints",
+                           requireConverged: Boolean = false)
 
   def options(args: Array[String]): Options = {
     require(args.nonEmpty && Set("list", "validate", "run")(args(0)), Usage)
@@ -40,6 +41,9 @@ object BenchmarkRunner {
         case "--case" => o.copy(caseId = Some(value))
         case "--backend" => o.copy(backend = Some(value))
         case "--bmf" => require(o.command == "validate", "--bmf requires validate"); o.copy(bmf = Some(Paths.get(value)))
+        case "--require-converged" =>
+          require(o.command == "validate" && Set("true", "false")(value), "--require-converged requires validate and true|false")
+          o.copy(requireConverged = value.toBoolean)
         case "--jar" => o.copy(jar = Some(Paths.get(value).toAbsolutePath))
         case "--spark-submit" => o.copy(sparkSubmit = value)
         case "--checkpoint-uri" => o.copy(checkpoint = value)
@@ -62,8 +66,13 @@ object BenchmarkRunner {
         System.err.println(s"Automatic testbed: $testbed")
       } else {
         val o = options(args)
+        require(!o.requireConverged || o.bmf.nonEmpty, "--require-converged requires --bmf")
         o.bmf match {
-          case Some(path) => BenchmarkResults.validate(new String(Files.readAllBytes(path), UTF_8)); println("BMF valid")
+          case Some(path) =>
+            val content = new String(Files.readAllBytes(path), UTF_8)
+            BenchmarkResults.validate(content)
+            if (o.requireConverged) BenchmarkResults.requireConverged(content)
+            println("BMF valid")
           case None =>
             val suites = o.suite.toVector match {
               case names if names.nonEmpty => names
@@ -217,17 +226,20 @@ object BenchmarkRunner {
     val failed = outcomes.count(_._2.exists(a => a.status != "Success" && a.status != "ResourceExcluded"))
     val omitted = outcomes.count(_._2.exists(_.status == "ResourceExcluded"))
     System.err.println(s"${outcomes.size - failed - omitted} passed; $failed failed; $omitted resource-excluded; diagnostics: $raw")
-    if (failed != 0) throw new IllegalStateException("No BMF published: at least one scenario failed")
     val bmf = outcomes.map { case (s, _, metrics) =>
-      val derived = if (s.baseline && metrics.contains("latency")) {
+      if (s.baseline && metrics.contains("solve-seconds")) {
         val base = outcomes.find(x => x._1.computeCores == 1 && BenchmarkName.comparison(x._1) == BenchmarkName.comparison(s))
           .getOrElse(throw new IllegalArgumentException("Missing selected one-core baseline"))
-        BenchmarkResults.parallel(base._3("latency"), metrics("latency"), s.computeCores)
-      } else Map.empty[String, Measurement]
-      BenchmarkName(s) -> (metrics ++ derived)
+        base._3.get("solve-seconds").foreach { baseline =>
+          val ratios = BenchmarkResults.parallel(baseline, metrics("solve-seconds"), s.computeCores)
+          System.err.println(s"${BenchmarkName(s)}: speedup=${ratios("speedup").value}, efficiency=${ratios("parallel-efficiency").value}")
+        }
+      }
+      BenchmarkName(s) -> metrics
     }.toMap
     AtomicOutput.write(o.output, BenchmarkResults.json(bmf))
     System.err.println(s"BMF: ${o.output.toAbsolutePath}")
+    if (failed != 0) throw new IllegalStateException("At least one scenario failed; BMF records non-convergence without partial timings")
   }
 
   private def worker(spec: Path, directory: Path): Unit = {
@@ -236,16 +248,20 @@ object BenchmarkRunner {
     val detail = Files.newBufferedWriter(directory.resolve("diagnostics.jsonl"), UTF_8, StandardOpenOption.CREATE_NEW)
     def diagnostic(value: Map[String, Any]): Unit = detail.synchronized { detail.write(encode(value)); detail.flush() }
     val sampler = new JvmSampler
+    val executorMemory = new ExecutorMemory
     val conf = new SparkConf().setMaster(s.master).setAppName(s"benchmark-${s.caseId}")
       .set("spark.ui.enabled", "false").set("spark.sql.shuffle.partitions", s.partitions.toString)
       .set("spark.default.parallelism", s.partitions.toString).set("spark.dynamicAllocation.enabled", "false")
       .set("spark.speculation", "false").set("spark.task.cpus", "1")
       .set("spark.scheduler.minRegisteredResourcesRatio", "1.0")
+      .set("spark.executor.processTreeMetrics.enabled", "true").set("spark.executor.metrics.pollingInterval", "20")
+      .set("spark.executor.heartbeatInterval", "1s")
     if (s.executors > 0) conf.set("spark.executor.instances", s.executors.toString).set("spark.executor.cores", s.executorCores.toString)
     // Kernel measurements do not start Spark.
     implicit val spark: SparkSession = if (s.kind == "factorization") null else SparkSession.builder().config(conf).getOrCreate()
     try {
       if (spark != null) {
+        if (s.executors > 0) spark.sparkContext.addSparkListener(executorMemory)
         spark.sparkContext.setLogLevel("ERROR")
         spark.sparkContext.setCheckpointDir(conf.getOption("spark.checkpoint.dir").getOrElse(directory.resolve("checkpoints").toString))
         diagnostic(RuntimeEnvironment.describe(spark))
@@ -258,7 +274,6 @@ object BenchmarkRunner {
       } else diagnostic(Map("java" -> System.getProperty("java.version"), "lapack" -> org.apache.spark.wrappers.NativeNetlib.lapack.getClass.getName))
       val workload = Workloads.open(s, diagnostic)
       try { (0 until s.warmups + s.repetitions).foreach { repetition =>
-        sampler.reset()
         val timer = sampler.watchdog { System.err.println("Benchmark solve timed out") }
         val attempt = try {
           val metrics = workload.measure()
@@ -270,7 +285,8 @@ object BenchmarkRunner {
             Attempt(repetition, repetition < s.warmups, "Failure", error = Some(error.toString))
         } finally timer.close()
         diagnostic(sampler.snapshot ++ Map("repetition" -> repetition))
-        writer.write(encode(attempt)); writer.flush()
+        val memory = sampler.measurements(if (s.executors > 0) "driver" else "local") ++ executorMemory.snapshot
+        writer.write(encode(attempt.copy(metrics = attempt.metrics ++ memory))); writer.flush()
       } } finally workload.close()
     } finally {
       if (spark != null) spark.stop()

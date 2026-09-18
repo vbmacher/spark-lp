@@ -8,7 +8,7 @@ import org.json4s.jackson.JsonMethods.parse
 import org.scalatest.funsuite.AnyFunSuite
 
 class EmrTestbedSuite extends AnyFunSuite {
-  private val runtime = Map("java" -> "11.0.26", "architecture" -> "aarch64", "lapack" -> "native")
+  private val runtime = Map("java" -> "11.0.26", "architecture" -> "aarch64", "lapack" -> "java")
   private val cluster = parse("""{"Cluster":{
     "Id":"j-FIRST","Name":"temporary cluster","ReleaseLabel":"emr-7.3.0",
     "RunningAmiVersion":"2023.5","Status":{"State":"WAITING"},"InstanceCollectionType":"INSTANCE_GROUP",
@@ -31,7 +31,7 @@ class EmrTestbedSuite extends AnyFunSuite {
 
   test("automatic name is readable, deterministic, slug-safe and within Bencher's 64-character limit") {
     val result = name()
-    assert(result.matches("emr-7-3-0-r7g-4xlarge-2w-[0-9a-f]{7}"))
+    assert(result == "emr-7-3-0-r7g-4xlarge-2w")
     assert(result.matches("[a-z0-9-]+") && result.length <= 64)
     assert(result == name())
     val reordered = cluster.transform { case JArray(xs) => JArray(xs.reverse); case JObject(xs) => JObject(xs.reverse) }
@@ -52,22 +52,31 @@ class EmrTestbedSuite extends AnyFunSuite {
     assert(name() == name(renamedCluster, renamedInstances))
   }
 
-  test("release, AMI, application versions, primary/worker types, markets and runtime changes split identities") {
-    Seq(field(cluster, "ReleaseLabel", JString("emr-7.4.0")),
-      field(cluster, "RunningAmiVersion", JString("2023.6")),
-      field(cluster, "Version", JString("different"))).foreach(c => assert(name(c) != name()))
+  test("release, worker types and native backends remain distinguishable without hashes") {
+    assert(name(field(cluster, "ReleaseLabel", JString("emr-7.4.0"))) != name())
     assert(name(i = field(instances, "InstanceType", JString("m7i.4xlarge"))) != name())
-    assert(name(i = field(instances, "Market", JString("SPOT"))) != name())
-    assert(name(r = runtime.updated("lapack", "java")) != name())
+    assert(name(r = runtime.updated("lapack", "native")) == name() + "-native-lapack")
+    assert(name(r = runtime.updated("blas", "NativeSystemBLAS")) == name() + "-native-blas")
     val changedPrimary = JObject("Instances" -> JArray(List(field(primary, "InstanceType", JString("m7g.2xlarge")), worker, worker)))
-    assert(name(i = changedPrimary) != name())
+    assert(name(i = changedPrimary) == name())
   }
 
-  test("node counts and roles distinguish otherwise identical hardware") {
+  test("worker counts distinguish hardware; core and task workers share the same resource class") {
     val larger = cluster.transformField { case ("RequestedInstanceCount", JInt(n)) if n == 2 => "RequestedInstanceCount" -> JInt(3) }
     assert(name(larger, JObject("Instances" -> JArray(List(primary, worker, worker, worker)))) != name())
     val tasks = cluster.transformField { case ("InstanceGroupType", JString("CORE")) => "InstanceGroupType" -> JString("TASK") }
-    assert(name(tasks) != name())
+    assert(name(tasks) == name())
+  }
+
+  test("OS and runtime patch versions do not fragment a hardware testbed") {
+    val newer = cluster.transformField {
+      case ("Cluster", JObject(fields)) => "Cluster" -> JObject(fields :+ ("OSReleaseLabel" -> JString("2023.12")))
+    }
+    assert(name(newer) == name())
+    assert(name(field(newer, "OSReleaseLabel", JString("2023.13"))) == name(newer))
+    assert(name(field(newer, "RunningAmiVersion", JString("ignored"))) == name(newer))
+    val legacy = field(cluster, "RunningAmiVersion", JString("2023.12"))
+    assert(name(newer) == name(legacy))
   }
 
   test("mixed instance fleets use actual types, not their requested candidate types") {

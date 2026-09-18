@@ -7,14 +7,16 @@ class BenchmarkTestbedSuite extends AnyFunSuite {
   private val identity = Map("os" -> "Linux", "architecture" -> "aarch64", "cpu" -> "ARM model",
     "cores" -> "8", "memory_bytes" -> "34359738368", "java" -> "11.0.26", "lapack" -> "native")
 
-  test("local testbeds are stable and distinguish hardware and runtime changes") {
+  test("local testbeds have readable backend distinctions and no hashes") {
     val name = BenchmarkTestbed.localName(identity)
-    assert(name.startsWith("local-linux-aarch64-8cpu-") && name.length <= 64)
-    assert(name.matches("local-linux-aarch64-8cpu-[0-9a-f]{7}"))
+    assert(name == "local-linux-aarch64-8cpu-native-lapack")
     assert(name == BenchmarkTestbed.localName(identity.toSeq.reverse.toMap))
-    identity.keys.foreach { key =>
+    Set("os", "architecture", "cores").foreach { key =>
       assert(name != BenchmarkTestbed.localName(identity.updated(key, identity(key) + "-changed")))
     }
+    assert(BenchmarkTestbed.localName(identity.updated("lapack", "java")) == "local-linux-aarch64-8cpu")
+    assert(BenchmarkTestbed.localName(identity.updated("blas", "NativeSystemBLAS")) == "local-linux-aarch64-8cpu-native-blas")
+    assert(name == BenchmarkTestbed.localName(identity.updated("java", "11.0.32").updated("kernel", "new")))
     intercept[IllegalArgumentException](BenchmarkTestbed.localName(Map.empty))
     intercept[IllegalArgumentException](BenchmarkTestbed.localName(identity.updated("cpu", "")))
   }

@@ -15,6 +15,10 @@ final case class Attempt(repetition: Int, warmup: Boolean, status: String,
 
 object BenchmarkResults {
   type Bmf = Map[String, Map[String, Measurement]]
+  val memoryMeasures: Set[String] = (for {
+    scope <- Set("local", "driver", "executor")
+    kind <- Set("heap", "rss")
+  } yield s"$scope-$kind-bytes-max")
   def finite(value: Double): Boolean = !value.isNaN && !value.isInfinity
 
   /** Median and observed range, deliberately not a confidence interval. */
@@ -39,20 +43,29 @@ object BenchmarkResults {
     require(attempts.forall(a => a.warmup == (a.repetition < s.warmups)), "Incorrect warmup flags")
     val measured = attempts.filterNot(_.warmup)
     val valid = measured.filter(_.status == "Success")
-    val counts = Map("measured-converged-count" -> Measurement(valid.size.toDouble),
-      "measured-failed-count" -> Measurement(measured.count(a => a.status != "Success" && a.status != "ResourceExcluded").toDouble),
-      "measured-excluded-count" -> Measurement(measured.count(_.status == "ResourceExcluded").toDouble))
+    val complete = attempts.forall(_.status == "Success")
+    val outcome = Map("converged" -> Measurement(if (complete) 1 else 0),
+      "cpus" -> Measurement(if (s.kind == "factorization") s.nativeThreads else s.computeCores))
+    val memory = memoryMeasures.toVector.flatMap { key =>
+      val observed = attempts.flatMap(_.metrics.get(key))
+      if (observed.isEmpty) None else Some(key -> Measurement(observed.max))
+    }.toMap
     // A partial success set must never look like a faster benchmark.
-    if (valid.size != s.repetitions || attempts.exists(a => a.warmup && a.status != "Success")) counts
+    if (!complete) outcome ++ memory
     else {
-      require(valid.forall(_.metrics.contains("latency")), "Missing runtime")
-      val keys = valid.head.metrics.keySet
-      require(valid.forall(_.metrics.keySet == keys), "Missing measured metrics")
-      counts ++ keys.map { key =>
-        val values = valid.map(_.metrics(key))
-        key -> (if (key.endsWith("-max")) Measurement(values.max) else aggregate(values))
-      }
+      require(valid.forall(_.metrics.contains("solve-seconds")), "Missing runtime")
+      outcome ++ memory + ("solve-seconds" -> aggregate(valid.map(_.metrics("solve-seconds"))))
     }
+  }
+
+  def requireConverged(content: String): Unit = {
+    validate(content)
+    require(parse(content).children.forall(v => (v \ "converged" \ "value") match {
+      case JDouble(n) => n == 1.0
+      case JInt(n) => n == 1
+      case JDecimal(n) => n == 1
+      case _ => false
+    }), "At least one scenario has no complete validated solution")
   }
 
   def json(results: Bmf): String = {

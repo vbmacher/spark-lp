@@ -3,10 +3,7 @@ package com.github.vbmacher.spark_lp.support
 import java.lang.management.ManagementFactory
 import java.nio.charset.StandardCharsets.UTF_8
 import java.nio.file.{Files, Paths}
-import java.security.MessageDigest
 import java.util.Locale
-import org.json4s.{JObject, JString}
-import org.json4s.jackson.JsonMethods.{compact, render}
 import scala.sys.process._
 
 /** Local hardware/runtime identity; EMR uses the full cluster instead of just its primary node. */
@@ -43,11 +40,16 @@ object BenchmarkTestbed {
   def localName(identity: Map[String, String]): String = {
     require(Set("os", "architecture", "cpu", "cores", "memory_bytes").subsetOf(identity.keySet) &&
       identity.values.forall(_.nonEmpty), "Incomplete local testbed identity")
-    val descriptor = JObject(identity.toList.sortBy(_._1).map { case (key, value) => key -> JString(value) })
-    val hash = MessageDigest.getInstance("SHA-256").digest(compact(render(descriptor)).getBytes(UTF_8))
-      .take(4).map(b => f"${b & 0xff}%02x").mkString.take(7)
     val prefix = s"local-${identity("os")}-${identity("architecture")}-${identity("cores")}cpu"
-      .toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9]+", "-").take(47).stripSuffix("-")
-    s"$prefix-$hash"
+      .toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9]+", "-").stripSuffix("-")
+    readableName(prefix, identity)
+  }
+
+  private[support] def readableName(prefix: String, runtime: Map[String, String]): String = {
+    def native(key: String): Boolean = runtime.get(key).exists(_.toLowerCase(Locale.ROOT).contains("native"))
+    val suffix = if (native("blas")) "-native-blas" else if (native("lapack")) "-native-lapack" else ""
+    val name = prefix + suffix
+    require(name.length <= 64 && name.matches("[a-z0-9]+(-[a-z0-9]+)*"), "Testbed name is not a valid Bencher slug")
+    name
   }
 }

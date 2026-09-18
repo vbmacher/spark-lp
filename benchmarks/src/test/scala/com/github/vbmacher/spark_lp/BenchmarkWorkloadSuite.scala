@@ -27,7 +27,7 @@ class BenchmarkWorkloadSuite extends AnyFunSuite with BeforeAndAfterAll {
       val workload = Workloads.open(scenario, _ => ())
       try {
         val metrics = workload.measure()
-        assert(metrics("latency") > 0)
+        assert(metrics("solve-seconds") > 0)
         assert(metrics.values.forall(BenchmarkResults.finite))
       } finally workload.close()
     }

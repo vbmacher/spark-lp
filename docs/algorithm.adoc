@@ -227,8 +227,7 @@ regularized normal system and is never applied to the indefinite KKT matrix dire
 is quadratic in the enlarged row count, while CG keeps distributed sparse columns and bounded
 preconditioner storage. Because free-variable splitting can make the coupled Cholesky system singular
 near convergence, `Auto` selects regularized CG for coupled models with free variables and explicit
-Cholesky is rejected (see the link:../benchmarks/archive/quadratic/failed-cholesky-free.txt[conditioning
-evidence]).
+Cholesky is rejected.
 
 Factor lifting supports free, shifted and fixed original variables, and the auxiliary variables are
 created per compilation without mutating the user problem: diagnostics expose `__qp_factor_*` rows (a

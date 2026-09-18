@@ -44,4 +44,4 @@ fallback comparison, set `JAVA_TOOL_OPTIONS` to
 before invoking the runner; runtime diagnostics record the selected implementation.
 Use separate Bencher testbeds for different native implementations.
 
-Prior measurements remain in the [native evidence archive](../../benchmarks/archive/native-aarch64/).
+Compare measurements in the [Bencher dashboard](https://bencher.dev/perf/spark-lp).

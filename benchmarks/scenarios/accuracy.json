@@ -3,6 +3,14 @@
     {
       "kind": "lp",
       "inventory": "cases/accuracy.csv",
+      "cases": ["shape-5000-10-20-well-11-1e-08-4"],
+      "backends": ["cholesky", "cg"],
+      "cores": [4],
+      "partitions": [16]
+    },
+    {
+      "kind": "lp",
+      "inventory": "cases/accuracy.csv",
       "cases": ["*"],
       "backends": ["cholesky", "cg"],
       "cores": [4],

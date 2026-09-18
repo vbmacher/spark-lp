@@ -2,6 +2,47 @@
   "scenarios": [
     {
       "kind": "lp",
+      "inventory": "cases/accuracy.csv",
+      "cases": ["*"],
+      "backends": ["cholesky", "cg"],
+      "partitions": [16],
+      "executors": 4
+    },
+    {
+      "kind": "lp",
+      "inventory": "cases/distributed.csv",
+      "cases": ["emr-rows-1000-vars-100000-width-32"],
+      "backends": ["cholesky", "cg"],
+      "partitions": [64],
+      "executors": 4
+    },
+    {
+      "kind": "lp",
+      "inventory": "cases/distributed.csv",
+      "cases": ["emr-rows-5000-vars-1000000-width-32", "emr-rows-10000-vars-1000000-width-32"],
+      "backends": ["cholesky", "cg"],
+      "partitions": [128],
+      "executors": 4
+    },
+    {
+      "kind": "lp",
+      "inventory": "cases/distributed.csv",
+      "cases": ["emr-rows-100000-vars-100000000-width-128"],
+      "backends": ["cholesky", "cg"],
+      "partitions": [128],
+      "executors": 16
+    },
+    {
+      "kind": "lp",
+      "inventory": "cases/scaling.csv",
+      "cases": ["rows-1000-vars-10000-width-8"],
+      "backends": ["cholesky", "cg"],
+      "partitions": [16],
+      "executors": 4,
+      "executorHeapGiB": 4
+    },
+    {
+      "kind": "lp",
       "inventory": "cases/distributed.csv",
       "cases": ["partition-well-1000", "partition-well-5000", "partition-dependent-1000"],
       "backends": ["cg"],

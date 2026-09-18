@@ -3,11 +3,10 @@ package com.github.vbmacher.spark_lp.support
 import java.net.{HttpURLConnection, URL}
 import java.nio.charset.StandardCharsets.UTF_8
 import java.nio.file.{Files, Path, Paths}
-import java.security.MessageDigest
 import java.util.Locale
 import java.util.concurrent.TimeUnit
 import org.json4s._
-import org.json4s.jackson.JsonMethods.{compact, parse, render}
+import org.json4s.jackson.JsonMethods.parse
 import scala.collection.JavaConverters._
 
 /** Stable environment identity, independent of cluster IDs, hostnames and benchmark revisions. */
@@ -22,13 +21,6 @@ object EmrTestbed {
     case JArray(xs) => xs
     case _ => throw new IllegalArgumentException("Incomplete EMR metadata: expected an array")
   }
-  private def canonical(value: JValue): JValue = value match {
-    case JObject(fields) => JObject(fields.sortBy(_._1).map { case (key, v) => key -> canonical(v) })
-    case JArray(xs) => JArray(xs.map(canonical).sortBy(v => compact(render(v))))
-    case JNothing => JNull
-    case other => other
-  }
-
   def name(description: JValue, inventory: JValue, runtime: Map[String, String]): String = {
     val cluster = description \ "Cluster"
     val release = string(cluster, "ReleaseLabel")
@@ -72,17 +64,11 @@ object EmrTestbed {
     }
     require(applications.exists(a => (a \ "name") == JString("spark")), "EMR Spark version is missing")
     require(runtime.nonEmpty && runtime.values.forall(_.nonEmpty), "Runtime identity is missing")
-    val descriptor = canonical(JObject("schema" -> JInt(1), "release" -> JString(release),
-      "ami" -> (cluster \ "RunningAmiVersion"), "custom_ami" -> (cluster \ "CustomAmiId"),
-      "applications" -> JArray(applications), "nodes" -> JArray(nodes),
-      "runtime" -> JObject(runtime.toList.map { case (k, v) => k -> JString(v) })))
-    val hash = MessageDigest.getInstance("SHA-256").digest(compact(render(descriptor)).getBytes(UTF_8))
-      .take(4).map(b => f"${b & 0xff}%02x").mkString.take(7)
     val workers = nodes.filter(n => (n \ "role") != JString("MASTER"))
     val types = workers.map(n => string(n, "type")).distinct.sorted.mkString("-")
     val count = instances.count(i => roles(string(i, membershipKey)) != "MASTER")
-    val prefix = s"$release-$types-${count}w".toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9]+", "-").take(47).stripSuffix("-")
-    s"$prefix-$hash"
+    val prefix = s"$release-$types-${count}w".toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9]+", "-").stripSuffix("-")
+    BenchmarkTestbed.readableName(prefix, runtime)
   }
 
   /** The only AWS operations here are read-only; bounded CLI calls need no extra JVM dependency. */

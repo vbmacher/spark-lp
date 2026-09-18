@@ -4,6 +4,14 @@
       "kind": "factorization",
       "cases": ["5000"],
       "backends": ["lapack"],
+      "modes": ["packed"],
+      "nativeThreads": [1],
+      "heapGiB": 2
+    },
+    {
+      "kind": "factorization",
+      "cases": ["5000"],
+      "backends": ["lapack"],
       "modes": ["full", "packed"],
       "cores": [1],
       "partitions": [1],

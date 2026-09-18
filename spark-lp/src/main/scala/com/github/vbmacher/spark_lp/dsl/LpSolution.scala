@@ -28,6 +28,7 @@ final class LpSolution private[dsl](
   val objectiveValue: Double,
   val iterations: Int,
   val residuals: LpResiduals,
+  val timings: LpSolveTimings,
 
   /**
     * Per-constraint diagnostics: `name`, `group` (when present), `activity`, `sense`, `rhs`,

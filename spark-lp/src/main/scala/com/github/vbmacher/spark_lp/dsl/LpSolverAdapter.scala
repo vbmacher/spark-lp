@@ -47,6 +47,8 @@ trait LpAdapterSession extends AutoCloseable {
 
 private[dsl] object LpAdapterSolve {
   def run(problem: LpProblem, adapter: LpSolverAdapter, options: LpAdapterOptions): LpSolution = {
+    val timing = new LpSolveTiming(LpSolveClock.system)
+    timing.start()
     options.start.foreach { start =>
       if (start.problem ne problem) throw new LpModelException("Start belongs to a different model")
       start.values
@@ -54,10 +56,13 @@ private[dsl] object LpAdapterSolve {
     val view = problem.inspect
     check(view, adapter.capabilities, options)
     val session = adapter.prepare(view, options)
+    timing.startNumericalSolve()
     var solution: Option[LpSolution] = None
     var failure: Option[Throwable] = None
     try {
-      solution = Some(normalize(problem, adapter, options, session.solve()))
+      val raw = session.solve()
+      timing.startReconstruction()
+      solution = Some(normalize(problem, adapter, options, raw, timing))
       solution.get
     } catch { case scala.util.control.NonFatal(e) => failure = Some(e); throw e }
     finally try session.close() catch {
@@ -85,7 +90,8 @@ private[dsl] object LpAdapterSolve {
       size.constraintNonzeros <= options.maxNonzeros, "the requested transfer size (increase explicit adapter limits)")
   }
 
-  def normalize(problem: LpProblem, adapter: LpSolverAdapter, options: LpAdapterOptions, raw: LpAdapterResult): LpSolution = {
+  def normalize(problem: LpProblem, adapter: LpSolverAdapter, options: LpAdapterOptions,
+    raw: LpAdapterResult, timing: LpSolveTiming): LpSolution = {
     def fail(message: String): Nothing = throw new LpModelException(s"Malformed result from ${adapter.name}: $message")
     if (raw.status == null || raw.iterations < 0) fail("invalid status or iteration count")
     if (options.start.nonEmpty && raw.start.isEmpty) fail("adapter did not report whether the start was used")
@@ -156,11 +162,11 @@ private[dsl] object LpAdapterSolve {
       val frame = problem.spark.createDataFrame(rows, schema).persist()
       diagnosticsFrame = Some(frame)
       frame.count()
-      new LpSolution(raw.status, value, raw.iterations, LpResiduals(violation, Double.NaN, Double.NaN),
-        frame, problem, values,
-        CandidateInfo(raw.values.nonEmpty, feasible, if (raw.values.nonEmpty) Some(raw.iterations) else None),
-        reducedCostData = costs, backend = Some(LpBackendSummary(adapter.name, raw.diagnostics, raw.bestBound, raw.values.nonEmpty)),
-        start = raw.start)
+      val candidate = CandidateInfo(raw.values.nonEmpty, feasible, if (raw.values.nonEmpty) Some(raw.iterations) else None)
+      val backend = Some(LpBackendSummary(adapter.name, raw.diagnostics, raw.bestBound, raw.values.nonEmpty))
+      val timings = timing.finish()
+      new LpSolution(raw.status, value, raw.iterations, LpResiduals(violation, Double.NaN, Double.NaN), timings,
+        frame, problem, values, candidate, reducedCostData = costs, backend = backend, start = raw.start)
     } catch { case scala.util.control.NonFatal(e) =>
       values.unpersist(false); costs.foreach(_.unpersist(false)); diagnosticsFrame.foreach(_.unpersist(false)); throw e }
   }

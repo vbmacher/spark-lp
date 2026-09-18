@@ -21,7 +21,8 @@ import scala.util.hashing.MurmurHash3
   * group key)`. The coefficient matrix exists only as the solver's `DMatrix` of sparse rows; no
   * dense `n x m` structure or DataFrame pivot is ever materialised.
   */
-private[dsl] final class LpCompiler(problem: LpProblem, config: SolveConfig) extends AutoCloseable {
+private[dsl] final class LpCompiler(problem: LpProblem, config: SolveConfig,
+  clock: LpSolveClock = LpSolveClock.system) extends AutoCloseable {
   import LpCompiler.notFinite
 
   /** Tolerance for presolved zero-term rows (`0 <sense> rhs`). */
@@ -33,6 +34,7 @@ private[dsl] final class LpCompiler(problem: LpProblem, config: SolveConfig) ext
   private implicit val spark: SparkSession = problem.spark
   private val sc = spark.sparkContext
   private val caches = new CachedRDDs
+  private val timing = new LpSolveTiming(clock)
   private var propagationPasses = 0
   private var boundReductions = Vector.empty[LpBoundReduction]
   private var substitutions = Map.empty[Int, LpSubstitution]
@@ -137,6 +139,7 @@ private[dsl] final class LpCompiler(problem: LpProblem, config: SolveConfig) ext
     else Some(MipSummary(None, None, None, None, 0, 0, "AnalyticalUnbounded"))
 
   private def infeasibleFromBounds(detail: String): LpSolution = {
+    timing.startReconstruction()
     unusedStart("Presolve establishes infeasibility before iterative initialization")
     val schema = StructType(Seq(StructField("name", StringType, false), StructField("group", StringType),
       StructField("activity", DoubleType), StructField("sense", StringType), StructField("rhs", DoubleType),
@@ -145,13 +148,16 @@ private[dsl] final class LpCompiler(problem: LpProblem, config: SolveConfig) ext
     val rows = problem.inspect.constraints.map(r => Row(r.name, if (r.group.isEmpty) null else r.group.mkString(","),
       Double.NaN, r.sense, r.rhs, Double.NaN, null, detail, "No optimal continuous LP dual available"))
     val statistics = problem.inspect.statistics()
-    new LpSolution(LpStatus.Infeasible, Double.NaN, 0, LpResiduals(Double.NaN, Double.NaN, Double.NaN),
-      spark.createDataFrame(rows, schema), problem, sc.emptyRDD, CandidateInfo.Unavailable,
-      isRelaxation = config.relaxIntegrality,
-      mip = if (problem.handles.exists(_.category != Continuous)) Some(MipSummary(None, None, None, None, 0, 0, "PresolveInfeasible")) else None,
-      presolve = Some(LpPresolveSummary(config.presolve.enabled, config.presolve.effort, propagationPasses,
-        statistics.variables, statistics.constraints.toInt, 0, 0, 0, 0, 0, boundReductions, Vector.empty)),
-      start = preparedStart.map(_.summary))
+    val constraints = spark.createDataFrame(rows, schema)
+    val mip = if (problem.handles.exists(_.category != Continuous))
+      Some(MipSummary(None, None, None, None, 0, 0, "PresolveInfeasible")) else None
+    val presolve = Some(LpPresolveSummary(config.presolve.enabled, config.presolve.effort, propagationPasses,
+      statistics.variables, statistics.constraints.toInt, 0, 0, 0, 0, 0, boundReductions, Vector.empty))
+    val start = preparedStart.map(_.summary)
+    val timings = timing.finish()
+    new LpSolution(LpStatus.Infeasible, Double.NaN, 0, LpResiduals(Double.NaN, Double.NaN, Double.NaN), timings,
+      constraints, problem, sc.emptyRDD, CandidateInfo.Unavailable, isRelaxation = config.relaxIntegrality,
+      mip = mip, presolve = presolve, start = start)
   }
 
   override def close(): Unit = try caches.close() finally preparedStart.foreach(_.close())
@@ -167,6 +173,7 @@ private[dsl] final class LpCompiler(problem: LpProblem, config: SolveConfig) ext
     * compiler and its cached RDDs are always released when the call returns.
     */
   def solve(): LpSolution = try {
+    timing.start()
     preparedStart = config.start.map(LpStartProcessing.prepare(problem, _, CandidateValidationConfig(
       tolerance = config.tolerance, integralityTolerance = config.mip.integralityTolerance,
       relaxIntegrality = config.relaxIntegrality, sosZeroTolerance = config.mip.sosZeroTolerance)))
@@ -177,6 +184,7 @@ private[dsl] final class LpCompiler(problem: LpProblem, config: SolveConfig) ext
       (config.stopAfterIteration.nonEmpty || config.control != SolveControl()))
       fail("stopAfterIteration and SolveControl are supported only for continuous models")
     if (compiled.direct.nonEmpty) {
+      timing.startReconstruction()
       val direct = compiled.direct.get
       val restored = restoreSubstitutions(compiled, direct.values)
       val violation = originalValuesViolation(compiled, restored)
@@ -187,12 +195,14 @@ private[dsl] final class LpCompiler(problem: LpProblem, config: SolveConfig) ext
         Map.empty, Some(CandidateInfo(true, violation <= config.control.feasibilityTolerance, Some(0))), originalValues = Some(restored),
         mip = analyticalMip(if (direct.unbounded) LpStatus.Unbounded else LpStatus.Optimal, direct.objectiveValue))
     } else if (compiled.numCols == 0) {
+      timing.startReconstruction()
       val feasible = compiled.rowSpecs.forall { row =>
         row.sense.violation(-row.b0) <= config.control.feasibilityTolerance * (1.0 + math.abs(row.rhsUser))
       }
       buildSolution(compiled, sc.emptyRDD, LpStatus.Optimal, compiled.objConstant, 0,
         LpResiduals(0.0, 0.0, 0.0), Map.empty, Some(CandidateInfo(true, feasible, Some(0))), mip = analyticalMip(LpStatus.Optimal, compiled.objConstant))
     } else if (compiled.intCols.isEmpty) {
+      timing.startNumericalSolve()
       var convergedDual: Option[DenseVector] = None
       val summary = LP.solveSummary(
         c = compiled.c,
@@ -220,11 +230,13 @@ private[dsl] final class LpCompiler(problem: LpProblem, config: SolveConfig) ext
           convergedDual = Some(new DenseVector(multipliers.values.clone()))),
         quadratic = compiled.quadratic,
         initialPrimal = startPrimal(compiled), onStartApplied = () => startApplied())
+      timing.startReconstruction()
       try continuousSolution(compiled, summary, convergedDual)
       finally summary.x.unpersist(blocking = false)
     } else {
       if (config.stopAfterIteration.nonEmpty)
         fail("stopAfterIteration is supported only for continuous models")
+      timing.startNumericalSolve()
       new BranchAndBound(this, compiled, config).solve()
     }
   } finally close()
@@ -1554,22 +1566,30 @@ private[dsl] final class LpCompiler(problem: LpProblem, config: SolveConfig) ext
       val visible = caches.checkpoint(userValues.filter(_._1._1 < limit))
       visible.count(); visible
     }
+    val retainedValues = caches.keep(publicValues)
+    val candidateInfo = candidate.getOrElse(CandidateInfo(true, status == LpStatus.Optimal, Some(iterations)))
+    val presolve = Some(presolveSummary(compiled))
+    val start = preparedStart.map(_.summary)
+    val timings = timing.finish()
     new LpSolution(
       status = status,
       objectiveValue = objectiveValue,
       iterations = iterations,
       residuals = residuals,
+      timings = timings,
       constraints = constraintsDf,
       problem = problem,
-      userValues = caches.keep(publicValues),
-      candidate = candidate.getOrElse(CandidateInfo(true, status == LpStatus.Optimal, Some(iterations))),
+      userValues = retainedValues,
+      candidate = candidateInfo,
       stopReason = stopReason,
       evidence = evidence,
       isRelaxation = config.relaxIntegrality,
       mip = mip,
       reducedCostData = reducedCosts,
-      presolve = Some(presolveSummary(compiled)), start = preparedStart.map(_.summary))
+      presolve = presolve, start = start)
   }
+
+  private[dsl] def startReconstruction(): Unit = timing.startReconstruction()
 }
 
 private[dsl] object LpCompiler {

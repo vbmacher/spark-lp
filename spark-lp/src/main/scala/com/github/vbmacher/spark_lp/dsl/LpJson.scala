@@ -2,7 +2,7 @@ package com.github.vbmacher.spark_lp.dsl
 
 import com.fasterxml.jackson.databind.{JsonNode, ObjectMapper}
 import com.fasterxml.jackson.databind.node.ObjectNode
-import org.apache.hadoop.fs.Path
+import org.apache.hadoop.fs.{FileAlreadyExistsException, FileContext, Options, Path}
 import org.apache.spark.rdd.RDD
 import org.apache.spark.sql.SparkSession
 import scala.collection.JavaConverters._
@@ -94,7 +94,8 @@ object LpJson {
     view.statistics()
     val data = LpPortableModel.fromView(view)
     val target = new Path(destination)
-    val fs = target.getFileSystem(spark.sparkContext.hadoopConfiguration)
+    val configuration = spark.sparkContext.hadoopConfiguration
+    val fs = target.getFileSystem(configuration)
     if (fs.exists(target) && !overwrite) throw new LpModelException(s"JSON destination already exists: $destination")
     val temporary = new Path(target.toString + ".tmp-" + java.util.UUID.randomUUID().toString)
     def save[A](values: RDD[A], name: String)(encode: A => JsonNode): Unit =
@@ -124,8 +125,32 @@ object LpJson {
       data.factors.foreach(f => save(f.coefficients, s"factor-${f.index}")(coefficient))
       solution.flatMap(_.values).foreach(values => save(values, "solution-values")(v =>
         obj("variable" -> id(v.variable), "value" -> num(v.value))))
-      if (fs.exists(target) && !fs.delete(target, true)) throw new LpModelException("Cannot overwrite JSON destination")
-      if (!fs.rename(temporary, target)) throw new LpModelException("Cannot publish completed JSON directory")
+      val context = FileContext.getFileContext(fs.getUri, configuration)
+      var backup: Option[Path] = None
+      def restoreBackup(): String = {
+        backup.foreach { path =>
+          if (!fs.exists(target)) try context.rename(path, target, Options.Rename.NONE)
+          catch { case _: java.io.IOException => () }
+        }
+        backup.filter(fs.exists).map(path => s"; previous destination retained at $path").getOrElse("")
+      }
+      try {
+        if (overwrite && fs.exists(target)) {
+          val path = new Path(target.toString + ".backup-" + java.util.UUID.randomUUID().toString)
+          context.rename(target, path, Options.Rename.NONE)
+          backup = Some(path)
+        }
+        context.rename(temporary, target, Options.Rename.NONE)
+        backup.foreach(fs.delete(_, true))
+      }
+      catch {
+        case _: FileAlreadyExistsException =>
+          val retained = restoreBackup()
+          if (!overwrite) throw new LpModelException(s"JSON destination already exists: $destination")
+          throw new LpModelException("Cannot publish completed JSON directory" + retained)
+        case _: java.io.IOException =>
+          throw new LpModelException("Cannot publish completed JSON directory" + restoreBackup())
+      }
     } finally {
       if (fs.exists(temporary)) fs.delete(temporary, true)
     }

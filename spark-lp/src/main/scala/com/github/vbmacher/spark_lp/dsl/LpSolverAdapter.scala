@@ -121,12 +121,15 @@ private[dsl] object LpAdapterSolve {
         if (feasible && objective.exists(o => (if (problem.sense == Minimize) bound - o else o - bound) >
           options.validation.tolerance * (1.0 + math.abs(o)))) fail("bound contradicts the incumbent")
       }
-      def validateKeys[K: scala.reflect.ClassTag](data: RDD[(K, Double)], expected: RDD[K]): Unit = {
+      def validateKeys[K: scala.reflect.ClassTag](data: RDD[(K, Double)], expected: RDD[K],
+        requireComplete: Boolean = false): Unit = {
         if (data.filter(v => !java.lang.Double.isFinite(v._2)).take(1).nonEmpty ||
           data.mapValues(_ => 1).reduceByKey(_ + _).filter(_._2 != 1).take(1).nonEmpty ||
-          data.keys.subtract(expected).take(1).nonEmpty) fail("invalid sensitivity identities or values")
+          data.keys.subtract(expected).take(1).nonEmpty ||
+          requireComplete && expected.subtract(data.keys).take(1).nonEmpty)
+          fail("invalid sensitivity identities or values")
       }
-      raw.rowDuals.foreach(validateKeys(_, view.constraints.map(_.id)))
+      raw.rowDuals.foreach(validateKeys(_, view.constraints.map(_.id), options.requireDuals))
       raw.reducedCosts.foreach(validateKeys(_, view.variables.map(_.id)))
       val sensitivity = raw.status == LpStatus.Optimal && !view.hasQuadraticObjective &&
         view.variableDeclarations.forall(_.category == Continuous)

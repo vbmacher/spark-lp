@@ -6,6 +6,9 @@ import org.apache.spark.sql.SparkSession
 import org.scalatest.funsuite.AnyFunSuite
 import java.nio.file.Files
 import scala.collection.JavaConverters._
+import scala.concurrent.duration._
+import scala.concurrent.{Await, Future}
+import scala.util.Try
 
 class LpJsonSuite extends AnyFunSuite with DataFrameSuiteBase {
   test("JSON preserves model algebra and separately marked solution metadata") {
@@ -68,6 +71,36 @@ class LpJsonSuite extends AnyFunSuite with DataFrameSuiteBase {
     } finally {
       val path = new org.apache.hadoop.fs.Path(directory)
       path.getFileSystem(spark.sparkContext.hadoopConfiguration).delete(path.getParent, true)
+    }
+  }
+
+  test("no-overwrite publication preserves a destination created during the write") {
+    implicit val ss: SparkSession = spark
+    implicit val executionContext: scala.concurrent.ExecutionContext = scala.concurrent.ExecutionContext.global
+    val model = LpProblem("concurrent publication")
+    model.variable("x")
+    val root = Files.createTempDirectory("spark-lp-json-race-")
+    val directory = root.resolve("model")
+    val writing = Future(Try(LpJson.write(model, directory.toString)))
+    try {
+      val deadline = 30.seconds.fromNow
+      var temporarySeen = false
+      while (!temporarySeen && !writing.isCompleted && deadline.hasTimeLeft()) {
+        val children = Files.list(root)
+        try temporarySeen = children.iterator().asScala.exists(_.getFileName.toString.startsWith("model.tmp-"))
+        finally children.close()
+        if (!temporarySeen) Thread.`yield`()
+      }
+      assert(temporarySeen, "writer did not expose its temporary publication directory")
+      Files.createDirectories(directory)
+      val marker = Files.write(directory.resolve("concurrent-marker"), Array[Byte](1))
+
+      assert(Await.result(writing, 30.seconds).isFailure)
+      assert(Files.exists(marker))
+    } finally {
+      Await.ready(writing, 30.seconds)
+      val path = new org.apache.hadoop.fs.Path(root.toString)
+      path.getFileSystem(spark.sparkContext.hadoopConfiguration).delete(path, true)
     }
   }
 }

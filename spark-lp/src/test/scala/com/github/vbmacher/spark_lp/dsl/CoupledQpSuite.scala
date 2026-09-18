@@ -5,6 +5,7 @@ import com.holdenkarau.spark.testing.DataFrameSuiteBase
 import org.apache.spark.sql.SparkSession
 import org.apache.spark.sql.functions.col
 import org.scalatest.funsuite.AnyFunSuite
+import java.nio.file.Files
 
 class CoupledQpSuite extends AnyFunSuite with DataFrameSuiteBase {
   private val backends = Seq(NewtonSolver.Cholesky, NewtonSolver.ConjugateGradient)
@@ -26,6 +27,46 @@ class CoupledQpSuite extends AnyFunSuite with DataFrameSuiteBase {
         assert(math.abs(2*a + 2*b) < 1e-4 && math.abs(4*a - 2*b) < 1e-4)
         assert(math.abs(result.objectiveValue - (a*a + b*b)) < 1e-7)
       } finally result.close()
+    }
+  }
+
+  test("coupled-QP solutions can be reused as starts") {
+    implicit val ss: SparkSession = spark
+    val model = LpProblem("coupled start")
+    val x = model.variable("x")
+    model += QpObjective.squared(x - 2.0)
+
+    val first = model.solve()
+    val start = first.asStart()
+    try {
+      val second = model.solve(SolveConfig(start = Some(start)))
+      try {
+        assert(second.start.exists(_.disposition == LpStartDisposition.Accepted))
+        assert(math.abs(second.value(x) - 2.0) < 1e-4)
+      } finally second.close()
+    } finally { start.close(); first.close() }
+  }
+
+  test("coupled-QP JSON solution candidates contain only declared variables") {
+    implicit val ss: SparkSession = spark
+    val model = LpProblem("coupled JSON")
+    val x = model.variable("x")
+    model += QpObjective.squared(x - 2.0)
+
+    val result = model.solve()
+    val directory = Files.createTempDirectory("spark-lp-coupled-json-").resolve("model").toString
+    try {
+      LpJson.write(model, directory, Some(LpSolutionData.fromSolution(result)))
+      val document = LpJson.read(directory)
+      val imported = document.model.toProblem()
+      val values = document.solution.get.values.get
+      assert(values.count() == 1)
+      val report = imported.model.validateCandidate(values)
+      try assert(report.feasible) finally report.close()
+    } finally {
+      result.close()
+      val path = new org.apache.hadoop.fs.Path(directory)
+      path.getFileSystem(spark.sparkContext.hadoopConfiguration).delete(path.getParent, true)
     }
   }
 

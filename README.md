@@ -5,9 +5,10 @@
 [![License: Apache 2.0](https://img.shields.io/badge/license-Apache%202.0-blue)](LICENSE)
 
 Linear, mixed-integer linear, and continuous convex quadratic programming over
-Apache Spark. Version **2.0.0** provides a sparse modeling compiler, a
-predictor-corrector interior-point solver ([Mehrotra][mehrotra]), and
+Apache Spark. It provides a sparse modeling compiler, a predictor-corrector interior-point solver ([Mehrotra][mehrotra]), and
 [branch-and-bound][landdoig] for integer variables.
+
+The DSL uses syntax very similar to [PuLP][pulp].
 
 ## Features
 
@@ -170,3 +171,4 @@ and his thesis, [Distributed linear programming with Apache Spark](https://open.
 [landdoig]: https://doi.org/10.2307/1910129
 [papilo]: https://arxiv.org/abs/2206.10709
 [strong]: https://scipopt.org/doc/html/branch__fullstrong_8c.php
+[pulp]: https://coin-or.github.io/pulp/

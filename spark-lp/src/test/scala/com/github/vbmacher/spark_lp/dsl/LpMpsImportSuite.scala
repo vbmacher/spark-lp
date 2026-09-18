@@ -114,6 +114,28 @@ class LpMpsImportSuite extends AnyFunSuite with DataFrameSuiteBase {
     }
   }
 
+  test("integer defaults distinguish INTORG markers from LI bounds") {
+    implicit val ss: SparkSession = spark
+    fixture("""NAME INTEGER_DEFAULTS
+      |ROWS
+      | N OBJ
+      |COLUMNS
+      | MARK0 'MARKER' 'INTORG'
+      | marker OBJ 1
+      | MARK1 'MARKER' 'INTEND'
+      | bounded OBJ 1
+      |BOUNDS
+      | LI bounds bounded 5
+      |ENDATA
+      |""") { path =>
+      val declarations = LpMpsImport.read(path).model.inspect.variableDeclarations.map(v => v.name -> v).toMap
+      assert(declarations("marker").category == Integer)
+      assert(declarations("marker").lower == 0.0 && declarations("marker").upper.contains(1.0))
+      assert(declarations("bounded").category == Integer)
+      assert(declarations("bounded").lower == 5.0 && declarations("bounded").upper.isEmpty)
+    }
+  }
+
   test("malformed and unsupported data fail with source context; limits and named sets are explicit") {
     implicit val ss: SparkSession = spark
     val invalid = Vector(mip.replace("BV standard choose", "SC standard choose 2"),

@@ -100,4 +100,15 @@ class DVectorSuite extends AnyFunSuite with DataFrameSuiteBase {
     val expectedMin = 2.0
     assert(a.minValue == expectedMin, "minValue should return the correct result.")
   }
+
+  test("extrema ignore empty vector blocks") {
+    val mixed = sc.parallelize(Array(new DenseVector(Array.empty[Double]),
+      new DenseVector(Array(2.0, -3.0))), 2)
+    val empty = sc.parallelize(Array(new DenseVector(Array.empty[Double]),
+      new DenseVector(Array.empty[Double])), 2)
+
+    assert(mixed.minValue == -3.0 && mixed.maxValue == 2.0)
+    assert(empty.minValue == Double.PositiveInfinity)
+    assert(empty.maxValue == Double.NegativeInfinity)
+  }
 }

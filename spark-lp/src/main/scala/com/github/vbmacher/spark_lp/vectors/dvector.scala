@@ -13,11 +13,11 @@ object dvector {
     implicit class DVectorOps(vector: DVector) {
 
       lazy val minValue: Double = {
-        vector.aggregate(Double.PositiveInfinity)((mi, x) => Math.min(mi, x.values.min), Math.min)
+        vector.aggregate(Double.PositiveInfinity)((mi, x) => x.values.foldLeft(mi)(Math.min), Math.min)
       }
 
       lazy val maxValue: Double = {
-        vector.aggregate(Double.NegativeInfinity)((ma, x) => Math.max(ma, x.values.max), Math.max)
+        vector.aggregate(Double.NegativeInfinity)((ma, x) => x.values.foldLeft(ma)(Math.max), Math.max)
       }
 
       /**

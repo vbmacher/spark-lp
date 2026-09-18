@@ -12,7 +12,7 @@ From the repository root, with JDK 11 and sbt 1.10.7:
 Use a **new output path** for each run. `run --suite scaling`, `parallelism`,
 `accuracy`, `capabilities` or `kernels` uses the same interface. `list --suite NAME`
 shows expanded scenario names; `--case ID` and `--backend cg|cholesky` select a subset.
-[Methodology, metrics, CI setup and Bencher](../docs/benchmarks.md) explain interpretation.
+[Methodology, metrics, CI setup and Bencher](../docs/benchmarks.adoc) explain interpretation.
 
 ## Local Bencher configuration
 

@@ -1,5 +1,6 @@
 package com.github.vbmacher.spark_lp.dsl
 
+import com.github.vbmacher.spark_lp.Numerics
 import com.github.vbmacher.spark_lp.{CandidateInfo, StopReason}
 import org.apache.spark.rdd.RDD
 import org.apache.spark.sql.DataFrame
@@ -91,7 +92,7 @@ final class LpSolution private[dsl](
     implicit val spark: org.apache.spark.sql.SparkSession = problem.spark
     val coefficients = LpExpressionData.expand(expression, Some(problem))
     val joined = coefficients.leftOuterJoin(userValues)
-    if (joined.filter { case (_, (_, value)) => value.isEmpty || value.exists(v => !LpExpressionData.finite(v)) }
+    if (joined.filter { case (_, (_, value)) => value.isEmpty || value.exists(v => !Numerics.isFinite(v)) }
       .take(1).nonEmpty)
       throw new LpModelException("Expression references values absent or non-finite in this solution")
     val value = joined.values.map { case (coefficient, x) => coefficient * x.get }.fold(0.0)(_ + _) + expression.constant

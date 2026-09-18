@@ -71,7 +71,7 @@ private[dsl] object LpStartProcessing {
         val (lower, upper) = VariableCategory.domainBoundsFinite(v.category, v.lower, v.upper)
         val clipped = math.max(lower, math.min(upper, x))
         val rounded = if (!validation.relaxIntegrality && v.category != Continuous &&
-          math.abs(clipped - math.rint(clipped)) <= validation.integralityTolerance) math.rint(clipped) else clipped
+          LpIntegrality.isIntegral(clipped, validation.integralityTolerance)) math.rint(clipped) else clipped
         (id.family -> id.key) -> rounded
       }
     val values = normalized.persist()

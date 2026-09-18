@@ -1,5 +1,6 @@
 package com.github.vbmacher.spark_lp.dsl
 
+import com.github.vbmacher.spark_lp.Numerics
 import org.apache.spark.rdd.RDD
 import org.apache.spark.sql.SparkSession
 
@@ -22,7 +23,7 @@ final case class LpPortableModel(schemaVersion: Int, name: String, sense: Object
     require(declarations.map(_.name).distinct.size == declarations.size, "Duplicate variable declaration names")
     require(declarations.indices.forall(i => declarations(i).id == i), "Declaration IDs must be contiguous in order")
     declarations.foreach { d =>
-      if (d.lower.isNaN || d.lower.isPosInfinity || d.upper.exists(u => !LpExpressionData.finite(u) || u < d.lower))
+      if (d.lower.isNaN || d.lower.isPosInfinity || d.upper.exists(u => !Numerics.isFinite(u) || u < d.lower))
         throw new LpModelException("Invalid portable variable bounds")
     }
     require(maxLocalOverrides >= 0, "maxLocalOverrides must be nonnegative")
@@ -30,7 +31,7 @@ final case class LpPortableModel(schemaVersion: Int, name: String, sense: Object
     val invalid = variables.filter { v =>
       v.id == null || v.id.key == null || !declarationMap.contains(v.id.family) ||
         v.name == null || v.name.trim.isEmpty || v.lower.isNaN || v.lower.isPosInfinity ||
-        v.upper.exists(u => !LpExpressionData.finite(u) || u < v.lower) ||
+        v.upper.exists(u => !Numerics.isFinite(u) || u < v.lower) ||
         declarationMap.get(v.id.family).exists(d => v.category != d.category || d.domainKind == "scalar" && v.id.key != "")
     }.take(1)
     if (invalid.nonEmpty || variables.map(v => v.id -> 1).reduceByKey(_ + _).filter(_._2 > 1).take(1).nonEmpty)
@@ -42,12 +43,12 @@ final case class LpPortableModel(schemaVersion: Int, name: String, sense: Object
     if (localRows.map(_.id).distinct.size != localRows.size || localRows.map(_.name).distinct.size != localRows.size)
       throw new LpModelException("Duplicate portable constraint IDs or names")
     localRows.foreach { r =>
-      if (!Set("<=", ">=", "==").contains(r.sense) || r.id.key == null)
+      if (LpSense.parse(r.sense).isEmpty || r.id.key == null)
         throw new LpModelException("Invalid portable constraint sense or key")
       LpExpressionData.check(r.rhs)
     }
     val rowIds = localRows.map(_.id).toSet
-    if (coefficients.filter(c => !rowIds(c.row) || !LpExpressionData.finite(c.value)).take(1).nonEmpty)
+    if (coefficients.filter(c => !rowIds(c.row) || !Numerics.isFinite(c.value)).take(1).nonEmpty)
       throw new LpModelException("Missing row reference or non-finite portable coefficient")
     val model = LpProblem(name, sense)
     declarations.foreach { d =>
@@ -113,7 +114,7 @@ final class LpImportedModel private[dsl](val model: LpProblem, val variables: RD
   val constraintIds: Map[LpConstraintId, LpConstraintId]) {
   private implicit val spark: SparkSession = model.spark
   private[dsl] def validateReferences(coefficients: RDD[LpCoefficient]): Unit = {
-    if (coefficients.filter(c => c.variable == null || !LpExpressionData.finite(c.value)).take(1).nonEmpty ||
+    if (coefficients.filter(c => c.variable == null || !Numerics.isFinite(c.value)).take(1).nonEmpty ||
       coefficients.map(_.variable).subtract(variables.map(_.id)).take(1).nonEmpty)
       throw new LpModelException("Missing variable reference or non-finite portable coefficient")
   }
@@ -139,12 +140,7 @@ final class LpImportedModel private[dsl](val model: LpProblem, val variables: RD
   def constraint(data: LpConstraintData): LpConstraint = {
     val expr = expression(data.expression)
     LpExpressionData.check(data.row.rhs)
-    val sense = data.row.sense match {
-      case "<=" => LpSense.Le
-      case ">=" => LpSense.Ge
-      case "==" => LpSense.Eq
-      case other => throw new LpModelException(s"Invalid portable sense '$other'")
-    }
+    val sense = LpSense.fromSymbol(data.row.sense)
     expr.compare(sense, data.row.rhs).withName(data.row.name)
   }
 }

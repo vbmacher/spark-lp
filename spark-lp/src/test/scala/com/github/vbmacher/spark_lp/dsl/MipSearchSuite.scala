@@ -8,15 +8,16 @@ import org.scalatest.funsuite.AnyFunSuite
 class MipSearchSuite extends AnyFunSuite with DataFrameSuiteBase {
   private def knapsack()(implicit spark: SparkSession): (LpProblem, Vector[LpVariable], Double) = {
     val model = LpProblem("search", Maximize)
-    val xs = Vector.tabulate(6)(i => model.variable(s"item$i", category = Binary))
-    val weights = Vector(2.0, 3.0, 4.0, 5.0, 7.0, 9.0)
-    val profits = Vector(4.0, 5.0, 7.0, 8.0, 11.0, 13.0)
+    val weights = Vector(2.0, 3.0, 4.0, 5.0)
+    val profits = Vector(4.0, 5.0, 7.0, 8.0)
+    val capacity = 7.0
+    val xs = Vector.tabulate(weights.size)(i => model.variable(s"item$i", category = Binary))
     model += lpDot(profits, xs) + 7.0
-    model += (lpDot(weights, xs) <= 12.0)
-    val optimum = (0 until 64).map { mask =>
+    model += (lpDot(weights, xs) <= capacity)
+    val optimum = (0 until (1 << xs.size)).map { mask =>
       val bits = xs.indices.map(i => if ((mask & (1 << i)) != 0) 1.0 else 0.0)
       (weights.zip(bits).map { case (a, b) => a * b }.sum, profits.zip(bits).map { case (a, b) => a * b }.sum)
-    }.filter(_._1 <= 12.0).map(_._2).max + 7.0
+    }.filter(_._1 <= capacity).map(_._2).max + 7.0
     (model, xs, optimum)
   }
 

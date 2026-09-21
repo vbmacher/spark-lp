@@ -3,10 +3,11 @@ package com.github.vbmacher.spark_lp
 import java.nio.file.{Files, Paths}
 import com.github.vbmacher.spark_lp.support.{BenchmarkName, BenchmarkResults, Scenarios, Workloads}
 import org.apache.spark.sql.SparkSession
-import org.scalatest.BeforeAndAfterAll
+import org.scalatest.{BeforeAndAfterAll, DoNotDiscover}
 import org.scalatest.funsuite.AnyFunSuite
 
-/** Exercises every migrated DSL mode against its independent original-model optimum. */
+/** Long-running integration coverage for every migrated DSL mode and its independent original-model optimum. */
+@DoNotDiscover
 class BenchmarkWorkloadSuite extends AnyFunSuite with BeforeAndAfterAll {
   private implicit var spark: SparkSession = _
   override def beforeAll(): Unit = {

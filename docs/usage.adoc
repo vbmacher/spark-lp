@@ -6,7 +6,7 @@ spark-lp is an optimization solver built for Apache Spark. It provides a Scala 2
 linear, mixed-integer linear and supported quadratic models. Your application supplies Spark
 (supported: 2.4.8 and 3.0.2–3.5.3 — test the version you deploy). Depend on the
 `com.github.vbmacher:spark-lp` artifact, whose versions follow the `<spark-version>_<library-version>`
-scheme (for example `3.5.3_2.0.0`); pick one matching your Spark version. Native BLAS/LAPACK
+scheme (for example `3.5.3_2.1.0`); pick one matching your Spark version. Native BLAS/LAPACK
 (optimized linear-algebra libraries) can improve performance; the Java implementation also works.
 
 This guide starts with the modelling API, then covers solving, diagnostics,

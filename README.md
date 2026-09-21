@@ -30,10 +30,10 @@ Artifacts are published for seven Spark variants (**2.4.8, 3.0.2, 3.1.3, 3.2.4,
 3.3.2, 3.4.2, 3.5.3**), each versioned `<spark-version>_<library-version>`.
 
 Add the coordinate matching your Spark runtime — for example Spark 3.5.3 with
-library 2.0.0:
+library 2.1.0:
 
 ```scala
-libraryDependencies += "com.github.vbmacher" %% "spark-lp" % "3.5.3_2.0.0"
+libraryDependencies += "com.github.vbmacher" %% "spark-lp" % "3.5.3_2.1.0"
 ```
 
 Native BLAS/LAPACK can accelerate CPU linear algebra; a Java fallback is available.

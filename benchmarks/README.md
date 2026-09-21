@@ -41,7 +41,7 @@ root, with JDK 11, sbt, Spark 3.5, AWS CLI and Bencher 0.6.12 available. Configu
 ```sh
 sbt 'benchmarksSpark_3_52_12/assembly'
 ./benchmarks/bench bencher run --adapter json --file benchmarks/output/distributed.bmf.json \
-  './benchmarks/bench run --suite distributed --jar benchmarks/target/spark_3.5-jvm-2.12/benchmarks-assembly-2.0.0.jar --output benchmarks/output/distributed.bmf.json'
+  './benchmarks/bench run --suite distributed --jar benchmarks/target/spark_3.5-jvm-2.12/benchmarks-assembly-2.1.0.jar --output benchmarks/output/distributed.bmf.json'
 ```
 
 On EMR, the wrapper detects the cluster from `/mnt/var/lib/info/job-flow.json`,

@@ -169,59 +169,8 @@ object BenchmarkRunner {
     AtomicOutput.write(raw.resolve("manifest.json"), encode(Map("scenarios" -> scenarios,
       "runtime_sha256" -> (inputPaths ++ copiedPaths ++ jarSnapshot).map(p => p.toString -> digest(p)).toMap,
       "source_revision" -> sys.env.getOrElse("GITHUB_SHA", "local-unpublished"), "native_options" -> nativeOptions)))
-    val outcomes = scenarios.zipWithIndex.map { case (s, index) =>
-      val batch = raw.resolve(f"$index%04d")
-      Files.createDirectory(batch)
-      val spec = batch.resolve("scenario.json")
-      AtomicOutput.write(spec, encode(s))
-      System.err.println(s"[${index + 1}/${scenarios.size}] ${BenchmarkName(s)}")
-      val attempts = if (excluded(s)) Vector.tabulate(s.warmups + s.repetitions)(i => Attempt(i, i < s.warmups, "ResourceExcluded"))
-      else {
-        val workerArgs = Vector("_worker", spec.toString, batch.toString)
-        val command = if (s.executors == 0) Vector(Paths.get(System.getProperty("java.home"), "bin", "java").toString,
-          s"-Xms${s.heapGiB}g", s"-Xmx${s.heapGiB}g") ++ nativeOptions ++ Vector("-cp", classpath, MainClass) ++ workerArgs
-        else Vector(o.sparkSubmit, "--master", "yarn", "--deploy-mode", "client", "--driver-memory", s"${s.heapGiB}g",
-          "--num-executors", s.executors.toString, "--executor-cores", s.executorCores.toString,
-          "--executor-memory", s"${s.executorHeapGiB}g", "--conf", "spark.driver.maxResultSize=0",
-          "--conf", s"spark.checkpoint.dir=${o.checkpoint}/benchmark-$index-${java.util.UUID.randomUUID()}",
-          "--conf", s"spark.executorEnv.OPENBLAS_NUM_THREADS=${s.nativeThreads}", "--conf", s"spark.executorEnv.OMP_NUM_THREADS=${s.nativeThreads}",
-          "--conf", s"spark.executorEnv.MKL_NUM_THREADS=${s.nativeThreads}") ++ nativeSparkOptions ++
-          Vector("--class", MainClass, jarSnapshot.get.toString) ++ workerArgs
-        AtomicOutput.write(batch.resolve("command.json"), encode(command))
-        val process = new ProcessBuilder(command.asJava).redirectErrorStream(true).redirectOutput(batch.resolve("application.log").toFile)
-        Seq("OPENBLAS_NUM_THREADS", "OMP_NUM_THREADS", "MKL_NUM_THREADS").foreach(process.environment().put(_, s.nativeThreads.toString))
-        if (s.executors == 0) process.environment().put("SPARK_LOCAL_IP", "127.0.0.1")
-        val child = process.start()
-        val shutdown = new Thread(() => child.destroy(), "benchmark-worker-shutdown")
-        Runtime.getRuntime.addShutdownHook(shutdown)
-        val finished = try {
-          val done = child.waitFor((s.warmups.toLong + s.repetitions) * 1800 + 600, TimeUnit.SECONDS)
-          if (!done) { child.destroy(); if (!child.waitFor(10, TimeUnit.SECONDS)) child.destroyForcibly().waitFor() }
-          done
-        } finally Runtime.getRuntime.removeShutdownHook(shutdown)
-        val exit = if (finished) child.exitValue() else 124
-        AtomicOutput.write(batch.resolve("exit.json"), encode(Map("exit_code" -> exit)))
-        val file = batch.resolve("attempts.jsonl")
-        val completed = if (Files.exists(file)) {
-          val lines = Files.readAllLines(file, UTF_8).asScala.toVector
-          lines.zipWithIndex.flatMap { case (line, i) =>
-            try Some(parse(line).extract[Attempt])
-            catch { case NonFatal(error) =>
-              require(i == lines.size - 1 && exit != 0, s"Corrupt attempt record: ${error.getMessage}")
-              None
-            }
-          }
-        } else Vector.empty
-        require(completed.size <= s.warmups + s.repetitions, "Unexpected extra attempts")
-        val missing = (completed.size until s.warmups + s.repetitions).map(i =>
-          Attempt(i, i < s.warmups, if (i == completed.size) { if (exit == 124) "Timeout" else "ProcessFailure" } else "Unrun",
-            error = Some(s"Worker exit $exit; see application.log")))
-        val all = completed ++ missing
-        if (exit != 0 && missing.isEmpty) all.updated(all.size - 1, all.last.copy(status = "ProcessFailure", metrics = Map.empty,
-          error = Some(s"Worker exited $exit after recording attempts"))) else all
-      }
-      AtomicOutput.write(batch.resolve("complete.json"), encode(attempts))
-      (s, attempts, BenchmarkResults.summarize(s, attempts))
+    val outcomes = scenarios.zipWithIndex.map { case (scenario, index) =>
+      runScenario(scenario, index, scenarios.size, o, raw, classpath, jarSnapshot, nativeOptions, nativeSparkOptions)
     }
     val failed = outcomes.count(_._2.exists(a => a.status != "Success" && a.status != "ResourceExcluded"))
     val omitted = outcomes.count(_._2.exists(_.status == "ResourceExcluded"))
@@ -240,6 +189,80 @@ object BenchmarkRunner {
     AtomicOutput.write(o.output, BenchmarkResults.json(bmf))
     System.err.println(s"BMF: ${o.output.toAbsolutePath}")
     if (failed != 0) throw new IllegalStateException("At least one scenario failed; BMF records non-convergence without partial timings")
+  }
+
+  private def runScenario(s: Scenario, index: Int, total: Int, options: Options, raw: Path,
+    classpath: String, jarSnapshot: Option[Path], nativeOptions: Vector[String],
+    nativeSparkOptions: Vector[String]): (Scenario, Vector[Attempt], Map[String, Measurement]) = {
+    val batch = raw.resolve(f"$index%04d")
+    Files.createDirectory(batch)
+    val spec = batch.resolve("scenario.json")
+    AtomicOutput.write(spec, encode(s))
+    System.err.println(s"[${index + 1}/$total] ${BenchmarkName(s)}")
+    val attempts = if (excluded(s))
+      Vector.tabulate(s.warmups + s.repetitions)(i => Attempt(i, i < s.warmups, "ResourceExcluded"))
+    else {
+      val workerArgs = Vector("_worker", spec.toString, batch.toString)
+      val command = if (s.executors == 0)
+        Vector(Paths.get(System.getProperty("java.home"), "bin", "java").toString,
+          s"-Xms${s.heapGiB}g", s"-Xmx${s.heapGiB}g") ++ nativeOptions ++
+          Vector("-cp", classpath, MainClass) ++ workerArgs
+      else Vector(options.sparkSubmit, "--master", "yarn", "--deploy-mode", "client",
+        "--driver-memory", s"${s.heapGiB}g", "--num-executors", s.executors.toString,
+        "--executor-cores", s.executorCores.toString, "--executor-memory", s"${s.executorHeapGiB}g",
+        "--conf", "spark.driver.maxResultSize=0",
+        "--conf", s"spark.checkpoint.dir=${options.checkpoint}/benchmark-$index-${java.util.UUID.randomUUID()}",
+        "--conf", s"spark.executorEnv.OPENBLAS_NUM_THREADS=${s.nativeThreads}",
+        "--conf", s"spark.executorEnv.OMP_NUM_THREADS=${s.nativeThreads}",
+        "--conf", s"spark.executorEnv.MKL_NUM_THREADS=${s.nativeThreads}") ++ nativeSparkOptions ++
+        Vector("--class", MainClass, jarSnapshot.get.toString) ++ workerArgs
+      AtomicOutput.write(batch.resolve("command.json"), encode(command))
+      val process = new ProcessBuilder(command.asJava).redirectErrorStream(true)
+        .redirectOutput(batch.resolve("application.log").toFile)
+      Seq("OPENBLAS_NUM_THREADS", "OMP_NUM_THREADS", "MKL_NUM_THREADS")
+        .foreach(process.environment().put(_, s.nativeThreads.toString))
+      if (s.executors == 0) process.environment().put("SPARK_LOCAL_IP", "127.0.0.1")
+      val child = process.start()
+      val shutdown = new Thread(() => child.destroy(), "benchmark-worker-shutdown")
+      Runtime.getRuntime.addShutdownHook(shutdown)
+      val finished = try {
+        val done = child.waitFor((s.warmups.toLong + s.repetitions) * 1800 + 600, TimeUnit.SECONDS)
+        if (!done) {
+          child.destroy()
+          if (!child.waitFor(10, TimeUnit.SECONDS)) child.destroyForcibly().waitFor()
+        }
+        done
+      } finally Runtime.getRuntime.removeShutdownHook(shutdown)
+      val exit = if (finished) child.exitValue() else 124
+      AtomicOutput.write(batch.resolve("exit.json"), encode(Map("exit_code" -> exit)))
+      completedAttempts(s, batch, exit)
+    }
+    AtomicOutput.write(batch.resolve("complete.json"), encode(attempts))
+    (s, attempts, BenchmarkResults.summarize(s, attempts))
+  }
+
+  private def completedAttempts(s: Scenario, batch: Path, exit: Int): Vector[Attempt] = {
+    val file = batch.resolve("attempts.jsonl")
+    val completed = if (Files.exists(file)) {
+      val lines = Files.readAllLines(file, UTF_8).asScala.toVector
+      lines.zipWithIndex.flatMap { case (line, i) =>
+        try Some(parse(line).extract[Attempt])
+        catch { case NonFatal(error) =>
+          require(i == lines.size - 1 && exit != 0, s"Corrupt attempt record: ${error.getMessage}")
+          None
+        }
+      }
+    } else Vector.empty
+    require(completed.size <= s.warmups + s.repetitions, "Unexpected extra attempts")
+    val missing = (completed.size until s.warmups + s.repetitions).map { i =>
+      val status = if (i == completed.size) { if (exit == 124) "Timeout" else "ProcessFailure" } else "Unrun"
+      Attempt(i, i < s.warmups, status, error = Some(s"Worker exit $exit; see application.log"))
+    }
+    val all = completed ++ missing
+    if (exit != 0 && missing.isEmpty)
+      all.updated(all.size - 1, all.last.copy(status = "ProcessFailure", metrics = Map.empty,
+        error = Some(s"Worker exited $exit after recording attempts")))
+    else all
   }
 
   private def worker(spec: Path, directory: Path): Unit = {

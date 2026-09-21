@@ -328,15 +328,10 @@ private[dsl] final class BranchAndBound(
             case Some((j, v)) =>
               branchWithProbes(node, vals, j, v, lowerBound, open, nodeNumber)
             case None =>
-              roundedValues(node, vals) match {
-                case Some(rounded) if feasibleRounding(node, summary.x, vals, rounded) =>
-                  val roundedObjective = objMin + intCols.indices.map { j =>
-                    intCols(j).cost * (rounded(intCols(j).g) - node.lower(j) - vals(intCols(j).g))
-                  }.sum
-                  if (incumbent.forall(roundedObjective < _.objMin)) {
-                    incumbent.foreach(old => release(old.x))
-                    incumbent = Some(Candidate(roundedObjective, summary.x, rounded, summary))
-                  }
+              feasibleRoundedValues(node, summary, vals) match {
+                case Some(rounded) =>
+                  acceptIncumbent(Candidate(roundedObjective(node, vals, rounded, objMin),
+                    summary.x, rounded, summary))
                   remember(lowerBound)
                 case _ => branchOrGiveUp(node, vals, open)
               }
@@ -349,8 +344,8 @@ private[dsl] final class BranchAndBound(
         sawUnboundedNode = true
         val vals = integerValues(node, summary.x)
         if (summary.primalResidual < config.tolerance) {
-          roundedValues(node, vals) match {
-            case Some(rounded) if feasibleRounding(node, summary.x, vals, rounded) =>
+          feasibleRoundedValues(node, summary, vals) match {
+            case Some(rounded) =>
               // primal-feasible integral iterate + dual-infeasibility certificate: unbounded
               unboundedProof = Some(Candidate(Double.NegativeInfinity, summary.x, rounded, summary))
             case _ => branchOrGiveUp(node, vals, open)
@@ -363,14 +358,9 @@ private[dsl] final class BranchAndBound(
         unresolvedBound = math.min(unresolvedBound, node.bound)
         if (summary.candidate.available) {
           val vals = integerValues(node, summary.x)
-          roundedValues(node, vals).filter(r => feasibleRounding(node, summary.x, vals, r)).foreach { rounded =>
-            val objective = objMin + intCols.indices.map { j =>
-              intCols(j).cost * (rounded(intCols(j).g) - node.lower(j) - vals(intCols(j).g))
-            }.sum
-            if (incumbent.forall(objective < _.objMin)) {
-              incumbent.foreach(old => release(old.x))
-              incumbent = Some(Candidate(objective, summary.x, rounded, summary))
-            }
+          feasibleRoundedValues(node, summary, vals).foreach { rounded =>
+            acceptIncumbent(Candidate(roundedObjective(node, vals, rounded, objMin),
+              summary.x, rounded, summary))
           }
         }
       case LP.Termination.IterationLimit =>
@@ -506,6 +496,23 @@ private[dsl] final class BranchAndBound(
     }
     math.sqrt(residual.map(v => v * v).sum) / (1.0 + math.sqrt(rhs.dot(rhs))) < config.tolerance &&
       compiler.sosFeasible(compiled, x, rounded, config.mip.sosZeroTolerance)
+  }
+
+  private def feasibleRoundedValues(node: Node, summary: LP.SolveSummary,
+    values: Map[Long, Double]): Option[Map[Long, Double]] =
+    roundedValues(node, values).filter(feasibleRounding(node, summary.x, values, _))
+
+  private def roundedObjective(node: Node, values: Map[Long, Double], rounded: Map[Long, Double],
+    relaxationObjective: Double): Double =
+    relaxationObjective + intCols.indices.map { j =>
+      intCols(j).cost * (rounded(intCols(j).g) - node.lower(j) - values(intCols(j).g))
+    }.sum
+
+  private def acceptIncumbent(candidate: Candidate): Unit = {
+    if (incumbent.forall(candidate.objMin < _.objMin)) {
+      incumbent.foreach(old => release(old.x))
+      incumbent = Some(candidate)
+    }
   }
 
   /** Splits the node on column `j` around the fractional value `v` (both children are non-empty). */

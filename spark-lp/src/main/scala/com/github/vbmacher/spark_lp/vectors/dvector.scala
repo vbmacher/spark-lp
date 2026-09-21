@@ -20,15 +20,15 @@ object dvector {
         vector.aggregate(Double.NegativeInfinity)((ma, x) => x.values.foldLeft(ma)(Math.max), Math.max)
       }
 
-      /**
-        * Apply a function to each DVector element.
-        */
+      /** Applies `f` to every element while preserving the partition layout. */
       def mapElements(f: Double => Double): DVector =
         vector.map(part => new DenseVector(part.values.map(f)))
 
       /**
-        * Zip a DVector's elements with those of another DVector and apply a function to each pair of
-        * elements.
+        * Applies `f` to elements at the same position in two partition-aligned vectors.
+        *
+        * An `IllegalArgumentException` is thrown if corresponding partitions contain different
+        * numbers of elements.
         */
       def zipElements(other: DVector, f: (Double, Double) => Double): DVector =
         vector.zip(other).map {
@@ -47,9 +47,7 @@ object dvector {
             new DenseVector(ret)
         }
 
-      /**
-        * Apply aggregation functions to the DVector elements.
-        */
+      /** Reduces all elements with `seqOp`, then combines partition results with `combOp`. */
       def aggregateElements(zeroValue: Double)(
         seqOp: (Double, Double) => Double,
         combOp: (Double, Double) => Double): Double =
@@ -61,17 +59,13 @@ object dvector {
           },
           combOp = combOp)
 
-      /**
-        * Collect the DVector elements to a local array.
-        */
+      /** Collects all elements to the driver in partition order. */
       def collectElements: Array[Double] = {
         // NOTE DenseVectors are assumed here (not sparse safe).
         vector.collect().flatMap(_.values)
       }
 
-      /**
-        * Compute the elementwise difference of this DVector with another.
-        */
+      /** Returns `vector - other` for two partition-aligned vectors. */
       def diff(other: DVector): DVector = {
         vector.zip(other).map {
           case (selfPart, otherPart) =>
@@ -81,32 +75,27 @@ object dvector {
         }
       }
 
-      /**
-        * Sum the DVector's elements.
-        */
+      /** Returns the sum of all distributed elements. */
       def sum(depth: Int = 2): Double = {
         vector.treeAggregate(0.0)((sum, x) => sum + x.values.sum, _ + _, depth)
       }
 
       /**
-        * Compute the inner product of two vectors this * b.
+        * Returns the inner product `vector^T b` for two partition-aligned vectors.
         *
-        * @param b The second vector.
-        * @return The computed inner product.
+        * @param depth depth of Spark's tree aggregation.
         */
       def dot(b: DVector, depth: Int = 2): Double = {
         vector.zip(b).treeAggregate(0.0)((sum, x) => sum + BLAS.dot(x._1, x._2), _ + _, depth)
       }
 
       /**
-        * Compute the product of a DVector to a DMatrix where each element of DVector is multiplied to
-        * the corresponding row to produce a DMatrix. This is for optimizing the product of diagonal
-        * DMatrix to a DMatrix.
+        * Returns `diag(vector) * mat` by scaling each matrix row by the corresponding vector value.
         *
-        * This DVector (this instance) represents diagonal matrix.
+        * Each matrix partition must contain as many rows as the local dense vector in the
+        * corresponding vector partition contains elements.
         *
-        * @param mat The DMatrix for multiplication.
-        * @return The result multiplication
+        * @param mat matrix whose rows are scaled.
         */
       def diagonalProduct(mat: DMatrix): DMatrix = {
         vector.zipPartitions(mat)((vectorPartition, matPartition) =>
@@ -123,12 +112,11 @@ object dvector {
       }
 
       /**
-        * Compute a linear combination of two vectors alpha * this + beta * b.
+        * Returns `alpha * vector + beta * b` for two partition-aligned vectors.
         *
-        * @param alpha The first scalar coefficient.
-        * @param beta  The second scalar coefficient.
-        * @param b     The second vector.
-        * @return The computed linear combination.
+        * @param alpha multiplier for this vector.
+        * @param beta multiplier for `b`.
+        * @param b vector added to this vector after scaling.
         */
       def combine(alpha: Double, beta: Double, b: DVector): DVector = {
         if (alpha == 1.0 && beta == 1.0) {
@@ -147,21 +135,14 @@ object dvector {
         }
       }
 
-      /**
-        * Compute the entrywise product (Hadamard product) of two vectors.
-        *
-        * @param b The second vector.
-        * @return The computed vector.
-        */
+      /** Returns the elementwise product with the partition-aligned vector `b`. */
       def entrywiseProd(b: DVector): DVector = {
         vector.zip(b).map { case (aPart, bPart) => aPart.entrywiseProd(bPart).toDense }
       }
 
       /**
-        * Compute the entrywise division on negative values of two vectors.
-        *
-        * @param b The second vector.
-        * @return The computed vector.
+        * Applies [[dense_vector.implicits.DenseVectorOps.entrywiseNegDiv]] to corresponding
+        * partitions of this vector and `b`.
         */
       def entrywiseNegDiv(b: DVector): DVector = {
         vector.zip(b).map { case (aPart, bPart) => aPart.entrywiseNegDiv(bPart) }

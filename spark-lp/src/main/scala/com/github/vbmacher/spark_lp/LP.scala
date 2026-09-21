@@ -71,6 +71,12 @@ object LP extends LazyLogging {
     *                            `max(0, max_i (A^T y)_i)` for a primal-infeasibility certificate,
     *                            `||A z||_inf` for a dual-infeasibility one; `NaN` when neither
     *                            certificate was found.
+    * @param dualObjectiveValue final dual objective `b^T lambda`; `NaN` when unavailable.
+    * @param innerIterations total iterations performed by iterative inner linear solves.
+    * @param preconditionerRank highest partial-Cholesky preconditioner rank used.
+    * @param stopReason configured policy that stopped the solve, when applicable.
+    * @param candidate availability and original-model feasibility of `x`.
+    * @param innerRestarts total conjugate-gradient restarts across inner solves.
     */
   private[spark_lp] case class SolveSummary(
     objectiveValue: Double,
@@ -111,29 +117,37 @@ object LP extends LazyLogging {
     onStartApplied: () => Unit)
 
   /**
-    * Computes the optimal value and the corresponding vector for a LP problem.
+    * Solves a continuous linear program in equality form:
+    * `minimize c^T x` subject to `A x = b` and `x >= 0`.
     *
-    * @param c                      the objective coefficient DVector.
-    * @param AT                     the constraint DMatrix (transposed).
-    * @param b                      the constraint values.
-    * @param tolerance              convergence tolerance.
-    * @param maxIter                maximum number of iterations if it did not converge.
-    * @param etaIter                step size. Shrinkage value.
-    * @param valueCap               value cap
-    * @param eps                    numerical threshold
+    * This compact method returns the last candidate directly. The internal `solveSummary` variant
+    * needs the termination reason, residuals, or infeasibility certificates.
+    *
+    * @param c distributed objective coefficients, one value per solver variable.
+    * @param AT distributed transpose of `A`; each row contains one variable's coefficients across
+    *           all equality constraints.
+    * @param b right-hand side of the equality constraints, held on the driver.
+    * @param tolerance relative primal residual, dual residual, and duality-gap target.
+    * @param maxIter maximum number of interior-point iterations.
+    * @param etaIter fraction of the maximum positive step used for each iterate update.
+    * @param valueCap upper limit used when computing the historical Cholesky scaling weights.
+    * @param eps minimum magnitude used to protect divisions in the interior-point updates.
     * @param infeasibilityTolerance threshold for the Farkas infeasibility certificate tests.
     * @param solver                 how to solve the per-iteration normal-equations systems (see
-    *                               [[NewtonSolver]]). The default [[NewtonSolver.Auto]] uses the
+    *                               [[com.github.vbmacher.spark_lp.newton.NewtonSolver]]). The default
+    *                               [[com.github.vbmacher.spark_lp.newton.NewtonSolver.Auto]] uses the
     *                               driver-local Cholesky factorization up to
-    *                               [[NewtonSolver.AutoCholeskyLimit]] constraint rows and the
+    *                               [[com.github.vbmacher.spark_lp.newton.NewtonSolver.AutoCholeskyLimit]]
+    *                               constraint rows and the
     *                               matrix-free conjugate gradient beyond that.
     * @param cgTolerance            relative residual at which a conjugate-gradient solve is
     *                               accepted (matrix-free solver only).
     * @param cgMaxIterations        CG step limit per normal-equations solve; values < 1 select
     *                               `min(max(100, 2m), 1000)` (matrix-free solver only).
-    * @param cgConfig             primal/dual regularization and bounded preconditioner controls.
-    * @param spark                  a SparkSession instance.
-    * @return optimal value and the corresponding solution vector.
+    * @param cgConfig               regularization and preconditioner controls for the
+    *                               conjugate-gradient strategy.
+    * @param spark                  Spark session that owns the distributed inputs and result.
+    * @return objective value and candidate vector returned by the run.
     */
   def solve(
     c: DVector,
@@ -156,8 +170,7 @@ object LP extends LazyLogging {
   }
 
   /**
-    * Solve variant that also reports the iteration count, the termination reason and the final
-    * residuals the solver computes each iteration.
+    * Solves the same equality-form problem as [[solve]] and returns its full termination record.
     *
     * After each iteration's residual update, two scale-invariant Farkas certificate tests are
     * evaluated against `infeasibilityTolerance` (see [[Termination.PrimalInfeasible]] and
@@ -569,7 +582,15 @@ object LP extends LazyLogging {
     require(etaIter > 0.0 && etaIter < 1.0, "etaIteration must be between 0 and 1 (exclusive)")
   }
 
-  /** One certificate found by [[certificatesOnIterate]], with `c^T x` of the tested iterate. */
+  /**
+    * Certificate accepted for a completed iterate.
+    *
+    * @param termination certificate type established by the iterate.
+    * @param primalCertificate normalized equality-multiplier ray for primal infeasibility.
+    * @param dualCertificate normalized primal-variable ray for dual infeasibility.
+    * @param residual maximum equation or sign violation of the retained ray.
+    * @param cTx objective product `c^T x` before ray normalization.
+    */
   private case class Certificate(
     termination: Termination,
     primalCertificate: Option[DenseVector],

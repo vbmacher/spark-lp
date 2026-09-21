@@ -3,20 +3,49 @@ package com.github.vbmacher.spark_lp.dsl
 import com.github.vbmacher.spark_lp.dsl.implicits._
 import scala.util.control.NonFatal
 
-/** Allowed degradation is absoluteTolerance + relativeTolerance * abs(optimum), including constants. */
-final case class LpPriority(expression: LpExpr, absoluteTolerance: Double = 0.0,
-                            relativeTolerance: Double = 0.0) {
+/**
+  * One objective in a lexicographic multi-objective solve.
+  *
+  * After this objective is optimized, later stages may degrade its value by at most
+  * `absoluteTolerance + relativeTolerance * abs(optimum)`. The optimum includes expression
+  * constants.
+  *
+  * @param expression objective optimized at this stage.
+  * @param absoluteTolerance allowed degradation in objective units for later stages.
+  * @param relativeTolerance allowed degradation as a fraction of the stage optimum magnitude.
+  */
+final case class LpPriority(
+  expression: LpExpr,
+  absoluteTolerance: Double = 0.0,
+  relativeTolerance: Double = 0.0
+) {
+
   require(Seq(absoluteTolerance, relativeTolerance).forall(t => !t.isNaN && !t.isInfinite && t >= 0.0),
     "Priority tolerances must be finite and nonnegative")
 }
 
-/** A failed numerical stage has an error and no solution; solver statuses remain on their solution. */
-final case class LpPriorityStage(index: Int, solution: Option[LpSolution], error: Option[LpNumericalException])
+/**
+  * Result of one lexicographic objective stage.
+  *
+  * @param index zero-based stage position.
+  * @param solution completed solver result, when the stage returned normally.
+  * @param error numerical failure, present only when no solution was returned.
+  */
+final case class LpPriorityStage(
+  index: Int,
+  solution: Option[LpSolution],
+  error: Option[LpNumericalException]
+)
 
-/** Owns every stage result. Variables in a stage are accessed through copied.variable/variables. */
+/**
+  * Result of a priority solve and owner of every completed stage solution.
+  *
+  * Stage values belong to [[copied]], the independent model used for the solve. Close this result to
+  * release all stage solutions.
+  */
 final class LpPriorityResult private[dsl](val copied: LpModelCopy,
-                                        val stages: Vector[LpPriorityStage], val complete: Boolean)
-    extends AutoCloseable {
+  val stages: Vector[LpPriorityStage], val complete: Boolean)
+  extends AutoCloseable {
   override def close(): Unit = stages.foreach(_.solution.foreach(_.close()))
 }
 
@@ -34,7 +63,9 @@ private[dsl] object LpPriorities {
         val ((expression, priority), index) = iterator.next()
         copied.model.setObjective(expression)
         val stage = try LpPriorityStage(index, Some(copied.model.solve(config)), None)
-        catch { case e: LpNumericalException => LpPriorityStage(index, None, Some(e)) }
+        catch {
+          case e: LpNumericalException => LpPriorityStage(index, None, Some(e))
+        }
         stages :+= stage
         complete = stage.solution.exists(s => s.status == LpStatus.Optimal && s.candidate.feasible)
         if (complete && iterator.hasNext) {

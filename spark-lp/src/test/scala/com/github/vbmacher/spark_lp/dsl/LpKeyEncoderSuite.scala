@@ -55,6 +55,12 @@ class LpKeyEncoderSuite extends AnyFunSuite {
   }
 
   test("custom LpKeyEncoder via instance") {
+    /**
+      * Composite key used to test a caller-defined encoder.
+      *
+      * @param plant first encoded key component.
+      * @param product second encoded key component.
+      */
     case class PlantProduct(plant: String, product: Int)
     implicit val enc: LpKeyEncoder[PlantProduct] = LpKeyEncoder.instance(k => Seq(k.plant, k.product))
     assert(enc.parts(PlantProduct("p1", 7)) == Seq("p1", 7))

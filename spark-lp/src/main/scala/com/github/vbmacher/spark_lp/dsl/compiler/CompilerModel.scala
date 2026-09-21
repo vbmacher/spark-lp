@@ -18,24 +18,42 @@ import org.apache.spark.rdd.RDD
   */
 private[dsl] sealed trait PlanKind
 
-/** Fixed variable (`lower == upper`): folded into the RHS/objective constant, given no solver column. */
+/**
+  * Fixed variable removed from the numerical model.
+  *
+  * @param value original-coordinate value folded into rows and the objective constant.
+  */
 private[dsl] final case class FixedKind(value: Double) extends PlanKind
 
 /**
   * Lower-bounded variable `x = shift + y` with `y >= 0` and an optional finite `upper`. A defined
   * `upper` adds one bound row `y + s = upper - shift` per key.
+  *
+  * @param shift inclusive lower bound added back during reconstruction.
+  * @param upper original-coordinate upper bound, or `None` when unbounded above.
   */
 private[dsl] final case class ShiftedKind(shift: Double, upper: Option[Double]) extends PlanKind
 
 /** Free variable, represented as the difference of two non-negative columns `x = x_plus - x_minus`. */
 private[dsl] case object SplitKind extends PlanKind
 
-/** Upper-only variable: x = upper - y, y >= 0. */
+/**
+  * Upper-only variable represented by `x = upper - y`, `y >= 0`.
+  *
+  * @param upper finite original-coordinate upper bound.
+  */
 private[dsl] final case class ReflectedKind(upper: Double) extends PlanKind
 
 /**
   * One solver column. `kind`: 0 = plain shifted variable (`x = shift + y`), 1 = positive part of
   * a free split, 2 = negative part, 3 = internal slack, 4 = upper reflection (`x = shift - y`).
+  *
+  * @param setIndex source variable-family index, or `-1` for an internal slack.
+  * @param enc canonical source member key, empty for an internal slack.
+  * @param kind reconstruction code described above.
+  * @param shift original-coordinate bound shift.
+  * @param cost objective coefficient in internal minimization form.
+  * @param vector sparse equality-row coefficients for this column.
   */
 private[dsl] final case class ColData(
   setIndex: Int,
@@ -51,6 +69,15 @@ private[dsl] final case class ColData(
   * bounds are tightened. `rowCoeffs` maps emitted constraint-row indices to the column's
   * coefficients; `boundRow` is the column's upper-bound row (`y + s = upper - lower`), which
   * every integral column has by construction.
+  *
+  * @param g global solver-column index.
+  * @param setIndex source variable-family index.
+  * @param enc canonical source member key.
+  * @param rootLower inclusive original-coordinate lower bound at the search root.
+  * @param rootUpper inclusive original-coordinate upper bound at the search root.
+  * @param cost coefficient in the internal minimization objective.
+  * @param boundRow equality-row index that enforces the column width.
+  * @param rowCoeffs emitted user-row index to this column's coefficient.
   */
 private[dsl] final case class IntColumn(
   g: Long,
@@ -128,7 +155,13 @@ private[dsl] final class Compiled(
   val direct: Option[DirectResult] = None,
   val substitutions: Map[Int, LpSubstitution] = Map.empty)
 
-/** Analytic result for a separable linear objective with no active user rows. */
+/**
+  * Analytic result for a separable linear objective with no active user rows.
+  *
+  * @param values chosen original-coordinate value for every variable.
+  * @param objectiveValue objective in the model's original direction, including its constant.
+  * @param unbounded true when at least one improving variable has no limiting bound.
+  */
 private[dsl] final case class DirectResult(
   values: RDD[((Int, String), Double)], objectiveValue: Double, unbounded: Boolean)
 

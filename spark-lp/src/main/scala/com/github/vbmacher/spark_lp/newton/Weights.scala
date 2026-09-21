@@ -10,6 +10,9 @@ import com.github.vbmacher.spark_lp.vectors.dvector.implicits._
   * matrix-free path, which applies the diagonal between the two products. The solver derives
   * `sqrt` from the validated squared weights. CG uses `(S/X + Rp)^(-1)`; the direct
   * reference uses the historical inverse-slack cap.
+  *
+  * @param sqrt per-variable scaling vector used to scale constraint-matrix rows.
+  * @param squared elementwise square of `sqrt`, used by matrix-free products and direction recovery.
   */
 private[spark_lp] final case class Weights(sqrt: DVector, squared: DVector) {
   /**

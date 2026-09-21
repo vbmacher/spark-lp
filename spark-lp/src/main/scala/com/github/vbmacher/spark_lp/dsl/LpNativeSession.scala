@@ -2,19 +2,46 @@ package com.github.vbmacher.spark_lp.dsl
 
 import java.nio.file.Path
 
-final case class LpUnsupported(operation: String, detail: String)
-final case class LpNativeEvent(kind: String, message: String, fields: Map[String, String] = Map.empty)
+/**
+  * Structured refusal of an optional adapter operation.
+  *
+  * @param operation requested operation name.
+  * @param detail adapter-specific reason it is unavailable.
+  */
+final case class LpUnsupported(
+  operation: String,
+  detail: String
+)
+
+/**
+  * Event emitted by a native adapter session.
+  *
+  * @param kind backend event category.
+  * @param message human-readable backend message.
+  * @param fields additional backend values keyed by provider-defined names.
+  */
+final case class LpNativeEvent(
+  kind: String,
+  message: String,
+  fields: Map[String, String] = Map.empty
+)
 
 /** Adapter-side driver handle. Structural model edits are deliberately absent: identities stay stable. */
 trait LpNativeAccess {
   def mapping: LpExportMapping
+
   def setParameter(name: String, value: String): Either[LpUnsupported, Unit]
+
   def parameter(name: String): Either[LpUnsupported, String]
+
   def information(name: String): Either[LpUnsupported, String]
+
   def callback(handler: LpNativeEvent => Unit): Either[LpUnsupported, Unit] =
     Left(LpUnsupported("callback", "Backend does not expose callbacks"))
+
   def readSolution(path: Path): Either[LpUnsupported, Unit] =
     Left(LpUnsupported("readSolution", "Backend does not read solution/start files"))
+
   def writeSolution(path: Path): Either[LpUnsupported, Unit] =
     Left(LpUnsupported("writeSolution", "Backend does not write solution files"))
 }
@@ -29,40 +56,70 @@ final class LpNativeSession private[dsl](problem: LpProblem, adapter: LpSolverAd
   private var revision = 0L
   private var current: Option[LpSolution] = None
   private val results = scala.collection.mutable.ArrayBuffer.empty[LpSolution]
+
   private def check(): Unit = {
     if (Thread.currentThread() ne owner) throw new IllegalStateException("Native session must be used on its creating driver thread")
     if (closed) throw new IllegalStateException("Native session is closed")
     if (busy) throw new IllegalStateException("Native session operations cannot be reentered from a callback")
   }
-  private def invalidate(): Unit = { revision += 1; current = None }
-  def modelRevision: Long = { check(); revision }
-  def mapping: LpExportMapping = { check(); access.mapping }
-  def latestSolution: Option[LpSolution] = { check(); current }
-  def isCurrent(solution: LpSolution): Boolean = { check(); current.exists(_ eq solution) }
+
+  private def invalidate(): Unit = {
+    revision += 1; current = None
+  }
+
+  def modelRevision: Long = {
+    check(); revision
+  }
+
+  def mapping: LpExportMapping = {
+    check(); access.mapping
+  }
+
+  def latestSolution: Option[LpSolution] = {
+    check(); current
+  }
+
+  def isCurrent(solution: LpSolution): Boolean = {
+    check(); current.exists(_ eq solution)
+  }
+
   def setParameter(name: String, value: String): Either[LpUnsupported, Unit] = {
     check()
     val result = access.setParameter(name, value)
     if (result.isRight) invalidate()
     result
   }
-  def parameter(name: String): Either[LpUnsupported, String] = { check(); access.parameter(name) }
-  def information(name: String): Either[LpUnsupported, String] = { check(); access.information(name) }
-  def callback(handler: LpNativeEvent => Unit): Either[LpUnsupported, Unit] = {
-    check(); access.callback(handler)
+
+  def parameter(name: String): Either[LpUnsupported, String] = {
+    check(); access.parameter(name)
   }
+
+  def information(name: String): Either[LpUnsupported, String] = {
+    check(); access.information(name)
+  }
+
+  def callback(handler: LpNativeEvent => Unit): Either[LpUnsupported, Unit] = {
+    check();
+    access.callback(handler)
+  }
+
   def readSolution(path: Path): Either[LpUnsupported, Unit] = {
     check()
     val result = access.readSolution(path)
     if (result.isRight) invalidate()
     result
   }
+
   def writeSolution(path: Path): Either[LpUnsupported, Unit] = {
     check()
     if (current.isEmpty) throw new IllegalStateException("Solve the current native session before writing its solution")
     access.writeSolution(path)
   }
+
   def solve(): LpSolution = {
-    check(); invalidate(); busy = true
+    check();
+    invalidate();
+    busy = true
     try {
       val timing = new LpSolveTiming(LpSolveClock.system)
       timing.start()
@@ -70,19 +127,25 @@ final class LpNativeSession private[dsl](problem: LpProblem, adapter: LpSolverAd
       val raw = prepared.solve()
       timing.startReconstruction()
       val result = LpAdapterSolve.normalize(problem, adapter, options, raw, timing)
-      current = Some(result); results += result; result
+      current = Some(result);
+      results += result;
+      result
     } catch {
       case scala.util.control.NonFatal(e) =>
         busy = false
-        try close() catch { case scala.util.control.NonFatal(cleanup) => e.addSuppressed(cleanup) }
+        try close() catch {
+          case scala.util.control.NonFatal(cleanup) => e.addSuppressed(cleanup)
+        }
         throw e
     } finally busy = false
   }
+
   override def close(): Unit = {
     if (Thread.currentThread() ne owner) throw new IllegalStateException("Native session must be closed on its creating driver thread")
     if (busy) throw new IllegalStateException("Native session cannot be closed inside a callback")
     if (!closed) {
-      closed = true; current = None
+      closed = true;
+      current = None
       try prepared.close() finally try results.foreach(_.close()) finally release()
     }
   }
@@ -103,8 +166,11 @@ private[dsl] object LpNativeSession {
       }
     } catch {
       case scala.util.control.NonFatal(e) =>
-        try prepared.foreach(_.close()) catch { case scala.util.control.NonFatal(cleanup) => e.addSuppressed(cleanup) }
-        release(); throw e
+        try prepared.foreach(_.close()) catch {
+          case scala.util.control.NonFatal(cleanup) => e.addSuppressed(cleanup)
+        }
+        release();
+        throw e
     }
   }
 }

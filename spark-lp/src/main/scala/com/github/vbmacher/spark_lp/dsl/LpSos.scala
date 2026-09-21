@@ -1,14 +1,41 @@
 package com.github.vbmacher.spark_lp.dsl
 
 sealed trait SosKind
+
 object SosKind {
   case object Sos1 extends SosKind
+
   case object Sos2 extends SosKind
 }
-final case class LpSosMember(variable: LpVariableId, weight: Double)
-final case class LpSosData(name: String, kind: SosKind, members: Vector[LpSosMember])
-final class LpSosGroup private[dsl](val name: String, val kind: SosKind,
-  val members: Vector[(LpVariable, Double)]) {
+
+/**
+  * One member of a special ordered set.
+  *
+  * @param variable stable identity of the member variable.
+  * @param weight finite ordering weight; SOS2 weights must be unique within the group.
+  */
+final case class LpSosMember(
+  variable: LpVariableId,
+  weight: Double
+)
+
+/**
+  * Portable definition of one special ordered set.
+  *
+  * @param name unique group name.
+  * @param kind SOS1 permits at most one active member; SOS2 permits at most two adjacent members.
+  * @param members members sorted by weight and then variable identity.
+  */
+final case class LpSosData(
+  name: String,
+  kind: SosKind,
+  members: Vector[LpSosMember]
+)
+
+final class LpSosGroup private[dsl](
+  val name: String, val kind: SosKind, val members: Vector[(LpVariable, Double)]
+) {
+
   def data: LpSosData = LpSosData(name, kind, members.map { case (v, weight) =>
     LpSosMember(LpVariableId(v.handle.setIndex, v.selectedKey.getOrElse("")), weight)
   })
@@ -49,19 +76,23 @@ private[dsl] object LpSos extends Serializable {
       val selectorCount = if (group.kind == SosKind.Sos1) n else math.max(1, n - 1)
       val selectors = Vector.tabulate(selectorCount) { i =>
         val h = new VarSetHandle(model, next, s"__sos_${gi}_selector_$i", 0.0, Some(1.0), Binary, new ScalarDomain(model.spark))
-        next += 1; handles += h; h
+        next += 1;
+        handles += h;
+        h
       }
+
       def add(expression: LpExpr, sense: LpSense, rhs: Double, suffix: String): Unit =
         constraints += Left(expression.compare(sense, rhs).withName(s"__sos_${gi}_$suffix"))
+
       add(selectors.foldLeft(LpExpr.zero)((sum, h) => sum.plus(h.toExpr(1.0))), LpSense.Le, 1.0, "selection")
       group.members.zipWithIndex.foreach { case ((v, _), i) =>
         val (lower, upper) = VariableCategory.domainBounds(v.handle.category, v.lowerBound, v.upperBound)
         if (!java.lang.Double.isFinite(lower) || upper.isEmpty || !java.lang.Double.isFinite(upper.get))
           throw new LpModelException(s"SOS '${group.name}' requires finite declared bounds for member '${v.name}'")
         val active = if (group.kind == SosKind.Sos1) selectors(i).toExpr(1.0)
-          else if (n == 1) selectors.head.toExpr(1.0)
-          else selectors.slice(math.max(0, i - 1), math.min(n - 1, i + 1))
-            .foldLeft(LpExpr.zero)((sum, h) => sum.plus(h.toExpr(1.0)))
+        else if (n == 1) selectors.head.toExpr(1.0)
+        else selectors.slice(math.max(0, i - 1), math.min(n - 1, i + 1))
+          .foldLeft(LpExpr.zero)((sum, h) => sum.plus(h.toExpr(1.0)))
         if (upper.get != 0.0)
           add(v.toExpr(1.0).plus(active.scaledBy(-upper.get)), LpSense.Le, 0.0, s"upper_$i")
         if (lower != 0.0)

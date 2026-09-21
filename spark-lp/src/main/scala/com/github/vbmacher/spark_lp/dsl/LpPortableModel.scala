@@ -4,18 +4,66 @@ import com.github.vbmacher.spark_lp.Numerics
 import org.apache.spark.rdd.RDD
 import org.apache.spark.sql.SparkSession
 
-/** Public affine component: repeated sparse entries add; constants are explicit. */
-final case class LpAffineData(coefficients: RDD[LpCoefficient], constant: Double)
-final case class LpConstraintData(row: LpExpandedConstraint, expression: LpAffineData)
+/**
+  * Portable linear expression; repeated entries for one variable are added.
+  *
+  * @param coefficients distributed variable coefficients.
+  * @param constant finite constant added to the coefficient sum.
+  */
+final case class LpAffineData(
+  coefficients: RDD[LpCoefficient],
+  constant: Double
+)
 
-/** Schema 1 stores evaluated algebra, not Spark source plans or closures. RDDs remain distributed. */
-final case class LpPortableModel(schemaVersion: Int, name: String, sense: ObjectiveSense,
-  declarations: Vector[LpVariableDeclaration], variables: RDD[LpExpandedVariable],
-  constraints: RDD[LpExpandedConstraint], coefficients: RDD[LpMatrixCoefficient],
-  objective: LpAffineData, diagonal: RDD[LpCoefficient], factors: Vector[LpQuadraticFactor],
-  sosGroups: Vector[LpSosData] = Vector.empty) {
+/**
+  * Portable constraint row and its left-hand-side expression.
+  *
+  * @param row row identity, name, comparison sense, and right-hand side.
+  * @param expression linear left-hand side; its constant is moved against `row.rhs` on import.
+  */
+final case class LpConstraintData(
+  row: LpExpandedConstraint,
+  expression: LpAffineData
+)
 
-  /** Explicit import action: at most maxLocalRows row metadata is brought to the driver. */
+/**
+  * Evaluated, distributed representation of a model for interchange and external solvers.
+  *
+  * It contains variable identities and numeric algebra, not the source DataFrame plans, typed
+  * closures or mutable handles used to build the original [[LpProblem]].
+  *
+  * @param schemaVersion interchange schema version; currently [[LpPortableModel.SchemaVersion]].
+  * @param name model name.
+  * @param sense objective direction.
+  * @param declarations variable-family declarations in identifier order.
+  * @param variables distributed expanded variable metadata.
+  * @param constraints distributed expanded constraint rows.
+  * @param coefficients distributed nonzero constraint-matrix entries.
+  * @param objective linear objective expression.
+  * @param diagonal diagonal quadratic coefficients in `0.5 * q_i * x_i^2` form.
+  * @param factors squared affine objective terms.
+  * @param sosGroups special ordered sets attached to the model.
+  */
+final case class LpPortableModel(
+  schemaVersion: Int,
+  name: String,
+  sense: ObjectiveSense,
+  declarations: Vector[LpVariableDeclaration],
+  variables: RDD[LpExpandedVariable],
+  constraints: RDD[LpExpandedConstraint],
+  coefficients: RDD[LpMatrixCoefficient],
+  objective: LpAffineData,
+  diagonal: RDD[LpCoefficient],
+  factors: Vector[LpQuadraticFactor],
+  sosGroups: Vector[LpSosData] = Vector.empty
+) {
+
+  /**
+    * Validates the portable identities and reconstructs an editable [[LpProblem]].
+    *
+    * Row metadata and variable overrides are collected only within `maxLocalRows` and
+    * `maxLocalOverrides`; larger inputs are rejected.
+    */
   def toProblem(maxLocalRows: Int = 10000, maxLocalOverrides: Int = 10000)(implicit spark: SparkSession): LpImportedModel = {
     require(schemaVersion == 1, s"Unsupported portable model schema $schemaVersion")
     require(maxLocalRows >= 0 && maxLocalRows < Int.MaxValue, "maxLocalRows must be nonnegative and below Int.MaxValue")
@@ -92,14 +140,17 @@ final case class LpPortableModel(schemaVersion: Int, name: String, sense: Object
 
 object LpPortableModel {
   val SchemaVersion = 1
+
   def fromView(view: LpModelView): LpPortableModel = LpPortableModel(SchemaVersion, view.name, view.sense,
     view.variableDeclarations, view.variables, view.constraints, view.coefficients,
     LpAffineData(view.objectiveCoefficients, view.objectiveConstant), view.diagonalCoefficients, view.quadraticFactors, view.sosGroups)
+
   def variable(variable: LpVariable): LpExpandedVariable = {
     val h = variable.handle
     LpExpandedVariable(LpVariableId(h.setIndex, variable.selectedKey.getOrElse("")), variable.name,
       variable.lowerBound, variable.upperBound, h.category, variable.display)
   }
+
   def constraint(constraint: LpConstraint, id: LpConstraintId = LpConstraintId(0, ""))(
     implicit spark: SparkSession): LpConstraintData =
     LpConstraintData(LpExpandedConstraint(id, constraint.explicitName.getOrElse(s"_c${id.declaration}"),
@@ -109,10 +160,14 @@ object LpPortableModel {
     LpAffineData(expression.coefficients, expression.constant)
 }
 
-/** Explicit rebinding of portable identities and components into the reconstructed model. */
+/**
+  * Reconstructed model plus mappings from portable identities to new variable and expression
+  * handles.
+  */
 final class LpImportedModel private[dsl](val model: LpProblem, val variables: RDD[LpExpandedVariable],
   val constraintIds: Map[LpConstraintId, LpConstraintId]) {
   private implicit val spark: SparkSession = model.spark
+
   private[dsl] def validateReferences(coefficients: RDD[LpCoefficient]): Unit = {
     if (coefficients.filter(c => c.variable == null || !Numerics.isFinite(c.value)).take(1).nonEmpty ||
       coefficients.map(_.variable).subtract(variables.map(_.id)).take(1).nonEmpty)
@@ -145,10 +200,19 @@ final class LpImportedModel private[dsl](val model: LpProblem, val variables: RD
   }
 }
 
-/** Optional result data is informational and separate from the mathematical model. */
+/**
+  * Optional serialized result metadata; it is informational, not part of the mathematical model.
+  *
+  * @param status recorded solver status.
+  * @param objective recorded objective value, absent when no finite value was serialized.
+  * @param candidate recorded candidate availability and feasibility flags.
+  * @param values serialized variable assignment, absent when no candidate was available.
+  * @param residuals recorded continuous residuals, when available.
+  */
 final case class LpSolutionData(status: LpStatus, objective: Option[Double],
   candidate: com.github.vbmacher.spark_lp.CandidateInfo, values: Option[RDD[LpCandidateValue]],
   residuals: Option[LpResiduals] = None)
+
 object LpSolutionData {
   def fromSolution(solution: LpSolution): LpSolutionData =
     LpSolutionData(solution.status, if (solution.objectiveValue.isNaN) None else Some(solution.objectiveValue),

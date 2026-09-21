@@ -2,15 +2,21 @@ package com.github.vbmacher.spark_lp
 
 package object dsl {
 
-  /**
-    * Strategy for solving the per-iteration normal-equations systems, re-exported from the core
-    * package for DSL users; see [[com.github.vbmacher.spark_lp.newton.NewtonSolver]] and
-    * `SolveConfig.newtonSolver`.
+/**
+    * Linear-system strategy used by the interior-point solver.
+    *
+    * This alias exposes [[com.github.vbmacher.spark_lp.newton.NewtonSolver]] from the DSL package so
+    * callers can configure [[SolveConfig.newtonSolver]] without another import.
     */
   type NewtonSolver = newton.NewtonSolver
   val NewtonSolver: newton.NewtonSolver.type = newton.NewtonSolver
 
-  /** Local dot product; both finite collections must have equal lengths. */
+  /**
+    * Builds a linear expression from local coefficients and values.
+    *
+    * Both collections are read on the driver and must be finite, equal in length, and contain only
+    * finite coefficients. A value may be an [[LpVariable]] or [[LpExpr]].
+    */
   def lpDot[A](coefficients: Iterable[Double], values: Iterable[A])(
     implicit toExpression: A => LpExpr): LpExpr = {
     val cs = coefficients.iterator
@@ -26,24 +32,24 @@ package object dsl {
     result
   }
 
-  /** Sums a scalar variable into an expression, PuLP-style. */
+  /** Converts one decision variable to a linear expression with coefficient one. */
   def lpSum(variable: LpVariable): LpExpr = variable.toExpr(1.0)
 
-  /** Sums every variable of a set with coefficient 1. */
+  /** Returns the sum of every member of a distributed variable family. */
   def lpSum[K](variables: LpVariableSet[K]): LpExpr = variables.handle.toExpr(1.0)
 
-  /** Identity; accepts a prebuilt expression such as `variables * $"cost"`. */
+  /** Returns an already-built linear expression unchanged. */
   def lpSum(expression: LpExpr): LpExpr = expression
 
-  /** Sums a collection of expressions. */
+  /** Adds a finite driver-local collection of linear expressions. */
   def lpSum(expressions: Iterable[LpExpr]): LpExpr =
     expressions.foldLeft(LpExpr.zero)(_ plus _)
 
   /**
-    * One symbolic expression per group key. Duplicate `(group, variable)` pairs are aggregated by
-    * summing their coefficients — the standard linear-algebra meaning of repeated terms in one
-    * expression. Comparison operators (taking the RHS as a DataFrame or a scalar) are supplied by
-    * [[implicits.GroupedExprOps]].
+    * Builds one linear expression per group from distributed coefficient rows.
+    *
+    * `by` names the grouping columns stored in `terms`. Repeated rows for the same group and
+    * variable are added. Import [[implicits]] to compare the result with a scalar or grouped RHS.
     */
   def lpSumBy(terms: LpTerms, by: Seq[String]): GroupedLpExpr = new GroupedLpExpr(terms, by)
 }

@@ -7,9 +7,12 @@ import org.apache.spark.sql.SparkSession
 /** Explicit human-readable algebra; no implicit toString evaluation and no file-dialect guarantee. */
 object LpAlgebra {
   private type Order = (Int, Int, String, Int, Int, String)
+
   private def number(value: Double): String = java.lang.Double.toString(value)
+
   private def quoted(value: String): String = "`" + value.replace("\\", "\\\\").replace("`", "\\`")
     .replace("\n", "\\n").replace("\r", "\\r") + "`"
+
   private def term(value: Double, name: String): String =
     s"  ${if (value < 0.0) "-" else "+"} ${number(math.abs(value))} * ${quoted(name)}"
 
@@ -17,10 +20,12 @@ object LpAlgebra {
     val variables = view.variables
     val sc = variables.sparkContext
     val names = variables.map(v => v.id -> v.name)
+
     def terms(coefficients: RDD[LpCoefficient], phase: Int, group: Int, suffix: String = ""): RDD[(Order, String)] =
       coefficients.map(c => c.variable -> c.value).join(names).map { case (id, (value, name)) =>
         ((phase, group, "", 1, id.family, id.key), term(value, name) + suffix)
       }
+
     val header: RDD[(Order, String)] = sc.parallelize(Seq(
       ((0, 0, "", 0, 0, ""), s"model ${quoted(view.name)}: ${view.sense}"),
       ((1, 0, "", 0, 0, ""), "objective:"),

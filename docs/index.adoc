@@ -2,8 +2,9 @@
 :toc: left
 :source-highlighter: highlightjs
 
-`spark-lp` is a Scala DSL for linear, mixed-integer linear and convex quadratic
-optimization over Apache Spark data.
+`spark-lp` is a linear, mixed-integer linear, and continuous convex quadratic programming over
+Apache Spark. It provides a sparse modeling compiler, a predictor-corrector interior-point solver (https://epubs.siam.org/doi/10.1137/0802028[Mehrotra]), and
+https://doi.org/10.2307/1910129[branch-and-bound] for integer variables.
 
 == Guides
 

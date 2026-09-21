@@ -2,7 +2,16 @@ package com.github.vbmacher.spark_lp.dsl
 
 import org.apache.spark.sql.DataFrame
 
-/** Absolute snapping tolerances. Continuous variables are only snapped to bounds, never integers. */
+/**
+  * Reporting-only rules for snapping values near exact domain values.
+  *
+  * Integer and binary values within `integerTolerance` of a whole number are snapped first. Every
+  * variable may then be snapped to a declared bound within `boundTolerance`. Continuous values are
+  * never snapped to an integer merely because they are nearby.
+  *
+  * @param integerTolerance maximum distance for snapping an integer or binary value to a whole number.
+  * @param boundTolerance maximum distance for snapping any value to an inclusive declared bound.
+  */
 final case class LpRounding(integerTolerance: Double = 1e-6, boundTolerance: Double = 1e-8)
     extends Serializable {
   require(Seq(integerTolerance, boundTolerance).forall(t => !t.isNaN && !t.isInfinite && t >= 0.0),
@@ -23,15 +32,21 @@ final case class LpRounding(integerTolerance: Double = 1e-6, boundTolerance: Dou
   }
 }
 
-/** A lazy reporting view owned by the raw solution. It carries no objective, status or feasibility claim. */
+/**
+  * Lazy rounded-value view over an [[LpSolution]].
+  *
+  * Rounding changes only reported values. It does not recalculate the objective, validate
+  * feasibility or change the raw solution.
+  */
 final class LpRoundedValues private[dsl](raw: LpSolution, val rounding: LpRounding) {
+  /** Returns one scalar value after applying this view's reporting rules. */
   def value(variable: LpVariable): Double = {
     val h = variable.handle
     val bounds = raw.snapshot(h).at(variable.selectedKey.getOrElse(""))
     rounding(raw.value(variable), h.category, bounds.lower, bounds.upper)
   }
 
-  /** Distributed transformation followed by the ordinary domain join; no values are collected. */
+  /** Applies rounding in Spark and joins the values to the variable family's original domain. */
   def values[K](variables: LpVariableSet[K]): DataFrame = {
     raw.requireCandidate()
     val h = variables.handle

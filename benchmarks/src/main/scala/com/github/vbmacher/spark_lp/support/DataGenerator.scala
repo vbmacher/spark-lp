@@ -137,7 +137,7 @@ object DataGenerator {
 
   /** Decides whether a residual map indicates convergence within `tolerance`.
     *
-    * @param r         residual map produced by [[Data.residuals]].
+    * @param r         residual map produced by either `Data.residuals` overload.
     * @param tolerance strict upper bound for the normalized residuals.
     * @return true iff every value is finite, `primal`/`dual`/`gap`/`objective_error`
     *         lie in `[0, tolerance)` and `min_x`/`min_s` are at least `-tolerance`.

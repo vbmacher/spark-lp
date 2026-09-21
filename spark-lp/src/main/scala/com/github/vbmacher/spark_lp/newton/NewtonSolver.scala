@@ -1,44 +1,32 @@
 package com.github.vbmacher.spark_lp.newton
 
 /**
-  * Strategy for solving the m x m normal-equations ("Newton") systems `A^T D^2 A y = r` that the
-  * interior-point solver forms during initialization and once per iteration.
+  * Strategy for solving the linear equations used by each interior-point predictor and corrector.
   *
-  * The choice governs the driver-side footprint of the constraint dimension `m`:
+  * Let `m` be the number of equality-form constraint rows:
   *
-  *  - [[NewtonSolver.Cholesky]]: the classic direct method. The weighted Gramian is aggregated to
-  *    the driver (roughly `16*m*m` bytes of related allocations per solve) and factorized there
-  *    (`O(m^3)` per iteration). Exact and fast for small `m`; limited to 65535 rows and by driver
-  *    memory.
-  *  - [[NewtonSolver.ConjugateGradient]]: matrix-free. The Gramian is never materialised; each CG
-  *    step applies the operator with the distributed matrix-vector products already used
-  *    elsewhere. Its dense iteration vectors use `O(m)` driver memory; the optional partial
-  *    Cholesky preconditioner uses `O(m * rank)` driver and task-local storage. Automatic rank
-  *    selection bounds that preconditioner storage and falls back to Jacobi CG when no
-  *    column fits. This makes the constraint count a distributed-friendly dimension, at the cost
-  *    of extra Spark jobs per iteration (one per CG step) and slightly inexact search directions.
-  *    Convergence checks are unaffected: the outer loop recomputes its residuals from the
-  *    iterates each iteration.
-  *  - [[NewtonSolver.Auto]]: Cholesky while `m` is small enough for the driver, ConjugateGradient
-  *    beyond [[NewtonSolver.AutoCholeskyLimit]]. The DataFrame DSL can lower this cutoff with
-  *    its separate `SolveConfig.maxLocalConstraints` resource cap.
+  *  - [[NewtonSolver.Cholesky]] collects and factors an `m x m` matrix on the driver.
+  *  - [[NewtonSolver.ConjugateGradient]] applies that matrix through distributed operations and
+  *    keeps only vectors and a bounded preconditioner on the driver.
+  *  - [[NewtonSolver.Auto]] chooses between them from `m` and the caller's driver-memory cap.
   */
 sealed trait NewtonSolver
 
 object NewtonSolver {
 
-  /** Cholesky through the direct-solver row cutoff, matrix-free CG beyond it. */
+  /** Uses Cholesky up to the configured row cutoff and conjugate gradient above it. */
   case object Auto extends NewtonSolver
 
-  /** Always use the driver-local Cholesky factorization of the Gramian. */
+  /** Always collects and factors the weighted constraint matrix on the driver. */
   case object Cholesky extends NewtonSolver
 
-  /** Always use the matrix-free partial-Cholesky-preconditioned conjugate gradient method. */
+  /** Always uses distributed matrix operations with preconditioned conjugate gradient. */
   case object ConjugateGradient extends NewtonSolver
 
-  /** Largest Auto Cholesky row count. Prefer the direct solver for medium-sized allocation
-    * systems where CG can require hundreds of distributed steps and preconditioner pivots.
-    * This is a workload-driven policy, not a universal measured crossover; see benchmarks/src/results/REPORT.md.
+  /**
+    * Largest equality-form row count at which [[Auto]] may choose [[Cholesky]].
+    *
+    * This is a conservative policy, not a workload-independent performance crossover.
     */
   val AutoCholeskyLimit: Int = 10000
 

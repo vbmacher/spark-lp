@@ -10,6 +10,15 @@ import org.apache.spark.storage.StorageLevel
 
 object Initialize extends LazyLogging {
 
+  /**
+    * Starting state and dimensions produced for the interior-point solver.
+    *
+    * @param x initial positive primal-variable vector.
+    * @param lambda initial equality-constraint multipliers.
+    * @param s initial positive dual-slack vector.
+    * @param rows number of solver variables, equal to the distributed row count of `A`.
+    * @param cols number of equality constraints and elements of `lambda`.
+    */
   case class Initialization(
     x: DVector,
     lambda: DenseVector,
@@ -19,27 +28,28 @@ object Initialize extends LazyLogging {
   )
 
   /**
-    * Compute the heuristic starting points.
+    * Constructs a strictly positive starting iterate for the equality-form problem
+    * `minimize c^T x` subject to `A^T x = b` and `x >= 0`.
     *
-    * Ax + s = b
-    *
-    * @param c the objective coefficient DVector.
-    * @param A the constraint DMatrix.
-    * @param b the constraint values.
-    * @return starting points (x, lambda, s) and the computed dimensions of rows DMatrix (n, m).
+    * @param c objective coefficient for each solver variable.
+    * @param A transposed constraint matrix; each distributed row belongs to one solver variable.
+    * @param b right-hand side of the equality constraints.
+    * @return the initial primal vector `x`, equality multipliers `lambda`, dual slack `s`, and the
+    *         solver dimensions (`rows` variables and `cols` constraints).
     */
   def init(c: DVector, A: DMatrix, b: DenseVector): Initialization =
     init(c, A, b, new newton.CholeskyFactory())
 
   /**
-    * Compute the heuristic starting points with the supplied normal-equations solver:
-    * `B^T B` for Cholesky, `B^T W0 B + Rd` for regularized matrix-free CG.
+    * Constructs the same starting iterate as [[init(c:DVector,A:DMatrix,b:DenseVector)]], using
+    * `factory` for the normal-equations systems created during initialization.
     *
-    * @param c       the objective coefficient DVector.
-    * @param A       the constraint DMatrix.
-    * @param b       the constraint values.
-    * @param factory the normal-equations solver and its initialization regularization.
-    * @return starting points (x, lambda, s) and the computed dimensions of rows DMatrix (n, m).
+    * @param c objective coefficient for each solver variable.
+    * @param A transposed constraint matrix; each distributed row belongs to one solver variable.
+    * @param b right-hand side of the equality constraints.
+    * @param factory strategy used to prepare and solve the initialization system.
+    * @return the initial primal vector `x`, equality multipliers `lambda`, dual slack `s`, and the
+    *         solver dimensions (`rows` variables and `cols` constraints).
     */
   private[spark_lp] def init(
     c: DVector,

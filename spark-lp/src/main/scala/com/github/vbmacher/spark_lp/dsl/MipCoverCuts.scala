@@ -6,15 +6,39 @@ import com.github.vbmacher.spark_lp.dsl.compiler.IntColumn
 private[dsl] sealed trait MipCutScope {
   def permits(lower: Array[Double], upper: Array[Double]): Boolean
 }
+
 private[dsl] case object GlobalCut extends MipCutScope {
   override def permits(lower: Array[Double], upper: Array[Double]): Boolean = true
 }
-private[dsl] final case class LocalCut(lower: Vector[Double], upper: Vector[Double]) extends MipCutScope {
+
+/**
+  * Node domain within which a locally derived cut remains valid.
+  *
+  * @param lower integral-column lower bounds at the source node.
+  * @param upper integral-column upper bounds at the source node.
+  */
+private[dsl] final case class LocalCut(
+  lower: Vector[Double],
+  upper: Vector[Double]
+) extends MipCutScope {
   override def permits(lo: Array[Double], hi: Array[Double]): Boolean =
     lo.length == lower.size && hi.length == upper.size && lo.indices.forall(i => lo(i) >= lower(i) && hi(i) <= upper(i))
 }
-/** Coefficients and RHS refer to the root's shifted nonnegative columns. */
-private[dsl] final case class MipCoverCut(columns: Vector[Long], rhs: Double, scope: MipCutScope) {
+
+/**
+  * Binary cover inequality over the root model's shifted nonnegative columns.
+  *
+  * Every listed column has coefficient one and their sum must not exceed `rhs`.
+  *
+  * @param columns global solver-column indices in deterministic order.
+  * @param rhs right-hand side of the cover inequality.
+  * @param scope tree domain in which the cut is valid.
+  */
+private[dsl] final case class MipCoverCut(
+  columns: Vector[Long],
+  rhs: Double,
+  scope: MipCutScope
+) {
   def signature: (Vector[Long], Double) = columns -> rhs
 }
 
@@ -64,7 +88,10 @@ private[dsl] object MipCoverCuts {
             // Delete redundant members while retaining an exact strict cover proof.
             selected.toVector.reverse.foreach { entry =>
               val without = sum.subtract(new Decimal(entry._2))
-              if (without.compareTo(capacity) > 0) { selected -= entry; sum = without }
+              if (without.compareTo(capacity) > 0) {
+                selected -= entry
+                sum = without
+              }
             }
             val activity = selected.map { case (j, _) => values.getOrElse(columns(j).g, 0.0) }.sum
             val bound = selected.size - 1.0
@@ -72,7 +99,9 @@ private[dsl] object MipCoverCuts {
             val cut = MipCoverCut(selected.map(e => columns(e._1).g).sorted.toVector, rootRhs,
               if (global) GlobalCut else LocalCut(lower.toVector, upper.toVector))
             if (activity > bound + config.numericalTolerance && !seen(cut.signature)) {
-              out += cut; seen += cut.signature; count += 1
+              out += cut
+              seen += cut.signature
+              count += 1
             }
           }
         }

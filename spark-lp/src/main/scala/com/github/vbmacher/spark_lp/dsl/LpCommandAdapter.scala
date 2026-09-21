@@ -5,21 +5,50 @@ import java.nio.file.{Files, Path}
 import java.util.concurrent.TimeUnit
 import scala.collection.JavaConverters._
 
-final case class LpCommandOptions(retainArtifacts: Boolean = false,
-  temporaryRoot: Option[Path] = None, maxLogBytes: Long = 10L * 1024 * 1024) {
+/**
+  * Filesystem and output limits for a command-line solver process.
+  *
+  * @param retainArtifacts preserve the temporary model, solution, and log files after closing.
+  * @param temporaryRoot directory in which workspaces are created; the system temporary directory
+  *                      is used when absent.
+  * @param maxLogBytes maximum solver-log size before the process is terminated as invalid.
+  */
+final case class LpCommandOptions(
+  retainArtifacts: Boolean = false,
+  temporaryRoot: Option[Path] = None,
+  maxLogBytes: Long = 10L * 1024 * 1024
+) {
   require(maxLogBytes > 0, "Log size limit must be positive")
 }
-final case class LpCommandOutcome(exitCode: Option[Int], stopped: Boolean, timedOut: Boolean,
-  log: Path, elapsedSeconds: Double)
+
+/**
+  * Termination details for one command-line solver process.
+  *
+  * @param exitCode process exit code, absent when spark-lp terminated the process.
+  * @param stopped true when the adapter's cooperative stop callback requested termination.
+  * @param timedOut true when the adapter time limit expired.
+  * @param log path containing merged standard output and standard error.
+  * @param elapsedSeconds wall-clock process duration.
+  */
+final case class LpCommandOutcome(
+  exitCode: Option[Int],
+  stopped: Boolean,
+  timedOut: Boolean,
+  log: Path,
+  elapsedSeconds: Double
+)
 
 /** Argument-safe process execution. No shell expansion or global environment mutation. */
 object LpCommandRunner {
+
   def run(arguments: Seq[String], directory: Path, options: LpAdapterOptions,
     commandOptions: LpCommandOptions = LpCommandOptions()): LpCommandOutcome = {
     require(arguments.nonEmpty && arguments.forall(_ != null), "Command arguments must be nonempty and non-null")
     val log = directory.resolve("solver.log")
     val started = System.nanoTime()
+
     def elapsed: Long = System.nanoTime() - started
+
     if (options.shouldStop()) return LpCommandOutcome(None, stopped = true, timedOut = false, log, 0.0)
     val process = new ProcessBuilder(arguments.asJava).directory(directory.toFile)
       .redirectErrorStream(true).redirectOutput(log.toFile).start()
@@ -58,7 +87,8 @@ object LpCommandRunner {
       try {
         val length = math.min(file.length(), maxBytes.toLong).toInt
         file.seek(file.length() - length)
-        val bytes = new Array[Byte](length); file.readFully(bytes)
+        val bytes = new Array[Byte](length);
+        file.readFully(bytes)
         new String(bytes, StandardCharsets.UTF_8)
       } finally file.close()
     }
@@ -84,6 +114,7 @@ object LpCommandRunner {
   */
 abstract class LpCommandAdapter(val commandOptions: LpCommandOptions = LpCommandOptions()) extends LpSolverAdapter {
   protected def command(modelFile: Path, solutionFile: Path, options: LpAdapterOptions): Seq[String]
+
   protected def parse(solutionFile: Path, mapping: LpExportMapping, options: LpAdapterOptions): LpAdapterResult
 
   final override def prepare(model: LpModelView, options: LpAdapterOptions): LpAdapterSession = {
@@ -98,6 +129,7 @@ abstract class LpCommandAdapter(val commandOptions: LpCommandOptions = LpCommand
       new LpAdapterSession {
         private var closed = false
         private var solved = false
+
         override def solve(): LpAdapterResult = {
           if (closed || solved) throw new IllegalStateException("Command session is closed or already solved")
           solved = true
@@ -116,6 +148,7 @@ abstract class LpCommandAdapter(val commandOptions: LpCommandOptions = LpCommand
             result.copy(diagnostics = result.diagnostics ++ diagnostics)
           }
         }
+
         override def close(): Unit = if (!closed) {
           closed = true
           LpCommandRunner.discardWorkspace(Some(identities), directory, commandOptions.retainArtifacts)

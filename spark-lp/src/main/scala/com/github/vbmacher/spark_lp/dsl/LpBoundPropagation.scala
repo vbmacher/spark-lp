@@ -3,11 +3,23 @@ package com.github.vbmacher.spark_lp.dsl
 import java.math.{BigDecimal => Decimal, MathContext, RoundingMode}
 import org.apache.spark.rdd.RDD
 
-final case class BoundInferenceConfig(maxPasses: Int = 8, maxLocalChanges: Int = 100000, tolerance: Double = 1e-10) {
+/**
+  * Work and numerical limits for deriving tighter variable bounds from constraints.
+  *
+  * @param maxPasses maximum propagation passes over the model.
+  * @param maxLocalChanges maximum tightened bounds collected to the driver.
+  * @param tolerance nonnegative margin used when comparing inferred and existing bounds.
+  */
+final case class BoundInferenceConfig(
+  maxPasses: Int = 8,
+  maxLocalChanges: Int = 100000,
+  tolerance: Double = 1e-10
+) {
   require(java.lang.Double.isFinite(tolerance) && tolerance >= 0.0, "Bound inference tolerance must be finite and nonnegative")
   require(maxPasses > 0 && maxLocalChanges > 0 && maxLocalChanges < Int.MaxValue,
     "Bound inference requires positive bounded work limits")
 }
+
 private[dsl] final class BoundPropagationResult(val variables: RDD[LpExpandedVariable],
   val passes: Int, val contradiction: Option[String]) extends AutoCloseable {
   override def close(): Unit = variables.unpersist(false)
@@ -15,21 +27,47 @@ private[dsl] final class BoundPropagationResult(val variables: RDD[LpExpandedVar
 
 /** Exact binary-double products/sums, outward division, and category-aware interval propagation. */
 private[dsl] object LpBoundPropagation extends Serializable {
+  /**
+    * Decimal interval with explicit unbounded sides.
+    *
+    * @param lower finite lower endpoint, or `None` for negative infinity.
+    * @param upper finite upper endpoint, or `None` for positive infinity.
+    */
   private case class Interval(lower: Option[Decimal], upper: Option[Decimal])
-  private case class Totals(lower: Decimal, lowerInfinite: Long, upper: Decimal, upperInfinite: Long, nonzeros: Long) {
+
+  /**
+    * Aggregate interval contributions for one constraint row.
+    *
+    * @param lower sum of finite lower contributions.
+    * @param lowerInfinite number of contributions unbounded below.
+    * @param upper sum of finite upper contributions.
+    * @param upperInfinite number of contributions unbounded above.
+    * @param nonzeros number of nonzero variable coefficients in the row.
+    */
+  private case class Totals(
+    lower: Decimal,
+    lowerInfinite: Long,
+    upper: Decimal,
+    upperInfinite: Long,
+    nonzeros: Long
+  ) {
     def +(other: Totals): Totals = Totals(lower.add(other.lower), lowerInfinite + other.lowerInfinite,
       upper.add(other.upper), upperInfinite + other.upperInfinite, nonzeros + other.nonzeros)
+
     def without(own: Interval): Interval = Interval(
       if (lowerInfinite - (if (own.lower.isEmpty) 1 else 0) == 0) Some(lower.subtract(own.lower.getOrElse(Decimal.ZERO))) else None,
       if (upperInfinite - (if (own.upper.isEmpty) 1 else 0) == 0) Some(upper.subtract(own.upper.getOrElse(Decimal.ZERO))) else None)
   }
+
   private def decimal(value: Double): Decimal = new Decimal(value)
+
   private def product(a: Double, v: LpExpandedVariable): Interval = {
     val coefficient = decimal(a)
     val lower = if (v.lower.isNegInfinity) None else Some(decimal(v.lower).multiply(coefficient))
     val upper = v.upper.map(u => decimal(u).multiply(coefficient))
     if (a >= 0) Interval(lower, upper) else Interval(upper, lower)
   }
+
   private def rounded(value: Decimal, coefficient: Double, lower: Boolean, integral: Boolean): Double = {
     val mode = if (lower) RoundingMode.FLOOR else RoundingMode.CEILING
     val quotient = value.divide(decimal(coefficient), new MathContext(34, mode))
@@ -49,6 +87,7 @@ private[dsl] object LpBoundPropagation extends Serializable {
       else java.lang.Math.nextAfter(nearest, Double.PositiveInfinity)
     }
   }
+
   private def domain(v: LpExpandedVariable): LpExpandedVariable = {
     if (v.category == Continuous) v
     else {
@@ -74,7 +113,8 @@ private[dsl] object LpBoundPropagation extends Serializable {
         }.persist()
         try {
           val totals = entries.mapValues { case (_, _, _, i) => Totals(i.lower.getOrElse(Decimal.ZERO),
-            if (i.lower.isEmpty) 1 else 0, i.upper.getOrElse(Decimal.ZERO), if (i.upper.isEmpty) 1 else 0, 1L) }.reduceByKey(_ + _)
+            if (i.lower.isEmpty) 1 else 0, i.upper.getOrElse(Decimal.ZERO), if (i.upper.isEmpty) 1 else 0, 1L)
+          }.reduceByKey(_ + _)
           val boundedRows = rows.leftOuterJoin(totals).mapValues { case (row, t) =>
             (row, t.getOrElse(Totals(Decimal.ZERO, 0, Decimal.ZERO, 0, 0L)))
           }.persist()
@@ -102,11 +142,14 @@ private[dsl] object LpBoundPropagation extends Serializable {
                   else upper = rounded(rhs.subtract(allowance).subtract(activity), a, lower = false, category != Continuous)
                 }
                 if (row.sense == "==" && total.nonzeros == 1 && category == Continuous) {
-                  val exact = try Some(rhs.divide(decimal(a))) catch { case _: ArithmeticException => None }
+                  val exact = try Some(rhs.divide(decimal(a))) catch {
+                    case _: ArithmeticException => None
+                  }
                   exact.foreach { value =>
                     val asDouble = value.doubleValue()
                     if (java.lang.Double.isFinite(asDouble) && decimal(asDouble).compareTo(value) == 0) {
-                      lower = asDouble; upper = asDouble
+                      lower = asDouble;
+                      upper = asDouble
                     }
                   }
                 }
@@ -121,7 +164,8 @@ private[dsl] object LpBoundPropagation extends Serializable {
               val invalid = next.values.filter(v => v.lower.isPosInfinity || v.upper.exists(u => u.isNegInfinity || u < v.lower)).take(1)
               if (invalid.nonEmpty) contradiction = Some(s"No feasible value for '${invalid.head.name}' under implied bounds")
               changed = next.join(variables).values.filter { case (a, b) => a.lower != b.lower || a.upper != b.upper }.take(1).nonEmpty
-              variables.unpersist(false); variables = next
+              variables.unpersist(false);
+              variables = next
             }
           } finally boundedRows.unpersist(false)
         } finally entries.unpersist(false)
@@ -129,6 +173,10 @@ private[dsl] object LpBoundPropagation extends Serializable {
       val result = variables.values.persist()
       result.count()
       new BoundPropagationResult(result, passes, contradiction)
-    } finally { variables.unpersist(false); matrix.unpersist(false); rows.unpersist(false) }
+    } finally {
+      variables.unpersist(false);
+      matrix.unpersist(false);
+      rows.unpersist(false)
+    }
   }
 }

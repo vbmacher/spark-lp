@@ -47,8 +47,8 @@ object CaseInventory {
     *
     * @param path filesystem path to the metadata CSV.
     * @return the parsed cases in file order.
-    * @throws IllegalArgumentException if the header is missing or wrong, a row
-    *                                  does not have exactly eight columns, or a duplicate case ID is found.
+    * An `IllegalArgumentException` is thrown if the header is missing or wrong, a row does not have
+    * exactly eight columns, or a duplicate case ID is found.
     */
   def read(path: String): Vector[BenchmarkCase] = {
     val source = scala.io.Source.fromFile(path)

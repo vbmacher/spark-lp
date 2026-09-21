@@ -4,9 +4,27 @@ import org.apache.spark.rdd.RDD
 import org.apache.spark.sql.SparkSession
 import com.github.vbmacher.spark_lp.Numerics
 
-/** Stable identity within one model: declaration index and canonical key (empty for a scalar). */
-final case class LpVariableId(family: Int, key: String)
-final case class LpCoefficient(variable: LpVariableId, value: Double)
+/**
+  * Stable variable identity within one model.
+  *
+  * @param family zero-based variable-family declaration index.
+  * @param key canonical encoded member key; empty for a scalar variable.
+  */
+final case class LpVariableId(
+  family: Int,
+  key: String
+)
+
+/**
+  * One coefficient in a portable affine expression.
+  *
+  * @param variable variable multiplied by this coefficient.
+  * @param value finite coefficient value.
+  */
+final case class LpCoefficient(
+  variable: LpVariableId,
+  value: Double
+)
 
 private[dsl] object LpExpressionData {
   def check(value: Double): Unit =
@@ -31,6 +49,7 @@ private[dsl] object LpExpressionData {
         throw new LpModelException(s"Variable '${h.name}': null or duplicate domain keys")
       h -> keys
     }.toMap
+
     def term(t: LpTerm): RDD[((Int, String), Double)] = {
       val h = t.handle
       val si = h.setIndex
@@ -58,6 +77,7 @@ private[dsl] object LpExpressionData {
         throw new LpModelException(s"Variable '${h.name}': non-finite expression coefficient")
       pairs.map { case (key, c) => ((si, key), c) }
     }
+
     val pieces = expression.terms.map(term)
     val result = if (pieces.isEmpty) sc.emptyRDD[((Int, String), Double)] else sc.union(pieces).reduceByKey(_ + _)
     if (result.values.filter(v => !Numerics.isFinite(v)).take(1).nonEmpty)

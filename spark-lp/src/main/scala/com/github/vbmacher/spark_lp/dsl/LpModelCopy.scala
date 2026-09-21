@@ -1,6 +1,14 @@
 package com.github.vbmacher.spark_lp.dsl
 
-/** Independent declarations sharing immutable, lazy Spark sources with the source model. */
+/**
+  * Maps declarations from a source [[LpProblem]] to an independent copy.
+  *
+  * Use the conversion methods when code outside [[LpProblem.copy]] retains a variable, expression,
+  * or constraint from the source model. The returned declarations belong to [[model]] and may be
+  * used to edit it. Both models still refer to the same immutable, lazily evaluated Spark sources.
+  *
+  * @param model copied problem that owns every declaration returned by this mapping.
+  */
 final class LpModelCopy private[dsl](source: LpProblem, val model: LpProblem) {
   private val mapping: Map[VarSetHandle, VarSetHandle] = source.handles.iterator.map { handle =>
     val copied = new VarSetHandle(model, handle.setIndex, handle.name, handle.lowerBound,

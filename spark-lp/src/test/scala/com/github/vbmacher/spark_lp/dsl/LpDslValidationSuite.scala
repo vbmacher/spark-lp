@@ -5,6 +5,12 @@ import com.holdenkarau.spark.testing.DataFrameSuiteBase
 import org.apache.spark.sql.SparkSession
 import org.scalatest.funsuite.AnyFunSuite
 
+/**
+  * Keyed coefficient row used by DSL validation tests.
+  *
+  * @param name variable-member key.
+  * @param w coefficient joined to that member.
+  */
 case class KeyedWeight(name: String, w: Double)
 
 class LpDslValidationSuite extends AnyFunSuite with DataFrameSuiteBase {

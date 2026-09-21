@@ -3,9 +3,13 @@ package com.github.vbmacher.spark_lp.dsl
 /** Local allocation in input order, with constant-time keyed access. No Spark action is performed. */
 final class LpLocalVariables[K] private[dsl](val entries: Vector[(K, LpVariable)]) {
   private val byKey = entries.toMap
+
   def apply(key: K): LpVariable = byKey(key)
+
   def keys: Vector[K] = entries.map(_._1)
+
   def values: Vector[LpVariable] = entries.map(_._2)
+
   def size: Int = entries.size
 }
 

@@ -73,4 +73,9 @@ class LpMemberSuite extends AnyFunSuite with DataFrameSuiteBase {
     intercept[LpModelException](foreign.solve())
   }
 }
+/**
+  * Typed variable-member key used by member-editing tests.
+  *
+  * @param id encoded member identifier.
+  */
 final case class MemberKey(id: Int)

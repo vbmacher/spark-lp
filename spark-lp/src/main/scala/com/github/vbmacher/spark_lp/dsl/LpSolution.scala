@@ -6,47 +6,45 @@ import org.apache.spark.rdd.RDD
 import org.apache.spark.sql.DataFrame
 
 /**
-  * The result of one solve.
+  * Result returned after an [[LpProblem]] is solved.
   *
-  * An interior-point method returns values like `33.999999999`, not `34.0`; round at the point of
-  * use — `values` does not round on the caller's behalf.
+  * Read `candidate` before reading variable values: a stopped or limited solve may have no completed
+  * iterate, or its retained iterate may violate the original model. Values remain raw
+  * floating-point results; use [[rounded]] only when preparing a report.
   *
-  * At [[LpStatus.Infeasible]] and [[LpStatus.InfeasibleOrUnbounded]] the `objectiveValue` is `NaN`;
-  * at [[LpStatus.Unbounded]] it is the signed infinity of the objective sense (`-Infinity` for
-  * [[Minimize]], `+Infinity` for [[Maximize]]). `values(...)` and `constraints` keep exposing the
-  * last iterate for these certificate statuses — for
-  * [[LpStatus.Infeasible]] the `slack` column is exactly the tool to locate the conflicting
-  * constraints. Intentional limits retain the best feasible candidate when available; inspect
-  * `candidate` before using the values. A stop before the first completed iterate has no values.
+  * This object owns persisted Spark data. Complete actions on [[values]], [[constraints]] and
+  * [[evidence]] before calling [[close]].
+  *
+  * @param status why the solve terminated
+  * @param objectiveValue objective in the model's original minimize/maximize sense, including
+  *                       constants; `NaN` for infeasibility statuses and signed infinity for
+  *                       [[LpStatus.Unbounded]]
+  * @param iterations completed numerical iterations
+  * @param residuals errors measured on the returned continuous iterate
+  * @param timings wall-clock phases and optional driver CPU time
+  * @param constraints one row per original constraint, with `activity`, `sense`, `rhs`,
+  *                    directional `slack`, and nullable sensitivity columns
+  * @param candidate whether variable values exist and satisfy the original model
+  * @param stopReason cooperative-stop reason, when the solve was intentionally stopped
+  * @param evidence independently verifiable continuous infeasibility or unboundedness evidence
+  * @param isRelaxation true when status, residuals and candidate describe a continuous relaxation
+  * @param mip mixed-integer search bounds and gaps, when integer search ran
+  * @param presolve original and simplified model sizes and transformations
+  * @param backend external-adapter provenance, when an adapter produced the result
+  * @param start summary of the supplied starting values, when present
   */
 final class LpSolution private[dsl](
   val status: LpStatus,
-
-  /** Objective value in the user's sense: solver optimum plus all constant terms (explicit
-    * expression constants and the bound-shift contributions), with the sign restored for Maximize.
-    * `NaN` at [[LpStatus.Infeasible]]/[[LpStatus.InfeasibleOrUnbounded]], signed infinity at
-    * [[LpStatus.Unbounded]]. */
   val objectiveValue: Double,
   val iterations: Int,
   val residuals: LpResiduals,
   val timings: LpSolveTimings,
-
-  /**
-    * Per-constraint diagnostics: `name`, `group` (when present), `activity`, `sense`, `rhs`,
-    * `slack` (the distance to the bound in the constraint's own direction: `rhs - activity` for
-    * `<=`, `activity - rhs` for `>=`), `dual` (objective sensitivity to original RHS), `dual_note` (unavailability reason) and `note` (presolve notes).
-    * At [[LpStatus.IterationLimit]] and the infeasibility-related statuses the iterate need not be
-    * primal-feasible, so slack may be materially negative and equality rows may be violated;
-    * `residuals.primal` quantifies this, and at [[LpStatus.Infeasible]] the negative slacks locate
-    * the conflicting constraints.
-    */
   val constraints: DataFrame,
   private val problem: LpProblem,
   private[dsl] val userValues: RDD[((Int, String), Double)],
   val candidate: CandidateInfo,
   val stopReason: Option[StopReason] = None,
   val evidence: Option[LpEvidence] = None,
-  /** Status and candidate feasibility apply to the continuous relaxation when true. */
   val isRelaxation: Boolean = false,
   val mip: Option[MipSummary] = None,
   private[dsl] val reducedCostData: Option[RDD[((Int, String), Double)]] = None,
@@ -72,7 +70,11 @@ final class LpSolution private[dsl](
     if (!(handle.problem eq problem)) throw new LpModelException("Variable belongs to a different problem")
   }
 
-  /** Explicit reporting view; does not change raw values or attach feasibility metadata. */
+  /**
+    * Creates a reporting view that snaps near-integer and near-bound values.
+    *
+    * The returned view does not change this solution, its objective, status or feasibility.
+    */
   def rounded(rounding: LpRounding = LpRounding()): LpRoundedValues = {
     requireCandidate()
     new LpRoundedValues(this, rounding)
@@ -86,7 +88,12 @@ final class LpSolution private[dsl](
     if (!candidate.available) throw new LpModelException("No completed iterate is available for this solve")
   }
 
-  /** Evaluates a linear expression using this result's values and the coefficient sources as read now. */
+  /**
+    * Evaluates `expression` with this solution's variable values.
+    *
+    * Coefficient DataFrames and Datasets are evaluated when this method is called, not when the
+    * model was solved.
+    */
   def evaluate(expression: LpExpr): Double = {
     requireCandidate()
     implicit val spark: org.apache.spark.sql.SparkSession = problem.spark
@@ -100,7 +107,7 @@ final class LpSolution private[dsl](
     value
   }
 
-  /** Original-coordinate reduced cost, or None when LP sensitivity is unavailable for this variable. */
+  /** Returns the variable's reduced cost in original model units, or `None` when unavailable. */
   def reducedCost(variable: LpVariable): Option[Double] = {
     requireOpen()
     requireOwner(variable.handle)
@@ -108,7 +115,12 @@ final class LpSolution private[dsl](
     reducedCostData.flatMap(_.filter(_._1 == id).values.take(1).headOption)
   }
 
-  /** Domain rows plus nullable lp_reduced_cost; absent sensitivity is never encoded as zero. */
+  /**
+    * Joins reduced costs to the variable set's original domain.
+    *
+    * The returned DataFrame adds nullable `lp_reduced_cost`; `null` means that sensitivity is
+    * unavailable and is never replaced with zero.
+    */
   def reducedCosts[K](variables: LpVariableSet[K]): DataFrame = {
     requireOpen()
     requireOwner(variables.handle)
@@ -125,7 +137,7 @@ final class LpSolution private[dsl](
         .otherwise(col("lp_reduced_cost")))
   }
 
-  /** Releases the materialised result. Finish all Spark actions on values before closing. */
+  /** Releases Spark data owned by this result. Calling it more than once is safe. */
   override def close(): Unit = {
     closed = true
     userValues.unpersist(blocking = false)
@@ -134,7 +146,11 @@ final class LpSolution private[dsl](
     if (backend.nonEmpty) constraints.unpersist(false)
   }
 
-  /** The original variable domain plus `lp_variable` (display name) and `lp_value` columns. */
+  /**
+    * Joins solved values to the variable set's original domain.
+    *
+    * The returned DataFrame adds `lp_variable` (display name) and `lp_value` columns.
+    */
   def values[K](variables: LpVariableSet[K]): DataFrame = {
     requireCandidate()
     val handle = variables.handle
@@ -146,7 +162,7 @@ final class LpSolution private[dsl](
     handle.domain.attachValues(setValues, snapshot(handle).name, snapshot(handle).names)
   }
 
-  /** Primal value of one scalar variable, in the caller's original units. */
+  /** Returns one variable's primal value in original model units. */
   def value(variable: LpVariable): Double = {
     requireCandidate()
     val handle = variable.handle

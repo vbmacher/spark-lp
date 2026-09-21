@@ -3,21 +3,70 @@ package com.github.vbmacher.spark_lp.dsl
 import com.github.vbmacher.spark_lp.Numerics
 import org.apache.spark.rdd.RDD
 
-/** Original row, before shifts, slack introduction or duplicate-row elimination. */
-final case class EvidenceRow(name: String, group: Option[String], sense: String, rhs: Double)
+/**
+  * Original constraint row before solver transformations.
+  *
+  * @param name display name of the expanded row.
+  * @param group encoded group key for a generated row, or `None` for a scalar row.
+  * @param sense comparison symbol: `<=`, `>=`, or `=`.
+  * @param rhs right-hand side in original model units.
+  */
+final case class EvidenceRow(
+  name: String,
+  group: Option[String],
+  sense: String,
+  rhs: Double
+)
 
-/** Keyed original variable; coefficients use indices into EvidenceModel.rows. */
-final case class EvidenceVariable(name: String, lower: Double, upper: Option[Double],
-  cost: Double, coefficients: Map[Int, Double], curvature: Double = 0.0)
+/**
+  * Original variable data used to verify a certificate independently of solver transformations.
+  *
+  * @param name display name of the variable.
+  * @param lower inclusive lower bound.
+  * @param upper inclusive upper bound, or `None` when unbounded above.
+  * @param cost linear objective coefficient in original objective direction.
+  * @param coefficients original constraint-row index to coefficient.
+  * @param curvature diagonal quadratic coefficient in `0.5 * curvature * x^2` form.
+  */
+final case class EvidenceVariable(
+  name: String,
+  lower: Double,
+  upper: Option[Double],
+  cost: Double,
+  coefficients: Map[Int, Double],
+  curvature: Double = 0.0
+)
 
-/** A materialised original-model snapshot, independent of the solver's transformed matrix. */
-final case class EvidenceModel(rows: IndexedSeq[EvidenceRow],
-  variables: RDD[((Int, String), EvidenceVariable)], sense: ObjectiveSense)
+/**
+  * Materialized original-model snapshot used for independent evidence verification.
+  *
+  * @param rows constraint rows in the index order referenced by variable coefficients.
+  * @param variables distributed variable identity and evidence data.
+  * @param sense original objective direction.
+  */
+final case class EvidenceModel(
+  rows: IndexedSeq[EvidenceRow],
+  variables: RDD[((Int, String), EvidenceVariable)],
+  sense: ObjectiveSense
+)
 
-final case class EvidenceVerification(valid: Boolean, residual: Double, margin: Double)
+/**
+  * Result of checking certificate equations against an evidence model.
+  *
+  * @param valid true when every checked equation and sign condition is within tolerance.
+  * @param residual largest absolute violation encountered while checking the certificate.
+  * @param margin normalized certificate margin; one is required for infeasibility and a positive
+  *               improvement is required for an unbounded direction.
+  */
+final case class EvidenceVerification(
+  valid: Boolean,
+  residual: Double,
+  margin: Double
+)
 
 sealed trait LpEvidence extends AutoCloseable {
   def model: EvidenceModel
+
   def verify(tolerance: Double = 1e-8): EvidenceVerification
 }
 
@@ -25,11 +74,19 @@ sealed trait LpEvidence extends AutoCloseable {
   * b^T y + l^T lowerMultiplier + u^T upperMultiplier = 1.
   * <= row and upper-bound multipliers are nonpositive; >= and lower are nonnegative.
   * Equality multipliers are unrestricted. All arrays are in original units.
+  *
+  * @param model original model against which the certificate is checked.
+  * @param rows row multipliers in the same order as `model.rows`.
+  * @param bounds lower- and upper-bound multipliers keyed by variable identity.
   */
-final case class InfeasibilityCertificate(model: EvidenceModel, rows: IndexedSeq[Double],
-  bounds: RDD[((Int, String), (Double, Double))]) extends LpEvidence {
+final case class InfeasibilityCertificate(
+  model: EvidenceModel,
+  rows: IndexedSeq[Double],
+  bounds: RDD[((Int, String), (Double, Double))]
+) extends LpEvidence {
   override def verify(tolerance: Double): EvidenceVerification =
     LpEvidenceVerifier.infeasibility(this, tolerance)
+
   override def close(): Unit = {
     model.variables.unpersist(false)
     bounds.unpersist(false)
@@ -38,12 +95,19 @@ final case class InfeasibilityCertificate(model: EvidenceModel, rows: IndexedSeq
 
 /** Direction in original units, normalized to an improvement of one. A feasible point is
   * present only for proven unboundedness; a direction alone does not prove primal feasibility.
+  *
+  * @param model original model against which the direction is checked.
+  * @param direction variable displacement that preserves feasibility and improves the objective.
+  * @param point feasible base point proving that the direction yields an unbounded feasible ray.
   */
-final case class UnboundedDirection(model: EvidenceModel,
+final case class UnboundedDirection(
+  model: EvidenceModel,
   direction: RDD[((Int, String), Double)],
-  point: Option[RDD[((Int, String), Double)]]) extends LpEvidence {
+  point: Option[RDD[((Int, String), Double)]]
+) extends LpEvidence {
   override def verify(tolerance: Double): EvidenceVerification =
     LpEvidenceVerifier.unbounded(this, tolerance)
+
   override def close(): Unit = {
     model.variables.unpersist(false)
     direction.unpersist(false)
@@ -56,7 +120,9 @@ final case class UnboundedDirection(model: EvidenceModel,
   */
 object LpEvidenceVerifier {
   private def checked(v: Double): Double = if (Numerics.isFinite(v)) math.max(0.0, v) else Double.PositiveInfinity
+
   private def checkTolerance(t: Double): Unit = require(Numerics.isFinite(t) && t > 0, "tolerance must be finite and positive")
+
   private def keysMatch[A: scala.reflect.ClassTag, B: scala.reflect.ClassTag](a: RDD[((Int, String), A)], b: RDD[((Int, String), B)]): Boolean =
     a.mapValues(_ => 1).cogroup(b.mapValues(_ => 1)).filter { case (_, (x, y)) => x.size != 1 || y.size != 1 }.take(1).isEmpty
 
@@ -67,7 +133,11 @@ object LpEvidenceVerifier {
     if (y.size != model.rows.size || !y.forall(Numerics.isFinite) || !keysMatch(model.variables, proof.bounds))
       return EvidenceVerification(false, Double.PositiveInfinity, Double.NaN)
     val rowError = model.rows.zip(y).map { case (r, v) =>
-      r.sense match { case "<=" => checked(v); case ">=" => checked(-v); case _ => 0.0 }
+      r.sense match {
+        case "<=" => checked(v);
+        case ">=" => checked(-v);
+        case _ => 0.0
+      }
     }.foldLeft(0.0)(math.max)
     val terms = model.variables.join(proof.bounds).map { case (_, (v, (lower, upper))) =>
       val ay = v.coefficients.iterator.map { case (r, a) => a * y(r) }.sum
@@ -87,6 +157,7 @@ object LpEvidenceVerifier {
   def unbounded(proof: UnboundedDirection, tolerance: Double = 1e-8): EvidenceVerification = {
     checkTolerance(tolerance)
     val model = proof.model
+
     def violations(values: RDD[((Int, String), Double)], ray: Boolean): (Double, Double) = {
       if (!keysMatch(model.variables, values)) return (Double.PositiveInfinity, Double.NaN)
       val joined = model.variables.join(values)
@@ -95,7 +166,7 @@ object LpEvidenceVerifier {
         val hi = v.upper.map(u => if (ray) x else x - u).getOrElse(0.0)
         val curvatureError = if (ray) checked(math.abs(v.curvature * x)) else 0.0
         (if (Numerics.isFinite(x)) math.max(curvatureError, math.max(checked(lo), checked(hi)))
-          else Double.PositiveInfinity, v.cost * x)
+        else Double.PositiveInfinity, v.cost * x)
       }.fold((0.0, 0.0)) { case ((a, b), (c, d)) => (math.max(a, c), b + d) }
       val activities = joined.flatMap { case (_, (v, x)) =>
         v.coefficients.map { case (r, a) => (r, a * x) }
@@ -106,6 +177,7 @@ object LpEvidenceVerifier {
       }.foldLeft(0.0)(math.max)
       (math.max(scalar._1, rowError), scalar._2)
     }
+
     val ray = violations(proof.direction, ray = true)
     val margin = (if (model.sense == Minimize) -1.0 else 1.0) * ray._2
     val pointError = proof.point.map(violations(_, ray = false)._1).getOrElse(Double.PositiveInfinity)

@@ -644,11 +644,26 @@ private[dsl] final class BranchAndBound(
 
 private[dsl] object BranchAndBound {
 
-  /** One open subproblem: integral bounds per column (aligned with `intCols`) and its best bound. */
+  /**
+    * One open branch-and-bound subproblem.
+    *
+    * @param lower integral-column lower bounds aligned with `intCols`.
+    * @param upper integral-column upper bounds aligned with `intCols`.
+    * @param bound best internal minimization-objective bound inherited or solved for this node.
+    * @param cuts locally or globally valid cover cuts active at this node.
+    */
   private final case class Node(lower: Array[Double], upper: Array[Double], bound: Double,
     cuts: Vector[MipCoverCut] = Vector.empty)
 
-  /** A retained iterate: solver-form objective, iterate, exact integer overrides and diagnostics. */
+  /**
+    * Retained feasible or unresolved relaxation iterate.
+    *
+    * @param objMin objective in internal minimization form.
+    * @param x distributed solver-coordinate iterate.
+    * @param values exact original-coordinate integer values keyed by global solver column.
+    * @param summary continuous relaxation diagnostics and termination.
+    * @param originalValues reconstructed original-coordinate values when already materialized.
+    */
   private final case class Candidate(
     objMin: Double,
     x: DVector,

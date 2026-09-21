@@ -21,6 +21,21 @@ object BenchmarkRunner {
   private val Usage = "bench list|validate|run|testbed [--suite NAME] [--scenarios DIR] [--case ID] [--backend NAME] " +
     "[--output FILE] [--bmf FILE --require-converged true|false] [--jar FILE --spark-submit PATH --checkpoint-uri URI]"
 
+  /**
+    * Validated command-line arguments for the benchmark coordinator.
+    *
+    * @param command operation: `list`, `validate`, or `run`.
+    * @param suite scenario-suite name selected for listing or running.
+    * @param directory directory containing scenario and case-inventory files.
+    * @param output destination for a completed BMF result document.
+    * @param caseId optional single case selected from the suite.
+    * @param backend optional single solver backend selected from the suite.
+    * @param bmf existing BMF document validated by the `validate` command.
+    * @param jar benchmark assembly JAR used for isolated worker launches.
+    * @param sparkSubmit executable used to launch Spark workers.
+    * @param checkpoint HDFS or compatible URI used for Spark checkpoint data.
+    * @param requireConverged require every validated BMF scenario to report convergence.
+    */
   final case class Options(command: String, suite: Option[String] = None, directory: Path = Paths.get("benchmarks/scenarios"),
                            output: Path = Paths.get("benchmarks/output/results.bmf.json"), caseId: Option[String] = None,
                            backend: Option[String] = None, bmf: Option[Path] = None, jar: Option[Path] = None,

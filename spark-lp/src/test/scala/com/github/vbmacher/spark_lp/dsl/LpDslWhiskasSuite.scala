@@ -6,6 +6,16 @@ import com.holdenkarau.spark.testing.DataFrameSuiteBase
 import org.apache.spark.sql.SparkSession
 import org.scalatest.funsuite.AnyFunSuite
 
+/**
+  * Ingredient row used by the Whiskas blending model tests.
+  *
+  * @param name ingredient key.
+  * @param cost cost per gram.
+  * @param protein grams of protein per gram of ingredient.
+  * @param fat grams of fat per gram of ingredient.
+  * @param fibre grams of fibre per gram of ingredient.
+  * @param salt grams of salt per gram of ingredient.
+  */
 case class WhiskasIngredient(
   name: String,
   cost: Double,

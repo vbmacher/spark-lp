@@ -1,6 +1,15 @@
 package com.github.vbmacher.spark_lp
 
-/** Metrics from one completed optimization iteration, always describing the same iterate. */
+/**
+  * Metrics from one completed outer optimization iteration.
+  *
+  * @param objectiveValue objective in the solver's internal minimization form
+  * @param primalResidual normalized constraint-feasibility error
+  * @param dualResidual normalized stationarity error
+  * @param dualityGap normalized primal-versus-dual objective error
+  * @param feasible whether the iterate satisfies the original model within the configured candidate
+  *                 tolerance
+  */
 final case class IterationProgress(
   objectiveValue: Double,
   primalResidual: Double,
@@ -8,11 +17,18 @@ final case class IterationProgress(
   dualityGap: Double,
   feasible: Boolean)
 
-/** Work within one setup or right-hand-side solve. Counts are local to that operation:
-  * factor blocks or preconditioner pivots during setup; solver steps during an inner solve.
-  * `total` is absent when unknown. Residuals are unpreconditioned norms; `trueResidual`
-  * marks a recomputed residual, otherwise the iterative recurrence supplied it.
-  * `preconditionerRank` is present only for backends using a rank-based preconditioner.
+/**
+  * Progress within one linear-system setup or solve.
+  *
+  * Counts restart for each operation. During setup they count factor blocks or preconditioner
+  * columns; during an inner solve they count solver steps.
+  *
+  * @param completed completed units of the current operation
+  * @param total total units when known
+  * @param residual unpreconditioned residual norm when available
+  * @param trueResidual true when `residual` was recomputed from the equations rather than updated
+  *                     by the iterative recurrence
+  * @param preconditionerRank current rank when the backend uses a rank-based preconditioner
   */
 final case class WorkProgress(
   completed: Int,
@@ -21,10 +37,18 @@ final case class WorkProgress(
   trueResidual: Boolean = false,
   preconditionerRank: Option[Int] = None)
 
-/** A driver event stamped by the solve monitor. Iteration zero denotes initialization;
-  * inner/setup events otherwise identify the outer iteration currently being computed.
-  * Phase-entry events have no metrics. `iterate` is present only after a completed outer
-  * iteration; `work` describes setup or inner work and never a partially updated LP iterate.
+/**
+  * One driver-side solver progress event.
+  *
+  * Iteration zero denotes initialization. Later setup and inner-solve events identify the outer
+  * iteration being computed. `iterate` is present only for a completed outer iteration; `work`
+  * never represents partially updated model values.
+  *
+  * @param phase solver operation that emitted the event.
+  * @param iteration current outer iteration; zero denotes initialization.
+  * @param elapsedSeconds wall-clock seconds since numerical solving began.
+  * @param iterate metrics for a completed outer iterate, when the event completes one.
+  * @param work progress within the current setup or inner-solve operation, when available.
   */
 final case class SolveProgress(
   phase: SolvePhase,

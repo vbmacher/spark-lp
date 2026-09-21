@@ -4,6 +4,25 @@ import java.nio.file.{Files, Path}
 import org.json4s._
 import org.json4s.jackson.JsonMethods.parse
 
+/**
+  * One fully expanded benchmark execution scenario.
+  *
+  * @param kind workload kind, such as solver or factorization.
+  * @param caseId case identifier from the selected inventory.
+  * @param backend solver or kernel implementation under test.
+  * @param mode backend configuration mode.
+  * @param cores local Spark worker threads; ignored for YARN scenarios.
+  * @param partitions Spark partition count used by the workload.
+  * @param warmups unmeasured repetitions executed before samples.
+  * @param repetitions measured repetitions.
+  * @param heapGiB driver heap size in GiB.
+  * @param spec mathematical LP case, absent for workloads without generated LP data.
+  * @param baseline whether this scenario supplies the one-core comparison baseline.
+  * @param executors YARN executor count; zero selects local mode.
+  * @param executorCores cores assigned to each YARN executor.
+  * @param executorHeapGiB heap size in GiB for each YARN executor.
+  * @param nativeThreads native BLAS thread count.
+  */
 final case class Scenario(kind: String, caseId: String, backend: String, mode: String,
                           cores: Int, partitions: Int, warmups: Int, repetitions: Int,
                           heapGiB: Int, spec: Option[BenchmarkCase], baseline: Boolean = false,

@@ -5,12 +5,11 @@ import org.apache.spark.sql.{Column, DataFrame, Dataset}
 import scala.language.implicitConversions
 
 /**
-  * Operators of the modelling DSL. Users opt in with
-  * `import com.github.vbmacher.spark_lp.dsl.implicits._`; the base Spark namespace is not polluted
-  * (no enrichment of `Column`, no comparison enrichment of `Double`).
+  * Arithmetic and constraint operators for spark-lp model expressions.
   *
-  * Equality uses `===` rather than `==`: a stray `expr == 100.0` yields a `Boolean`, which
-  * `LpProblem.+=` does not accept, so the mistake fails at compile time.
+  * Import `com.github.vbmacher.spark_lp.dsl.implicits._` before building expressions. Equality
+  * constraints use `===`; Scala's `==` returns a Boolean and is not a modelling operator. The
+  * import does not add methods to Spark `Column` or comparison methods to `Double`.
   */
 object implicits {
 
@@ -34,16 +33,18 @@ object implicits {
 
     def *(coefficient: Double): LpExpr = x.handle.toExpr(coefficient)
 
-    /** Coefficient held in a Spark column, resolved against the set's own domain. */
+    /** Weights every family member by a numeric column from its declaration DataFrame. */
     def *(coefficient: Column): LpExpr =
       x.sum(coefficient)
 
     def unary_- : LpExpr = x.handle.toExpr(-1.0)
 
     /**
-      * Distributed coefficients computed from a source keyed like the set's domain. A key present
-      * in `source` but absent from the domain is an error; a domain key absent from `source`
-      * contributes a zero coefficient; duplicate keys in `source` are an error.
+      * Weights family members with a function evaluated over a typed Dataset.
+      *
+      * `source` must use the same key function as the variable family's declaration. A source key
+      * absent from the family or duplicated in `source` is an error. A family key absent from
+      * `source` contributes zero.
       */
     def weightedBy(source: Dataset[K])(coefficient: K => Double): LpExpr = {
       val builder = x.weightsBuilder
@@ -72,7 +73,7 @@ object implicits {
     def ===(rhs: LpExpr): LpConstraint = expression.compare(LpSense.Eq, rhs)
   }
 
-  /** Puts numeric literals on the left of arithmetic, PuLP-style: `3.0 * x`, `5.0 - expr`. */
+  /** Supports a numeric literal on the left, such as `3.0 * x` or `5.0 - expression`. */
   implicit final class DoubleLpOps(private val value: Double) extends AnyVal {
     def *(x: LpVariable): LpExpr = x.toExpr(value)
     def *[K](x: LpVariableSet[K]): LpExpr = x.handle.toExpr(value)
@@ -91,20 +92,24 @@ object implicits {
 
   implicit final class GroupedExprOps(private val grouped: GroupedLpExpr) extends AnyVal {
 
-    /** RHS frame: grouping columns + a `rhs` column, one row per group key. */
+    /**
+      * Creates one `<=` constraint per group.
+      *
+      * `rhs` must contain every grouping column and exactly one numeric `rhs` value per group.
+      */
     def <=(rhs: DataFrame): LpConstraintSet = new LpConstraintSet(grouped, LpSense.Le, Right(rhs), None)
     def >=(rhs: DataFrame): LpConstraintSet = new LpConstraintSet(grouped, LpSense.Ge, Right(rhs), None)
     def ===(rhs: DataFrame): LpConstraintSet = new LpConstraintSet(grouped, LpSense.Eq, Right(rhs), None)
 
-    /** The same scalar bound for every group. */
+    /** Creates one `<=` constraint per group using the same right-hand side for every group. */
     def <=(rhs: Double): LpConstraintSet = new LpConstraintSet(grouped, LpSense.Le, Left(rhs), None)
     def >=(rhs: Double): LpConstraintSet = new LpConstraintSet(grouped, LpSense.Ge, Left(rhs), None)
     def ===(rhs: Double): LpConstraintSet = new LpConstraintSet(grouped, LpSense.Eq, Left(rhs), None)
   }
 
-  /** Allows a variable wherever an expression argument is expected (e.g. `expr + x`). */
+  /** Converts one variable to a coefficient-one expression when an [[LpExpr]] is required. */
   implicit def variableToExpr(variable: LpVariable): LpExpr = variable.toExpr(1.0)
 
-  /** Allows a variable set wherever an expression argument is expected. */
+  /** Converts a variable family to the coefficient-one sum of all its members. */
   implicit def variableSetToExpr[K](variables: LpVariableSet[K]): LpExpr = variables.handle.toExpr(1.0)
 }

@@ -1,7 +1,21 @@
 import sbt.*
 
+/**
+ * sbt project-axis identity for one supported Spark line.
+ *
+ * @param idSuffix suffix added to generated sbt project identifiers.
+ * @param directorySuffix suffix used for axis-specific target directories.
+ * @param sparkVersion complete Spark dependency version.
+ */
 case class SparkAxis(idSuffix: String, directorySuffix: String, sparkVersion: String) extends VirtualAxis.WeakAxis
 
+/**
+ * Dependency coordinates derived for one supported Spark version.
+ *
+ * @param sparkFull complete Spark dependency version.
+ * @param sparkShort major-minor Spark line used in project names.
+ * @param sparkTestingBase compatible spark-testing-base version suffix.
+ */
 case class SparkLibs(
   sparkFull: String,
   sparkShort: String,

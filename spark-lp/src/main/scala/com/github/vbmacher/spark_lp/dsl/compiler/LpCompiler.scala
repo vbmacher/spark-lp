@@ -23,7 +23,7 @@ import scala.util.hashing.MurmurHash3
   */
 private[dsl] final class LpCompiler(problem: LpProblem, config: SolveConfig,
   clock: LpSolveClock = LpSolveClock.system) extends AutoCloseable {
-  import LpCompiler.{notFinite, relativeBoundViolation, relativeRowViolation}
+  import LpCompiler.{BoundBlock, notFinite, relativeBoundViolation, relativeRowViolation}
 
   /** Tolerance for presolved zero-term rows (`0 <sense> rhs`). */
   private val PresolveTolerance = 1e-11
@@ -574,7 +574,6 @@ private[dsl] final class LpCompiler(problem: LpProblem, config: SolveConfig,
     }
 
     // --- one extra row per finitely upper-bounded variable: y + s = u - l
-    final case class BoundBlock(plan: SetPlan, rowBase: Int, rhs: Double)
     val boundBlocks = mutable.ArrayBuffer.empty[BoundBlock]
     plans.foreach { p =>
       p.kind match {
@@ -1591,6 +1590,15 @@ private[dsl] final class LpCompiler(problem: LpProblem, config: SolveConfig,
 }
 
 private[dsl] object LpCompiler {
+  /**
+    * Contiguous upper-bound rows emitted for one shifted variable family.
+    *
+    * @param plan compiled family whose active members receive bound rows.
+    * @param rowBase first equality-row index assigned to the family.
+    * @param rhs common bound width `upper - lower`.
+    */
+  private[compiler] final case class BoundBlock(plan: SetPlan, rowBase: Int, rhs: Double)
+
   /** True for a NaN or infinite value; the compiler rejects non-finite user data. */
   private[compiler] def notFinite(value: Double): Boolean = !Numerics.isFinite(value)
 

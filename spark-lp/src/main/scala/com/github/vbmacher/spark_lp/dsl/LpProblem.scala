@@ -10,19 +10,25 @@ import scala.collection.mutable
 
 object LpProblem {
 
-  /** Creates an empty problem with the given objective sense. */
+  /** Creates an empty optimization model using the implicit Spark session. */
   def apply(name: String, sense: ObjectiveSense = Minimize)(implicit spark: SparkSession): LpProblem =
     new LpProblem(name, sense, spark)
 }
 
 /**
-  * A declarative LP model. Building the model performs no Spark action; `solve` compiles the model
-  * to the equality-form solver (`minimize c^T x` subject to `Ax = b`, `x >= 0`) and runs it.
+  * Mutable declaration of an optimization model solved by spark-lp.
   *
-  * `solve` does not snapshot lazy sources: each call evaluates the domain and coefficient
-  * DataFrames as Spark sees them at that moment. Compiled structures are cached for the solve;
-  * sources must remain stable while compiling and when joining results back to domain columns.
-  * Callers who need a durable snapshot should materialise their sources first.
+  * Declaring variables, expressions and constraints is lazy and performs no Spark action. Each
+  * Call `solve` to read the current contents of referenced DataFrames and Datasets, validate the
+  * model, converts it to the solver's internal form and reconstructs the result in the original
+  * variable coordinates.
+  *
+  * Source data must remain stable for the duration of a solve, including result reconstruction.
+  * Persist or otherwise materialize application data first when a repeatable snapshot is required.
+  * Model edits are rejected while any solve or prepared native session is active.
+  *
+  * @param name model name used by inspection and export APIs
+  * @param sense whether the objective is minimized or maximized
   */
 final class LpProblem private[dsl](
   val name: String,
@@ -35,8 +41,12 @@ final class LpProblem private[dsl](
   }
 
   private[dsl] val sosGroups = mutable.ArrayBuffer.empty[LpSosGroup]
+
+  /** Adds an SOS1 group: at most one member may be nonzero. */
   def addSos1(name: String, members: Seq[(LpVariable, Double)]): LpSosGroup =
     LpSos.add(this, name, SosKind.Sos1, members)
+
+  /** Adds an SOS2 group: at most two adjacent members in weight order may be nonzero. */
   def addSos2(name: String, members: Seq[(LpVariable, Double)]): LpSosGroup =
     LpSos.add(this, name, SosKind.Sos2, members)
 
@@ -57,12 +67,15 @@ final class LpProblem private[dsl](
     handle
   }
 
-  /** Checks a complete independent assignment against original rows, bounds and categories. */
+  /**
+    * Checks a complete assignment against this model's original bounds, variable types, SOS groups
+    * and constraints without optimizing it.
+    */
   def validateCandidate(values: RDD[LpCandidateValue],
     config: CandidateValidationConfig = CandidateValidationConfig()): LpCandidateReport =
     LpCandidateValidation.validate(this, values, config)
 
-  /** Creates a local scalar/member assignment without accepting foreign model handles. */
+  /** Converts local `(variable, value)` pairs to candidate records owned by this model. */
   def candidateValues(values: Seq[(LpVariable, Double)]): RDD[LpCandidateValue] = {
     val mapped = values.map { case (variable, value) =>
       if (variable.handle.problem ne this) throw new LpModelException("Candidate contains a foreign variable")
@@ -71,18 +84,32 @@ final class LpProblem private[dsl](
     spark.sparkContext.parallelize(mapped)
   }
 
-  /** Read-only declaration snapshot; source plans are evaluated only by expanded inspection methods. */
+  /** Returns a read-only view of this model; expanded RDD fields evaluate their source plans. */
   def inspect: LpModelView = new LpModelView(this)
 
-  /** Copies declarations and returns identity mappings; lazy Spark sources are shared. */
+  /**
+    * Copies the model declarations and returns mappings between original and copied variables.
+    *
+    * The copy can be edited independently, but it shares the immutable lazy Spark source plans.
+    */
   def copy(name: String = this.name): LpModelCopy =
     new LpModelCopy(this, new LpProblem(name, sense, spark))
 
-  /** Solves priorities in this model's objective sense on an independent copy. Close the result. */
+  /**
+    * Solves objectives in priority order on an independent model copy.
+    *
+    * Each optimal stage constrains its objective before the next stage. The returned result owns
+    * every stage solution and must be closed.
+    */
   def solvePriorities(priorities: Seq[LpPriority], config: SolveConfig = SolveConfig()): LpPriorityResult =
     LpPriorities.solve(this, priorities, config)
 
-  /** Creates one decision variable. */
+  /**
+    * Declares one decision variable.
+    *
+    * Bounds are inclusive. `upperBound = None` means no upper bound; the default lower bound is
+    * zero.
+    */
   def variable(
     name: String,
     lowerBound: Double = 0.0,
@@ -90,7 +117,12 @@ final class LpProblem private[dsl](
     category: VariableCategory = Continuous): LpVariable =
     new LpVariable(register(name, lowerBound, upperBound, category, new ScalarDomain(spark)))
 
-  /** Allocates scalar variables locally in input order; keys must be unique and non-null. */
+  /**
+    * Declares a small, driver-local variable collection in input order.
+    *
+    * Keys must be unique and non-null. Use [[variables]] or [[variablesOf]] when Spark owns the
+    * domain.
+    */
   def indexedVariables[K: LpKeyEncoder](
     name: String, keys: Iterable[K], lowerBound: Double = 0.0,
     upperBound: Option[Double] = None, category: VariableCategory = Continuous): LpLocalVariables[K] = {
@@ -102,7 +134,12 @@ final class LpProblem private[dsl](
     })
   }
 
-  /** Cartesian product in row-major order; both axes are validated even when the product is empty. */
+  /**
+    * Declares driver-local variables for every `(row, column)` pair.
+    *
+    * Output order follows the row input first and the column input second. Both inputs are checked
+    * for null and duplicate keys even when the Cartesian product is empty.
+    */
   def matrixVariables[R: LpKeyEncoder, C: LpKeyEncoder](
     name: String, rows: Iterable[R], columns: Iterable[C], lowerBound: Double = 0.0,
     upperBound: Option[Double] = None, category: VariableCategory = Continuous): LpLocalVariables[(R, C)] = {
@@ -111,7 +148,12 @@ final class LpProblem private[dsl](
     indexedVariables(name, r.flatMap(row => c.map(column => row -> column)), lowerBound, upperBound, category)
   }
 
-  /** One decision variable per unique value of `key` in `domain`. */
+  /**
+    * Declares one variable for each unique, non-null DataFrame key.
+    *
+    * Key uniqueness and null checks run when the model is evaluated. Use `struct(...)` for a key
+    * composed from multiple columns.
+    */
   def variables(
     name: String,
     domain: DataFrame,
@@ -132,7 +174,12 @@ final class LpProblem private[dsl](
     new LpVariableSet[Row](handle, weightsBuilder, Some(key))
   }
 
-  /** Typed variant of `variables`. Key types beyond String are supported via [[LpKeyEncoder]]. */
+  /**
+    * Declares one variable for each unique, non-null key produced from a typed Dataset.
+    *
+    * Primitive and tuple keys have built-in encoders; define an [[LpKeyEncoder]] for another key
+    * type.
+    */
   def variablesOf[K, Key](
     name: String,
     domain: Dataset[K],
@@ -156,7 +203,7 @@ final class LpProblem private[dsl](
     new LpVariableSet[K](handle, weightsBuilder, None)
   }
 
-  /** Sets the objective. Throws if one is already set; use `setObjective` to replace deliberately. */
+  /** Sets the linear objective and fails if an objective already exists. */
   def +=(objective: LpExpr): this.type = {
     requireEditable()
     if (this.objective.isDefined) {
@@ -180,7 +227,7 @@ final class LpProblem private[dsl](
     this
   }
 
-  /** Replaces the objective. */
+  /** Replaces any existing objective with a linear objective. */
   def setObjective(objective: LpExpr): this.type = {
     requireEditable()
     this.quadratic = None
@@ -188,12 +235,14 @@ final class LpProblem private[dsl](
     this
   }
 
+  /** Adds one scalar constraint to the model. */
   def +=(constraint: LpConstraint): this.type = {
     requireEditable()
     constraints += Left(constraint)
     this
   }
 
+  /** Adds one generated constraint for each key represented by the constraint set. */
   def +=(constraints: LpConstraintSet): this.type = {
     requireEditable()
     this.constraints += Right(constraints)
@@ -201,9 +250,12 @@ final class LpProblem private[dsl](
   }
 
   /**
-    * Compiles and solves the model against the current contents of its source data; may be called
-    * repeatedly. Validation failures raise [[LpModelException]]; solver-side numerical failures
-    * raise [[LpNumericalException]].
+    * Solves the model with spark-lp's built-in solver.
+    *
+    * Repeated calls re-read all lazy sources and compile the current declarations. Invalid models
+    * raise [[LpModelException]]; numerical linear-algebra failures raise
+    * [[LpNumericalException]]. Close the returned [[LpSolution]] after completing Spark actions on
+    * its data.
     */
   def solve(config: SolveConfig = SolveConfig()): LpSolution = {
     solve(config, LpSolveClock.system)
@@ -215,19 +267,28 @@ final class LpProblem private[dsl](
     finally synchronized { activeSolves -= 1 }
   }
 
+  /** Creates an owned starting-value snapshot from distributed candidate records. */
   def start(values: org.apache.spark.rdd.RDD[LpCandidateValue], config: LpStartConfig = LpStartConfig()): LpStart =
     LpStart.create(this, values, config)
 
+  /** Creates starting values from local variable/value pairs. */
   def start(values: Seq[(LpVariable, Double)]): LpStart = start(candidateValues(values))
 
+  /** Solves through an external adapter using default transfer and validation options. */
   def solve(adapter: LpSolverAdapter): LpSolution = solve(adapter, LpAdapterOptions())
 
+  /** Solves through an external adapter and independently validates any returned candidate. */
   def solve(adapter: LpSolverAdapter, options: LpAdapterOptions): LpSolution = {
     synchronized { activeSolves += 1 }
     try LpAdapterSolve.run(this, adapter, options)
     finally synchronized { activeSolves -= 1 }
   }
 
+  /**
+    * Prepares a reusable native adapter session when the adapter supports one.
+    *
+    * The returned session prevents structural model edits until it is closed.
+    */
   def prepareNative(adapter: LpSolverAdapter, options: LpAdapterOptions = LpAdapterOptions()): Either[LpUnsupported, LpNativeSession] = {
     if (!adapter.capabilities.nativeSession) Left(LpUnsupported("nativeSession", s"${adapter.name} does not expose native sessions"))
     else {

@@ -1,14 +1,14 @@
 package com.github.vbmacher.spark_lp
 
-/** Stages shared by every Newton backend. Setup and inner solving can repeat within an iteration. */
+/** Stage reported by [[SolveProgress]]; setup and inner solving may repeat within one iteration. */
 sealed trait SolvePhase
 object SolvePhase {
-  /** Construct the initial primal and dual iterates. */
+  /** Constructs the initial variable values and constraint multipliers. */
   case object Initialization extends SolvePhase
-  /** Prepare or strengthen a linear system: direct factors or an iterative preconditioner. */
+  /** Factors a direct system or prepares an iterative preconditioner. */
   case object SystemSetup extends SolvePhase
-  /** Solve one linear-system right-hand side. */
+  /** Solves one predictor or corrector linear system. */
   case object InnerSolve extends SolvePhase
-  /** A complete primal/dual iterate, with objective and residuals available. */
+  /** Reports one complete optimization iterate with objective and residuals. */
   case object OuterIteration extends SolvePhase
 }

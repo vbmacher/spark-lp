@@ -6,14 +6,46 @@ import org.apache.spark.SparkContext
 import org.apache.spark.rdd.RDD
 
 sealed trait ExportNaming
+
 object ExportNaming {
   case object Normalized extends ExportNaming
+
   case object Original extends ExportNaming
 }
-final case class LpExportVariable(id: LpVariableId, originalName: String, exportedName: String)
-final case class LpExportConstraint(id: LpConstraintId, originalName: String, exportedName: String)
-final class LpExportMapping(val variables: RDD[LpExportVariable], val constraints: RDD[LpExportConstraint]) extends AutoCloseable {
-  override def close(): Unit = { variables.unpersist(false); constraints.unpersist(false) }
+
+/**
+  * Name mapping for one exported variable.
+  *
+  * @param id stable variable identity in the expanded model.
+  * @param originalName display name before export normalization.
+  * @param exportedName identifier written to the target format.
+  */
+final case class LpExportVariable(
+  id: LpVariableId,
+  originalName: String,
+  exportedName: String
+)
+
+/**
+  * Name mapping for one exported constraint row.
+  *
+  * @param id stable row identity in the expanded model.
+  * @param originalName display name before export normalization.
+  * @param exportedName identifier written to the target format.
+  */
+final case class LpExportConstraint(
+  id: LpConstraintId,
+  originalName: String,
+  exportedName: String
+)
+
+final class LpExportMapping(
+  val variables: RDD[LpExportVariable],
+  val constraints: RDD[LpExportConstraint]
+) extends AutoCloseable {
+  override def close(): Unit = {
+    variables.unpersist(false); constraints.unpersist(false)
+  }
 }
 
 /**
@@ -35,8 +67,10 @@ object LpExport extends Serializable {
     LpExpressionData.check(value)
     java.lang.Double.toString(value)
   }
+
   private val reserved = Set("minimize", "maximize", "minimum", "maximum", "subject", "to", "bounds",
     "generals", "general", "binary", "binaries", "end", "free", "inf", "infinity", "__objective")
+
   private[dsl] def mappings(view: LpModelView, naming: ExportNaming): LpExportMapping = {
     val variables = view.variables.sortBy(v => (v.id.family, v.id.key)).zipWithIndex().map { case (v, i) =>
       LpExportVariable(v.id, v.name, if (naming == ExportNaming.Normalized) s"v$i" else v.name)
@@ -52,9 +86,12 @@ object LpExport extends Serializable {
         throw new LpModelException("Unsafe or reserved original export name; use Normalized naming")
       if (names.map(_ -> 1).reduceByKey(_ + _).filter(_._2 > 1).take(1).nonEmpty)
         throw new LpModelException("Colliding export names; use Normalized naming")
-      variables.count(); rows.count()
+      variables.count();
+      rows.count()
       result
-    } catch { case scala.util.control.NonFatal(e) => result.close(); throw e }
+    } catch {
+      case scala.util.control.NonFatal(e) => result.close(); throw e
+    }
   }
 
   private[dsl] def writeFile(path: Path, overwrite: Boolean)(write: java.io.Writer => Unit): Unit = {
@@ -76,7 +113,7 @@ object LpExport extends Serializable {
     * failure and always unpersists.
     */
   private[dsl] def render(view: LpModelView, path: Path, naming: ExportNaming, overwrite: Boolean, dialect: String)(
-      body: ExportContext => RDD[((Int, String, Int, String), String)]): LpExportMapping = {
+    body: ExportContext => RDD[((Int, String, Int, String), String)]): LpExportMapping = {
     if (view.sosGroups.nonEmpty) throw new LpModelException("This export dialect cannot preserve SOS groups; use JSON")
     if (view.hasQuadraticObjective) throw new LpModelException(s"$dialect export supports linear objectives only")
     view.statistics()
@@ -93,8 +130,12 @@ object LpExport extends Serializable {
       val lines = body(ctx).sortBy(_._1).values
       writeFile(path, overwrite)(writer => lines.toLocalIterator.foreach { line => writer.write(line); writer.write("\n") })
       mapping
-    } catch { case scala.util.control.NonFatal(e) => mapping.close(); throw e }
-    finally { variables.unpersist(false); rows.unpersist(false); coefficients.unpersist(false); costs.unpersist(false) }
+    } catch {
+      case scala.util.control.NonFatal(e) => mapping.close(); throw e
+    }
+    finally {
+      variables.unpersist(false); rows.unpersist(false); coefficients.unpersist(false); costs.unpersist(false)
+    }
   }
 
   /** CPLEX-style LP dialect with explicit bounds, integrality, original coefficients and offset. */
@@ -103,7 +144,9 @@ object LpExport extends Serializable {
     render(view, path, naming, overwrite, "LP") { ctx =>
       import ctx.{view => _, _}
       type Order = (Int, String, Int, String)
+
       def term(value: Double, name: String): String = s" ${if (value < 0) "-" else "+"} ${number(math.abs(value))} $name"
+
       val header: RDD[(Order, String)] = sc.parallelize(Seq(
         ((0, "", 0, ""), if (view.sense == Minimize) "Minimize" else "Maximize"),
         ((1, "", 0, ""), s" __objective: ${number(view.objectiveConstant)}"),
@@ -120,15 +163,15 @@ object LpExport extends Serializable {
       val namedVars = variables.map(v => v.id -> v).join(names)
       val bounds = namedVars.map { case (_, (v, name)) =>
         val text = if (v.upper.contains(v.lower)) s" $name = ${number(v.lower)}"
-          else if (v.lower.isNegInfinity && v.upper.isEmpty) s" $name free"
-          else s" ${if (v.lower.isNegInfinity) "-inf" else number(v.lower)} <= $name" + v.upper.map(u => s" <= ${number(u)}").getOrElse("")
+        else if (v.lower.isNegInfinity && v.upper.isEmpty) s" $name free"
+        else s" ${if (v.lower.isNegInfinity) "-inf" else number(v.lower)} <= $name" + v.upper.map(u => s" <= ${number(u)}").getOrElse("")
         ((4, name, 1, ""), text)
       }
       val general = namedVars.filter(_._2._1.category == Integer).map { case (_, (_, name)) => ((5, name, 1, ""), s" $name") }
       val binary = namedVars.filter(_._2._1.category == Binary).map { case (_, (_, name)) => ((6, name, 1, ""), s" $name") }
       val categoryHeaders: RDD[(Order, String)] = sc.parallelize(
         (if (general.take(1).nonEmpty) Seq(((5, "", 0, ""), "Generals")) else Seq.empty) ++
-        (if (binary.take(1).nonEmpty) Seq(((6, "", 0, ""), "Binaries")) else Seq.empty), 1)
+          (if (binary.take(1).nonEmpty) Seq(((6, "", 0, ""), "Binaries")) else Seq.empty), 1)
       sc.union(Seq(header, objective, rowHeaders, entries, rowEnds, bounds, general, binary, categoryHeaders))
     }
 }

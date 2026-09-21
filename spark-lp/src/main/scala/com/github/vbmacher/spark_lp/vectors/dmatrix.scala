@@ -11,15 +11,11 @@ object dmatrix {
 
   object functions extends LazyLogging  {
     /**
-      * Computes the Gramian matrix `A^T A`. Note that this cannot be computed on matrices with more than 65535 columns.
+      * Computes the packed upper triangle of `matrix^T matrix` on the driver.
       *
-      * A Gramian matrix is a symmetric positive semi-definite matrix. It is symmetric because A^T A is symmetric,
-      * and positive semi-definite because for any vector x, the dot product x^T (A^T A) x = (Ax)^T (Ax) >= 0.
-      *
-      * It is positive definite if the columns of A are linearly independent.
-      *
-      * @param ncol  number of columns
-      * @param depth to control the depth in treeAggregate. Higher number, more stages in Spark - does not have impact on result.
+      * @param ncol number of columns in every matrix row; at most 65,535.
+      * @param depth depth of Spark's tree aggregation; it affects the reduction plan, not the result.
+      * @return packed upper triangle in column-major BLAS order.
       */
     def gramianMatrix(matrix: DMatrix, ncol: Int, depth: Int = 2): BDV[Double] = {
 
@@ -46,11 +42,7 @@ object dmatrix {
       if (GU == null) new BDV[Double](nt) else GU // BLAS packed columnwise format
     }
 
-    /**
-      * Check if the number of columns exceed 65535 to avoid Array overflow
-      *
-      * @param cols The number of columns
-      */
+    /** Rejects dimensions that cannot be represented by the packed-triangle array. */
     private def checkNumColumns(cols: Int): Unit = {
       if (cols > 65535) {
         throw new IllegalArgumentException(s"Argument with more than 65535 cols: $cols")
@@ -69,7 +61,9 @@ object dmatrix {
       private lazy val columns = matrix.first().size
 
       /**
-        * Transposed Matrix
+        * Materializes the distributed transpose.
+        *
+        * Each output row is one input column, ordered by the original row index.
         */
       lazy val t: DMatrix = {
         // Convert each vector (row) into an indexed sequence of tuples (colIndex, value)
@@ -89,35 +83,24 @@ object dmatrix {
       }
 
       /**
-        * Computes the Gramian matrix `A^T A`. Note that this cannot be computed on matrices with more than 65535 columns.
+        * Computes the packed upper triangle of `matrix^T matrix` on the driver.
         *
-        * A Gramian matrix is a symmetric positive semi-definite matrix. It is symmetric because A^T A is symmetric,
-        * and positive semi-definite because for any vector x, the dot product x^T (A^T A) x = (Ax)^T (Ax) >= 0.
-        *
-        * It is positive definite if the columns of A are linearly independent.
-        *
-        * @param ncol  number of columns
-        * @param depth to control the depth in treeAggregate. Higher number, more stages in Spark - does not have impact on result.
+        * @param ncol number of columns in every matrix row; at most 65,535.
+        * @param depth depth of Spark's tree aggregation; it affects the reduction plan, not the result.
+        * @return packed upper triangle in column-major BLAS order.
         */
       def gramianMatrix(ncol: Int, depth: Int = 2): BDV[Double] = {
         functions.gramianMatrix(matrix, ncol, depth)
       }
 
       /**
-        * Compute the adjoint product of this DMatrix with a DVector to produce a Vector.
-        * The implementation multiplies each row of 'matrix' by the corresponding value of the column
-        * vector 'x' and sums the scaled vectors thus obtained.
+        * Computes `matrix^T x` and returns the result on the driver.
         *
-        * NOTE In order to multiply the transpose of a DMatrix 'm' by a DVector 'v', m and v must be
-        * consistently partitioned. Each partition of m must contain the same number of rows as there
-        * are vector elements in the corresponding partition of v. For example, if m contains two
-        * partitions and there are two row Vectors in the first partition and three row Vectors in the
-        * second partition, then v must have two partitions with a single Vector containing two elements
-        * in its first partition and a single Vector containing three elements in its second partition.
+        * Corresponding partitions must align: a matrix partition with `k` rows must match a vector
+        * partition containing `k` elements.
         *
-        * @param x     The vector on which to apply the multiplication.
-        * @param depth to control the depth in treeAggregate. Higher number, more stages in Spark - does not have impact on result.
-        * @return result of multiplying this DMatrix with DVector
+        * @param x distributed vector paired with the matrix rows.
+        * @param depth depth of Spark's tree aggregation.
         */
       def adjointProduct(x: DVector, depth: Int = 2): DenseVector = {
         val n = columns
@@ -140,20 +123,10 @@ object dmatrix {
         ).treeAggregate(Vectors.zeros(n).toDense)(seqOp = add, combOp = add, depth)
       }
 
-      /**
-        * Compute the product of a DMatrix with a Vector to produce a DVector.
-        *
-        * @param x The vector on which to apply the multiplication.
-        * @return The result of the multiplication
-        */
+      /** Returns `matrix * x`, reading the broadcast vector on each executor. */
       def product(x: Broadcast[DenseVector]): DVector = rowDots(row => BLAS.dot(row, x.value))
 
-      /**
-        * Compute the product of a DMatrix with a Vector to produce a DVector.
-        *
-        * @param x The vector on which to apply the multiplication.
-        * @return The result of the multiplication
-        */
+      /** Returns `matrix * x`; Spark serializes `x` with each task closure. */
       def product(x: DenseVector): DVector = rowDots(row => BLAS.dot(row, x))
 
       // Dot each matrix row with a per-row supplied vector. A broadcast argument stays a broadcast:
@@ -163,11 +136,11 @@ object dmatrix {
         matrix.mapPartitions(partitionRows =>
           Iterator.single(new DenseVector(partitionRows.map(dot).toArray)))
 
-      /** Apply `A^T diag(w) A x` in one streaming pass over the matrix per partition.
-        * Fusing the dot product and scaled-row accumulation avoids reading A twice and
-        * materializing partition-sized intermediate vectors. Weights, when supplied,
-        * must have the same partition layout as A (see [[adjointProduct]]).
-        * Only the O(ncol) partition sums are reduced; the Gramian is never formed.
+      /**
+        * Computes `matrix^T diag(w) matrix x` without constructing the Gram matrix.
+        *
+        * A supplied `w` must align with the matrix rows as described by [[adjointProduct]]. Only one
+        * vector with the matrix column count is reduced to the driver.
         */
       def gramianProduct(x: Broadcast[DenseVector], w: Option[DVector] = None,
         depth: Int = 2): DenseVector = {
@@ -196,10 +169,10 @@ object dmatrix {
         if (result == null) Vectors.zeros(n).toDense else result
       }
 
-      /** One accumulation pass over the (optionally weighted) matrix rows, reducing per-partition
-        * `size`-length accumulators to a single driver array. `add(acc, row, weight)` folds one row
-        * with its weight (`1.0` when unweighted). Weighted mode requires `w` to share this matrix's
-        * partitioning (see the DMatrix NOTE about consistent partitioning). */
+      /**
+        * Reduces one `size`-element accumulator per partition to the driver. A supplied weight vector
+        * must align with the matrix rows as described by [[adjointProduct]].
+        */
       private def weightedRowAccumulate(w: Option[DVector], size: Int, depth: Int)(
         add: (Array[Double], Vector, Double) => Unit): Array[Double] = {
         val perPartition = w match {
@@ -222,16 +195,13 @@ object dmatrix {
       }
 
       /**
-        * Compute the diagonal of the (optionally weighted) Gramian `A^T diag(w) A` of this DMatrix,
-        * i.e. `diag_j = sum_i w_i * A_ij^2`, in a single distributed pass with `O(ncol)` driver
-        * memory. Unlike [[gramianMatrix]], this never materialises the `ncol x ncol` Gramian and
-        * is therefore not limited to 65535 columns.
+        * Computes the diagonal of `matrix^T diag(w) matrix` in one distributed pass.
         *
-        * When a weight DVector is supplied it must be partitioned consistently with this DMatrix
-        * (see the DMatrix NOTE about consistent partitioning).
+        * A supplied `w` must align with the matrix rows as described by [[adjointProduct]]. The full
+        * Gram matrix is never constructed, and driver memory is linear in the column count.
         *
-        * @param w     optional per-row weights; `None` computes the diagonal of `A^T A`.
-        * @param depth to control the depth in treeAggregate.
+        * @param w optional row weights; `None` uses a weight of one for every row.
+        * @param depth depth of Spark's tree aggregation.
         */
       def gramianDiagonal(w: Option[DVector] = None, depth: Int = 2): DenseVector =
         new DenseVector(weightedRowAccumulate(w, columns, depth) { (acc, row, weight) =>
@@ -239,19 +209,15 @@ object dmatrix {
         })
 
       /**
-        * Compute selected columns of the (optionally weighted) Gramian `A^T diag(w) A`, i.e. the
-        * `ncol x k` submatrix `G[:, indices]`, in a single distributed pass. The result is
-        * column-major: entry `(i, s)` of the submatrix is at `s * ncol + i`.
+        * Computes selected columns of `matrix^T diag(w) matrix` in one distributed pass.
         *
-        * Driver and per-partition memory are `O(ncol * k)`; unlike [[gramianMatrix]] the full
-        * Gramian is never materialised, so this is not limited to 65535 columns.
+        * The result is column-major: for `n` matrix columns, result entry `s * n + i` is row `i` of
+        * the `s`th requested column. A supplied `w` must align with the matrix rows as described by
+        * [[adjointProduct]]. Driver and per-partition memory are `O(n * indices.length)`.
         *
-        * When a weight DVector is supplied it must be partitioned consistently with this DMatrix
-        * (see the DMatrix NOTE about consistent partitioning).
-        *
-        * @param indices the Gramian columns to compute, in the order they appear in the result.
-        * @param w       optional per-row weights; `None` computes columns of `A^T A`.
-        * @param depth   to control the depth in treeAggregate.
+        * @param indices Gram-matrix column indices, in requested output order.
+        * @param w optional row weights; `None` uses a weight of one for every row.
+        * @param depth depth of Spark's tree aggregation.
         */
       def gramianColumns(indices: Array[Int], w: Option[DVector] = None, depth: Int = 2): Array[Double] = {
         val n = columns

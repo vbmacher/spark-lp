@@ -3,16 +3,52 @@ package com.github.vbmacher.spark_lp.dsl
 import com.github.vbmacher.spark_lp.Numerics
 import org.apache.spark.rdd.RDD
 
-final case class LpCandidateValue(variable: LpVariableId, value: Double)
-final case class CandidateValidationConfig(tolerance: Double = 1e-8,
-  integralityTolerance: Double = 1e-6, relaxIntegrality: Boolean = false, sosZeroTolerance: Double = 1e-6) {
+/**
+  * One variable assignment supplied for independent model validation.
+  *
+  * @param variable stable identity of the assigned model variable.
+  * @param value finite proposed value.
+  */
+final case class LpCandidateValue(
+  variable: LpVariableId,
+  value: Double
+)
+
+/**
+  * Tolerances used when checking an assignment against the original model.
+  *
+  * @param tolerance maximum absolute bound and constraint violation.
+  * @param integralityTolerance maximum distance from the nearest integer.
+  * @param relaxIntegrality skip integer and binary checks when true.
+  * @param sosZeroTolerance largest absolute value treated as zero in an SOS group.
+  */
+final case class CandidateValidationConfig(
+  tolerance: Double = 1e-8,
+  integralityTolerance: Double = 1e-6,
+  relaxIntegrality: Boolean = false,
+  sosZeroTolerance: Double = 1e-6
+) {
   require(Seq(tolerance, integralityTolerance).forall(t => Numerics.isFinite(t) && t > 0.0),
     "Candidate tolerances must be finite and positive")
   require(java.lang.Double.isFinite(sosZeroTolerance) && sosZeroTolerance >= 0.0, "SOS zero tolerance must be finite and nonnegative")
   require(integralityTolerance < 0.5, "Integrality tolerance must be below 0.5")
 }
-final case class LpCandidateViolation(variable: Option[LpVariableId], constraint: Option[LpConstraintId],
-  kind: String, magnitude: Double, accepted: Boolean)
+
+/**
+  * Result of one candidate-validation check.
+  *
+  * @param variable checked variable, when the violation concerns identity, bounds, or integrality.
+  * @param constraint checked row, when the violation concerns a constraint.
+  * @param kind check name such as `bound`, `integrality`, `constraint`, or `missing`.
+  * @param magnitude nonnegative violation size; positive infinity marks malformed input.
+  * @param accepted true when `magnitude` is within the applicable tolerance.
+  */
+final case class LpCandidateViolation(
+  variable: Option[LpVariableId],
+  constraint: Option[LpConstraintId],
+  kind: String,
+  magnitude: Double,
+  accepted: Boolean)
 
 /** Validation never optimizes. This object owns only its materialized violation records. */
 final class LpCandidateReport private[dsl](val feasible: Boolean, val objectiveValue: Option[Double],
@@ -33,7 +69,7 @@ private[dsl] object LpCandidateValidation {
         val vs = metadata.toVector
         val xs = candidates.toVector
         val kind = if (vs.isEmpty) Some("foreign") else if (xs.isEmpty) Some("missing")
-          else if (xs.size != 1) Some("duplicate") else if (!Numerics.isFinite(xs.head)) Some("non-finite") else None
+        else if (xs.size != 1) Some("duplicate") else if (!Numerics.isFinite(xs.head)) Some("non-finite") else None
         kind.map(k => LpCandidateViolation(Some(id), None, k, Double.PositiveInfinity, false))
       }
       val bad = malformed.take(1).nonEmpty
@@ -71,6 +107,7 @@ private[dsl] object LpCandidateValidation {
           def sum(coefficients: RDD[LpCoefficient], squared: Boolean = false): Double =
             coefficients.map(c => c.variable -> c.value).join(source).values
               .map { case (c, x) => c * x * (if (squared) x else 1.0) }.fold(0.0)(_ + _)
+
           val linear = sum(view.objectiveCoefficients) + view.objectiveConstant
           val diagonal = 0.5 * sum(view.diagonalCoefficients, squared = true)
           val factors = view.quadraticFactors.map { f =>
@@ -78,7 +115,7 @@ private[dsl] object LpCandidateValidation {
             f.weight * value * value
           }.sum
           val total = linear + diagonal + factors
-          if (Numerics.isFinite(total)) Some(total) else None
+          Some(total).filter(Numerics.isFinite)
         }
         new LpCandidateReport(feasible, objective, model.sense, config.relaxIntegrality, maximum, records)
       } catch {

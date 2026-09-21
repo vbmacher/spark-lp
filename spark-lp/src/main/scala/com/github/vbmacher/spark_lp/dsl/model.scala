@@ -49,20 +49,28 @@ private[dsl] object LpSense {
 }
 
 /**
-  * An immutable linear expression: a sum of terms plus a constant. Operators are supplied by
-  * [[implicits]]; building an expression performs no Spark action.
+  * Immutable symbolic linear expression.
+  *
+  * An expression is a constant plus decision variables multiplied by numeric coefficients.
+  * Coefficients may come from lazy Spark columns or typed Datasets. Constructing and combining
+  * expressions performs no Spark action; evaluation happens during inspection, validation or solve.
+  * Import [[implicits]] for arithmetic and comparison operators.
   */
 final class LpExpr private[dsl](
   private[dsl] val terms: Vector[LpTerm],
   val constant: Double) {
 
-  /** Distributed aggregated coefficients. Evaluates source validation actions, never collects the matrix. */
+  /**
+    * Evaluates and returns the expression's aggregated nonzero coefficients.
+    *
+    * This starts Spark work for distributed coefficient sources but does not collect the result.
+    */
   def coefficients(implicit spark: SparkSession): RDD[LpCoefficient] =
     LpExpressionData.expand(this).map { case ((family, key), value) =>
       LpCoefficient(LpVariableId(family, key), value)
     }
 
-  /** Scalar action returning one aggregated coefficient; missing coefficients are zero. */
+  /** Runs a Spark action and returns one variable's aggregated coefficient, or zero when absent. */
   def coefficient(variable: LpVariable): Double = {
     implicit val spark: SparkSession = variable.handle.problem.spark
     val id = (variable.handle.setIndex, variable.selectedKey.getOrElse(""))
@@ -71,12 +79,18 @@ final class LpExpr private[dsl](
       .values.fold(0.0)(_ + _)
   }
 
+  /** Returns a copy with its constant term replaced by `value`. */
   def withConstant(value: Double): LpExpr = {
     LpExpressionData.check(value)
     new LpExpr(terms, value)
   }
 
-  /** Replaces one coefficient without changing this expression or reading a distributed source. */
+  /**
+    * Returns a copy with `variable` assigned the given coefficient.
+    *
+    * Existing terms for that variable are excluded lazily; distributed sources are not read until
+    * the returned expression is evaluated.
+    */
   def withCoefficient(variable: LpVariable, value: Double): LpExpr = {
     LpExpressionData.check(value)
     LpExpressionData.owner(this, Some(variable.handle.problem))
@@ -87,6 +101,7 @@ final class LpExpr private[dsl](
     new LpExpr(kept ++ (if (value == 0.0) Vector.empty else variable.toExpr(value).terms), constant)
   }
 
+  /** Returns a copy with `variable` removed from the expression. */
   def withoutCoefficient(variable: LpVariable): LpExpr = withCoefficient(variable, 0.0)
 
   private[dsl] def plus(other: LpExpr): LpExpr = new LpExpr(terms ++ other.terms, constant + other.constant)
@@ -120,31 +135,61 @@ private[dsl] sealed trait LpTerm {
   def mapHandle(f: VarSetHandle => VarSetHandle): LpTerm
 }
 
-/** The same constant coefficient for every key of the set (scalar variables have one key). */
+/**
+  * Same coefficient for every member of a variable family.
+  *
+  * @param handle variable family multiplied by the coefficient.
+  * @param coeff constant coefficient applied to each family member.
+  */
 private[dsl] final case class ConstCoeffTerm(handle: VarSetHandle, coeff: Double) extends LpTerm {
   override def scaledBy(factor: Double): LpTerm = copy(coeff = coeff * factor)
   override def mapHandle(f: VarSetHandle => VarSetHandle): LpTerm = copy(handle = f(handle))
 }
 
-/** Coefficient of one selected family member. Membership is checked during evaluation/compilation. */
+/**
+  * Coefficient of one selected variable-family member.
+  *
+  * @param handle variable family containing the selected member.
+  * @param key canonical encoded member key, checked when the expression is evaluated.
+  * @param coeff coefficient applied to the selected member.
+  */
 private[dsl] final case class KeyCoeffTerm(handle: VarSetHandle, key: String, coeff: Double) extends LpTerm {
   override def scaledBy(factor: Double): LpTerm = copy(coeff = coeff * factor)
   override def mapHandle(f: VarSetHandle => VarSetHandle): LpTerm = copy(handle = f(handle))
 }
 
+/**
+  * Coefficient rule with selected family members removed.
+  *
+  * @param inner original coefficient rule.
+  * @param excluded canonical encoded keys omitted from the rule.
+  */
 private[dsl] final case class FilteredCoeffTerm(inner: LpTerm, excluded: Set[String]) extends LpTerm {
   override def handle: VarSetHandle = inner.handle
   override def scaledBy(factor: Double): LpTerm = copy(inner = inner.scaledBy(factor))
   override def mapHandle(f: VarSetHandle => VarSetHandle): LpTerm = copy(inner = inner.mapHandle(f))
 }
 
-/** A coefficient held in a Spark column, resolved against the set's own domain. */
+/**
+  * Coefficient read from a Spark column over a variable family's domain.
+  *
+  * @param handle variable family whose domain supplies coefficient rows.
+  * @param column Spark expression evaluated against that domain.
+  * @param scale multiplier applied to each evaluated coefficient.
+  */
 private[dsl] final case class ColumnCoeffTerm(handle: VarSetHandle, column: Column, scale: Double) extends LpTerm {
   override def scaledBy(factor: Double): LpTerm = copy(scale = scale * factor)
   override def mapHandle(f: VarSetHandle => VarSetHandle): LpTerm = copy(handle = f(handle))
 }
 
-/** A coefficient computed from a keyed source dataset (`weightedBy`); evaluated at solve time. */
+/**
+  * Coefficient computed from a keyed source when the model is evaluated.
+  *
+  * @param handle variable family whose canonical keys are joined to the source.
+  * @param weights deferred source producing one coefficient per canonical key.
+  * @param scale multiplier applied after evaluating the source.
+  * @param description source description used in validation errors.
+  */
 private[dsl] final case class WeightedCoeffTerm(
   handle: VarSetHandle,
   weights: () => RDD[(String, Double)],
@@ -154,14 +199,19 @@ private[dsl] final case class WeightedCoeffTerm(
   override def mapHandle(f: VarSetHandle => VarSetHandle): LpTerm = copy(handle = f(handle))
 }
 
-/** A single scalar constraint with normalised terms on the left and a constant RHS. */
+/**
+  * One symbolic linear constraint.
+  *
+  * Create it with `expression <= rhs`, `expression >= rhs` or `expression === rhs`, then add it
+  * to an [[LpProblem]]. The right-hand side is stored as a finite constant.
+  */
 final class LpConstraint private[dsl](
   private[dsl] val terms: Vector[LpTerm],
   private[dsl] val sense: LpSense,
   val rhs: Double,
   private[dsl] val explicitName: Option[String]) {
 
-  /** Returns a separate pending constraint with the same name and normalized left-hand side. */
+  /** Returns a copy with a new right-hand side; an already-added constraint is unchanged. */
   def withRhs(value: Double): LpConstraint = {
     LpExpressionData.check(value)
     new LpConstraint(terms, sense, value, explicitName)
@@ -170,7 +220,12 @@ final class LpConstraint private[dsl](
   private[dsl] def withName(name: String): LpConstraint = new LpConstraint(terms, sense, rhs, Some(name))
 }
 
-/** A keyed family of constraints — one row per group key — built from [[GroupedLpExpr]]. */
+/**
+  * A family of linear constraints containing one row for each group key.
+  *
+  * Build it by comparing a [[GroupedLpExpr]] with either one scalar RHS or a DataFrame containing
+  * the group columns and one `rhs` value per group.
+  */
 final class LpConstraintSet private[dsl](
   private[dsl] val grouped: GroupedLpExpr,
   private[dsl] val sense: LpSense,
@@ -181,8 +236,10 @@ final class LpConstraintSet private[dsl](
 }
 
 /**
-  * Relational term rows: each row is one non-zero coefficient of one decision variable in one
-  * grouped constraint row. Built by [[LpVariableSet.terms]]; consumed by `lpSumBy`.
+  * Distributed coefficients used to construct grouped expressions.
+  *
+  * Each source row identifies a group, a variable key and that variable's coefficient. Pass this
+  * value to [[lpSumBy]]; repeated rows for the same group and variable are added.
   */
 final class LpTerms private[dsl](
   private[dsl] val handle: VarSetHandle,
@@ -191,7 +248,12 @@ final class LpTerms private[dsl](
   private[dsl] val by: Seq[Column],
   private[dsl] val coefficient: Column)
 
-/** One symbolic expression per group key; comparison operators are supplied by [[implicits]]. */
+/**
+  * One symbolic linear expression per group key.
+  *
+  * Import [[implicits]] and compare it with a scalar or grouped RHS to create an
+  * [[LpConstraintSet]].
+  */
 final class GroupedLpExpr private[dsl](
   private[dsl] val terms: LpTerms,
   private[dsl] val by: Seq[String])
@@ -354,15 +416,21 @@ private[dsl] trait LpEditableVariable {
   protected def editHandle: VarSetHandle
   protected def editKey: Option[String]
 
+  /** Replaces the inclusive lower and optional upper bound for later solves. */
   def setBounds(lowerBound: Double, upperBound: Option[Double]): this.type = {
     LpVariableEditing.bounds(editHandle, editKey, LpBounds(lowerBound, upperBound)); this
   }
+  /** Fixes the variable to `value`, saving its previous bounds for [[unfix]]. */
   def fix(value: Double): this.type = { LpVariableEditing.fix(editHandle, editKey, value); this }
+
+  /** Restores bounds saved by the first unmatched [[fix]] call; otherwise does nothing. */
   def unfix(): this.type = { LpVariableEditing.unfix(editHandle, editKey); this }
+
+  /** Changes the display name used by inspection, export and result APIs. */
   def rename(name: String): this.type = { LpVariableEditing.rename(editHandle, editKey, name); this }
 }
 
-/** One scalar decision variable. */
+/** Handle for one decision variable, either declared directly or selected from an [[LpVariableSet]]. */
 final class LpVariable private[dsl](private[dsl] val handle: VarSetHandle,
   private[dsl] val selectedKey: Option[String] = None,
   private[dsl] val display: Seq[String] = Seq.empty) extends LpEditableVariable {
@@ -378,8 +446,10 @@ final class LpVariable private[dsl](private[dsl] val handle: VarSetHandle,
 }
 
 /**
-  * One symbolic decision variable for every unique key in the domain; it is not a collected Scala
-  * map. The original domain is retained so a solved value can be joined back to application columns.
+  * Distributed family containing one symbolic decision variable for every unique domain key.
+  *
+  * This is not a collected Scala map. The original DataFrame or Dataset remains lazy and is used to
+  * evaluate coefficient sources and join solved values back to application columns.
   */
 final class LpVariableSet[K] private[dsl](
   private[dsl] val handle: VarSetHandle,
@@ -392,7 +462,12 @@ final class LpVariableSet[K] private[dsl](
   def lowerBound: Double = handle.lowerBound
   def upperBound: Option[Double] = handle.upperBound
 
-  /** Lazy symbolic member lookup. Null keys fail now; missing/incompatible keys fail at solve time. */
+  /**
+    * Returns a symbolic handle for one key.
+    *
+    * This performs no Spark lookup. A null key fails immediately; a key absent from the distributed
+    * domain is reported when the model is evaluated.
+    */
   def apply[Key: LpKeyEncoder](key: Key): LpVariable = {
     val parts = if (key == null) Seq(null) else implicitly[LpKeyEncoder[Key]].parts(key)
     val encoded = KeyCodec.encodeParts(parts)
@@ -400,22 +475,29 @@ final class LpVariableSet[K] private[dsl](
     new LpVariable(handle, Some(encoded), parts.flatMap(KeyCodec.flatParts).map(String.valueOf(_)))
   }
 
-  /** Sum all variables, with coefficient one. */
+  /** Returns the linear expression containing every family member with coefficient one. */
   def sum: LpExpr = handle.toExpr(1.0)
 
-  /** Sum variables weighted by a column of their domain. */
+  /** Returns a sum weighted by a numeric column from the DataFrame used to declare this family. */
   def sum(coefficient: Column): LpExpr =
     new LpExpr(Vector(ColumnCoeffTerm(handle, coefficient, 1.0)), 0.0)
 
-  /** One sum per domain group: `amount.sumBy("region")($"cost")` or `amount.sumBy("region")()`. */
+  /**
+    * Groups the declaration DataFrame and returns one weighted sum per group.
+    *
+    * For example, `amount.sumBy("region")($"cost")` uses `cost`; omitting the column gives every
+    * member coefficient one. This API requires a DataFrame-backed variable family.
+    */
   def sumBy(by: String*)(coefficient: Column = lit(1.0)): GroupedLpExpr = handle.domain match {
     case domain: ColumnDomain => lpSumBy(terms(domain.df, by.map(col), coefficient), by)
     case _ => throw new LpModelException(s"sumBy requires a DataFrame variable domain: '${handle.name}'")
   }
 
   /**
-    * Relational term rows for DataFrame-native bulk constraints: one row per non-zero coefficient,
-    * identified by the grouping columns and the set's key column resolved against `source`.
+    * Builds distributed coefficient rows from another DataFrame.
+    *
+    * `source` must contain the variable key, every grouping column in `by`, and the numeric
+    * `coefficient` column. Pass the returned [[LpTerms]] to [[lpSumBy]].
     */
   def terms(source: DataFrame, by: Seq[Column], coefficient: Column): LpTerms = keyColumn match {
     case Some(key) => new LpTerms(handle, key, source, by, coefficient)

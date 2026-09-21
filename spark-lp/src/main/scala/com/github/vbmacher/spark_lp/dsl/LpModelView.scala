@@ -5,18 +5,132 @@ import org.apache.spark.rdd.RDD
 import org.apache.spark.sql.functions.col
 import org.apache.spark.sql.types.DoubleType
 
-final case class LpVariableDeclaration(id: Int, name: String, lower: Double, upper: Option[Double],
-                                      category: VariableCategory, domainKind: String)
-final case class LpConstraintId(declaration: Int, key: String)
-final case class LpConstraintDeclaration(id: Int, name: String, sense: String, grouped: Boolean)
-final case class LpExpandedVariable(id: LpVariableId, name: String, lower: Double, upper: Option[Double],
-                                   category: VariableCategory, keyParts: Seq[String] = Seq.empty)
-final case class LpExpandedConstraint(id: LpConstraintId, name: String, sense: String, rhs: Double,
-                                     group: Seq[String])
-final case class LpMatrixCoefficient(row: LpConstraintId, variable: LpVariableId, value: Double)
-final case class LpModelStatistics(variableDeclarations: Int, constraintDeclarations: Int,
-  variables: Long, constraints: Long, constraintNonzeros: Long, objectiveNonzeros: Long)
-final case class LpQuadraticFactor(index: Int, weight: Double, constant: Double, coefficients: RDD[LpCoefficient])
+/**
+  * One variable-family declaration before its key domain is expanded.
+  *
+  * @param id zero-based declaration identifier used by expanded variable identities.
+  * @param name declared family name.
+  * @param lower default inclusive lower bound for family members.
+  * @param upper default inclusive upper bound, or `None` when unbounded above.
+  * @param category continuous, integer, or binary domain declared for the family.
+  * @param domainKind source representation: `scalar`, `dataframe`, or `dataset`.
+  */
+final case class LpVariableDeclaration(
+  id: Int,
+  name: String,
+  lower: Double,
+  upper: Option[Double],
+  category: VariableCategory,
+  domainKind: String
+)
+
+/**
+  * Stable identity of one expanded constraint row.
+  *
+  * @param declaration zero-based index of the scalar or grouped constraint declaration.
+  * @param key encoded group key; empty for a scalar constraint.
+  */
+final case class LpConstraintId(
+  declaration: Int,
+  key: String
+)
+
+/**
+  * One constraint declaration before grouped rows are expanded.
+  *
+  * @param id zero-based declaration identifier used by expanded row identities.
+  * @param name explicit or generated declaration name.
+  * @param sense comparison symbol: `<=`, `>=`, or `=`.
+  * @param grouped true when the declaration generates one row per group key.
+  */
+final case class LpConstraintDeclaration(
+  id: Int,
+  name: String,
+  sense: String,
+  grouped: Boolean
+)
+
+/**
+  * One concrete model variable after a family domain is expanded.
+  *
+  * @param id family-and-key identity used by coefficients and candidate values.
+  * @param name display name after any variable renaming.
+  * @param lower inclusive member-specific lower bound.
+  * @param upper inclusive member-specific upper bound, or `None` when unbounded above.
+  * @param category continuous, integer, or binary domain.
+  * @param keyParts display components of the original typed key, in declaration order.
+  */
+final case class LpExpandedVariable(
+  id: LpVariableId,
+  name: String,
+  lower: Double,
+  upper: Option[Double],
+  category: VariableCategory,
+  keyParts: Seq[String] = Seq.empty
+)
+
+/**
+  * One concrete constraint row after a grouped declaration is expanded.
+  *
+  * @param id declaration-and-key identity used by matrix coefficients.
+  * @param name display name of the expanded row.
+  * @param sense comparison symbol: `<=`, `>=`, or `=`.
+  * @param rhs finite right-hand side in the original model coordinates.
+  * @param group display components of the group key; empty for a scalar row.
+  */
+final case class LpExpandedConstraint(
+  id: LpConstraintId,
+  name: String,
+  sense: String,
+  rhs: Double,
+  group: Seq[String])
+
+/**
+  * One nonzero coefficient in the expanded constraint matrix.
+  *
+  * @param row constraint row that contains the coefficient.
+  * @param variable variable multiplied by the coefficient.
+  * @param value finite coefficient value.
+  */
+final case class LpMatrixCoefficient(
+  row: LpConstraintId,
+  variable: LpVariableId,
+  value: Double
+)
+
+/**
+  * Counts for declarations and their expanded model data.
+  *
+  * @param variableDeclarations number of declared scalar variables and variable families.
+  * @param constraintDeclarations number of declared scalar and grouped constraints.
+  * @param variables number of variables after key domains are expanded.
+  * @param constraints number of rows after grouped constraints are expanded.
+  * @param constraintNonzeros number of nonzero entries in the expanded constraint matrix.
+  * @param objectiveNonzeros number of nonzero linear objective coefficients.
+  */
+final case class LpModelStatistics(
+  variableDeclarations: Int,
+  constraintDeclarations: Int,
+  variables: Long,
+  constraints: Long,
+  constraintNonzeros: Long,
+  objectiveNonzeros: Long
+)
+
+/**
+  * One squared affine term `weight * (constant + coefficients^T x)^2` in the objective.
+  *
+  * @param index zero-based position of the factor in declaration order.
+  * @param weight multiplier applied to the squared affine expression.
+  * @param constant constant term inside the square.
+  * @param coefficients distributed nonzero coefficients of the affine expression.
+  */
+final case class LpQuadraticFactor(
+  index: Int,
+  weight: Double,
+  constant: Double,
+  coefficients: RDD[LpCoefficient]
+)
 
 /** Read-only declaration snapshot over lazy source plans. Expanded data remains distributed. */
 final class LpModelView private[dsl](problem: LpProblem) {
@@ -91,14 +205,14 @@ final class LpModelView private[dsl](problem: LpProblem) {
   def coefficients: RDD[LpMatrixCoefficient] = expandedCoefficients
 
   private def expandGrouped(c: LpConstraintSet, d: LpConstraintDeclaration):
-      (RDD[LpExpandedConstraint], RDD[LpMatrixCoefficient]) = {
+  (RDD[LpExpandedConstraint], RDD[LpMatrixCoefficient]) = {
     val t = c.grouped.terms
     if (t.handle.problem ne problem) throw new LpModelException(s"Constraint '${d.name}' references a foreign model")
     val names = c.grouped.by
     require(names.nonEmpty, "Grouped constraints require grouping columns")
     val n = names.size
     val selected = t.source.select((t.by :+ t.key.as("__lp_key") :+
-      t.coefficient.cast(DoubleType).as("__lp_coefficient")): _*)
+        t.coefficient.cast(DoubleType).as("__lp_coefficient")): _*)
       .select((names.map(col) :+ col("__lp_key") :+ col("__lp_coefficient")): _*)
     val raw = selected.rdd.map { row =>
       val parts = (0 until n).map(row.get)

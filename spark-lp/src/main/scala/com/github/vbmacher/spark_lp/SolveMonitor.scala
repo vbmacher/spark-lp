@@ -2,8 +2,18 @@ package com.github.vbmacher.spark_lp
 
 import scala.util.control.{ControlThrowable, NonFatal}
 
+/**
+  * Escapes the numerical solver when a user callback fails.
+  *
+  * @param error exception thrown by the callback.
+  */
 private[spark_lp] final case class CallbackFailed(error: Throwable) extends ControlThrowable
 
+/**
+  * Escapes the numerical solver after a cooperative stop request.
+  *
+  * @param reason policy that requested the stop.
+  */
 private[spark_lp] final case class SolveStopped(reason: StopReason) extends ControlThrowable
 
 /** One monitor per solve, shared by initialization and every Newton system. Never serialized. */

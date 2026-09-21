@@ -6,20 +6,71 @@ import scala.collection.mutable
 import org.apache.spark.sql.SparkSession
 import com.github.vbmacher.spark_lp.dsl.implicits._
 
-final case class MpsReadOptions(rhsSet: Option[String] = None, boundSet: Option[String] = None,
-  rangeSet: Option[String] = None, objectiveSense: Option[ObjectiveSense] = None,
-  maxBytes: Long = 64L * 1024 * 1024, maxVariables: Int = 100000,
-  maxRows: Int = 10000, maxCoefficients: Int = 1000000) {
+/**
+  * Selects MPS data sets and bounds driver-side parsing work.
+  *
+  * @param rhsSet RHS set to read, or the first set encountered when absent.
+  * @param boundSet bounds set to read, or the first set encountered when absent.
+  * @param rangeSet range set to read, or the first set encountered when absent.
+  * @param objectiveSense explicit objective direction overriding the file declaration.
+  * @param maxBytes maximum accepted input-file size.
+  * @param maxVariables maximum distinct column names.
+  * @param maxRows maximum non-objective row declarations.
+  * @param maxCoefficients maximum distinct matrix coefficient positions.
+  */
+final case class MpsReadOptions(
+  rhsSet: Option[String] = None,
+  boundSet: Option[String] = None,
+  rangeSet: Option[String] = None,
+  objectiveSense: Option[ObjectiveSense] = None,
+  maxBytes: Long = 64L * 1024 * 1024,
+  maxVariables: Int = 100000,
+  maxRows: Int = 10000,
+  maxCoefficients: Int = 1000000
+) {
   require(maxBytes > 0 && maxVariables > 0 && maxRows > 0 && maxCoefficients > 0, "MPS parsing limits must be positive")
 }
-final case class LpMpsModel(model: LpProblem, variables: Map[String, LpVariable],
-  constraints: Map[String, Vector[LpConstraint]], rhsSet: Option[String], boundSet: Option[String], rangeSet: Option[String])
+
+/**
+  * Imported MPS model and mappings back to source names.
+  *
+  * @param model reconstructed spark-lp problem.
+  * @param variables source column name to reconstructed scalar variable.
+  * @param constraints source row name to one or more reconstructed constraints; ranged rows produce
+  *                    two constraints.
+  * @param rhsSet RHS set selected during import.
+  * @param boundSet bounds set selected during import.
+  * @param rangeSet range set selected during import.
+  */
+final case class LpMpsModel(
+  model: LpProblem,
+  variables: Map[String, LpVariable],
+  constraints: Map[String, Vector[LpConstraint]],
+  rhsSet: Option[String],
+  boundSet: Option[String],
+  rangeSet: Option[String]
+)
 
 /** Bounded driver-side free/fixed-whitespace MPS parser. Does not invoke a solver. */
 object LpMpsImport {
-  private final case class Bounds(var lower: Double = 0.0, var upper: Option[Double] = None,
-    var category: VariableCategory = Continuous, markerInteger: Boolean = false,
-    var explicitLower: Boolean = false, var explicitUpper: Boolean = false)
+  /**
+    * Mutable bounds accumulated for one MPS column while parsing.
+    *
+    * @param lower current inclusive lower bound.
+    * @param upper current inclusive upper bound, or `None` when unbounded above.
+    * @param category current variable category.
+    * @param markerInteger true when the column was declared inside an `INTORG` marker region.
+    * @param explicitLower true after a bound record explicitly sets the lower side.
+    * @param explicitUpper true after a bound record explicitly sets the upper side.
+    */
+  private final case class Bounds(
+    var lower: Double = 0.0,
+    var upper: Option[Double] = None,
+    var category: VariableCategory = Continuous,
+    markerInteger: Boolean = false,
+    var explicitLower: Boolean = false,
+    var explicitUpper: Boolean = false
+  )
 
   def read(path: Path, options: MpsReadOptions = MpsReadOptions())(implicit spark: SparkSession): LpMpsModel = {
     if (Files.size(path) > options.maxBytes) throw new LpModelException(s"MPS exceeds maxBytes=${options.maxBytes}: $path")
@@ -47,22 +98,30 @@ object LpMpsImport {
     val seenSections = mutable.Set.empty[String]
     val rank = Map("NAME" -> 0, "OBJSENSE" -> 1, "OBJNAME" -> 1, "ROWS" -> 2, "COLUMNS" -> 3,
       "RHS" -> 4, "RANGES" -> 5, "BOUNDS" -> 6, "ENDATA" -> 7)
+
     def fail(message: String): Nothing = throw new LpModelException(s"MPS $path:$lineNumber [$section]: $message")
+
     def number(text: String): Double = {
-      val n = try text.replace('D', 'E').replace('d', 'e').toDouble catch { case _: NumberFormatException => fail(s"Invalid number '$text'") }
+      val n = try text.replace('D', 'E').replace('d', 'e').toDouble catch {
+        case _: NumberFormatException => fail(s"Invalid number '$text'")
+      }
       if (!java.lang.Double.isFinite(n)) fail(s"Non-finite numeric entry '$text'; use FR/MI/PL bounds")
       n
     }
+
     def readSense(token: String): Unit = token.toUpperCase(java.util.Locale.ROOT) match {
       case "MIN" | "MINIMIZE" => sense = Minimize
       case "MAX" | "MAXIMIZE" => sense = Maximize
       case _ => fail(s"Unsupported objective sense '$token'")
     }
+
     def rowExists(name: String): Unit = if (!rows.contains(name)) fail(s"Unknown row '$name'")
+
     def pairs(tokens: Vector[String]): Vector[(String, Double)] = {
       if (tokens.length != 3 && tokens.length != 5) fail("Expected name followed by one or two row/value pairs")
       tokens.tail.grouped(2).map { p => rowExists(p(0)); p(0) -> number(p(1)) }.toVector
     }
+
     try {
       var raw = reader.readLine()
       while (raw != null) {
@@ -78,7 +137,8 @@ object LpMpsImport {
             if (seenSections(first)) fail(s"Repeated section $first")
             if (section.nonEmpty && rank(first) < rank(section)) fail(s"Out-of-order section $first")
             if (section == "COLUMNS" && integerRegion) fail("INTORG marker has no matching INTEND")
-            section = first; seenSections += first
+            section = first;
+            seenSections += first
             first match {
               case "NAME" => if (tokens.size > 2) fail("NAME accepts one model name") else modelName = tokens.lift(1).getOrElse(modelName)
               case "OBJSENSE" => if (tokens.size == 2) readSense(tokens(1)) else if (tokens.size > 2) fail("Invalid OBJSENSE")
@@ -171,16 +231,22 @@ object LpMpsImport {
         name -> model.variable(name, b.lower, b.upper, b.category)
       }.toMap
       val byRow = coefficients.iterator.filter(_._2 != 0.0).toVector.groupBy(_._1._2)
+
       def expression(row: String): LpExpr = byRow.getOrElse(row, Vector.empty).foldLeft(LpExpr.zero) {
         case (sum, ((column, _), value)) => sum + value * variables(column)
       }
+
       model.setObjective(expression(objective) + -rhs.getOrElse(objective, 0.0))
       val usedNames = mutable.Set.empty[String]
       val constraints = rows.iterator.filter(_._1 != objective).map { case (name, kind) =>
         val expr = expression(name)
         val right = rhs.getOrElse(name, 0.0)
         val cs = ranges.get(name) match {
-          case None => Vector((name, kind match { case "E" => expr === right; case "L" => expr <= right; case "G" => expr >= right }))
+          case None => Vector((name, kind match {
+            case "E" => expr === right;
+            case "L" => expr <= right;
+            case "G" => expr >= right
+          }))
           case Some(range) =>
             val magnitude = math.abs(range)
             val lower = if (kind == "G" || kind == "E" && range >= 0.0) right else right - magnitude
@@ -191,7 +257,9 @@ object LpMpsImport {
         name -> cs.map { case (n, c) =>
           if (usedNames(n) || n != name && rows.contains(n)) fail(s"Expanded range name '$n' collides with another row")
           usedNames += n
-          val named = c.named(n); model += named; named
+          val named = c.named(n);
+          model += named;
+          named
         }
       }.toMap
       LpMpsModel(model, variables, constraints, chosenRhs, chosenBounds, chosenRanges)

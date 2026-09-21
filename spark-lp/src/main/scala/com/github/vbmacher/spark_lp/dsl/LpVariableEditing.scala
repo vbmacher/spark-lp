@@ -1,11 +1,33 @@
 package com.github.vbmacher.spark_lp.dsl
 
+/**
+  * Inclusive variable bounds in original model coordinates.
+  *
+  * @param lower lower bound; negative infinity denotes no lower bound.
+  * @param upper finite upper bound, or `None` when unbounded above.
+  */
 final case class LpBounds(lower: Double, upper: Option[Double])
-private[dsl] final case class VariableMetadata(name: String, bounds: LpBounds,
-  members: Map[String, LpBounds], names: Map[String, String]) {
+
+/**
+  * Current family defaults and per-member metadata overrides.
+  *
+  * @param name current variable-family name.
+  * @param bounds default bounds for members without an override.
+  * @param members canonical member key to bound override.
+  * @param names canonical member key to display-name override.
+  */
+private[dsl] final case class VariableMetadata(
+  name: String,
+  bounds: LpBounds,
+  members: Map[String, LpBounds],
+  names: Map[String, String]
+) {
   def at(key: String): LpBounds = members.getOrElse(key, bounds)
+
   def display(key: String, parts: Seq[String]): String = names.getOrElse(key, KeyCodec.displayName(name, parts))
+
   def envelope: LpBounds = envelopeFor(None)
+
   def envelopeFor(count: Option[Long]): LpBounds = {
     val all = if (members.nonEmpty && count.contains(members.size.toLong)) members.values.toVector else bounds +: members.values.toVector
     LpBounds(all.map(_.lower).min, if (all.exists(_.upper.isEmpty)) None else Some(all.flatMap(_.upper).max))
@@ -27,7 +49,8 @@ private[dsl] object LpVariableEditing {
   }
 
   def bounds(h: VarSetHandle, key: Option[String], value: LpBounds): Unit = {
-    h.problem.requireEditable(); validate(value, h.category)
+    h.problem.requireEditable();
+    validate(value, h.category)
     key match {
       case None => h.metadata = h.metadata.copy(bounds = value, members = Map.empty); h.fixedMembers = Map.empty; h.fixedFamily = None
       case Some(k) => h.metadata = h.metadata.copy(members = h.metadata.members.updated(k, value)); h.fixedMembers -= k
@@ -37,11 +60,13 @@ private[dsl] object LpVariableEditing {
   def fix(h: VarSetHandle, key: Option[String], value: Double): Unit = {
     h.problem.requireEditable()
     if (!java.lang.Double.isFinite(value)) throw new LpModelException("A fixed value must be finite")
-    val fixed = LpBounds(value, Some(value)); validate(fixed, h.category)
+    val fixed = LpBounds(value, Some(value));
+    validate(fixed, h.category)
     key match {
       case None =>
         if (h.fixedFamily.isEmpty) h.fixedFamily = Some((h.metadata.bounds, h.metadata.members, h.fixedMembers))
-        h.metadata = h.metadata.copy(bounds = fixed, members = Map.empty); h.fixedMembers = Map.empty
+        h.metadata = h.metadata.copy(bounds = fixed, members = Map.empty);
+        h.fixedMembers = Map.empty
       case Some(k) =>
         if (!h.fixedMembers.contains(k)) h.fixedMembers += k -> h.metadata.members.get(k)
         h.metadata = h.metadata.copy(members = h.metadata.members.updated(k, fixed))

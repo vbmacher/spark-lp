@@ -19,12 +19,11 @@ object dense_vector {
       lazy val toBreeze: BDV[Double] = new BDV[Double](vector.values)
 
       /**
-        * Compute a linear combination of two vectors alpha * this + beta * b.
+        * Returns `alpha * vector + beta * b` without modifying either input.
         *
-        * @param alpha The first scalar coefficient.
-        * @param beta  The second scalar coefficient.
-        * @param b     The second vector.
-        * @return The computed linear combination.
+        * @param alpha multiplier for this vector.
+        * @param beta multiplier for `b`.
+        * @param b vector added to this vector after scaling.
         */
       def combine(
         alpha: Double,
@@ -37,20 +36,10 @@ object dense_vector {
       }
 
 
-      /**
-        * Compute the inner product of two vectors this * b.
-        *
-        * @param b The second vector.
-        * @return The computed inner product.
-        */
+      /** Returns the inner product `vector^T b`. */
       def dot(b: DenseVector): Double = BLAS.dot(vector, b)
 
-      /**
-        * Compute the entrywise product (Hadamard product) of two vectors.
-        *
-        * @param b The second vector.
-        * @return The computed vector.
-        */
+      /** Returns a vector whose element `i` is `vector(i) * b(i)`. */
       def entrywiseProd(b: DenseVector): DenseVector = {
         require(vector.size == b.size, "Entrywise product requires vectors of equal size")
         val c = vector.values.zip(b.values).map { case (i: Double, j: Double) => i * j }
@@ -58,10 +47,10 @@ object dense_vector {
       }
 
       /**
-        * Compute the entrywise division on negative values of two vectors.
+        * Divides by the negative elements of `b` and ignores non-negative elements.
         *
-        * @param b The second vector.
-        * @return The computed vector.
+        * Result element `i` is `vector(i) / max(abs(b(i)), 1e-15)` when `b(i) < 0`, and positive
+        * infinity otherwise. The solver uses the minimum result as a step-length bound.
         */
       def entrywiseNegDiv(b: DenseVector): DenseVector = {
         require(vector.size == b.size, "Entrywise division requires vectors of equal size")

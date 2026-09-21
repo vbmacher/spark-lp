@@ -4,20 +4,29 @@ import java.lang.management.ManagementFactory
 import scala.util.control.NonFatal
 
 /**
-  * Final timing metadata for one solve, in seconds. Wall durations use a monotonic clock.
-  * `driverProcessCpuSeconds` is JVM driver-process CPU only: it includes concurrent driver
-  * threads, excludes executor/cluster CPU, and is `None` when the JVM cannot provide it.
+  * Timing measurements for one solve, in seconds.
+  *
+  * Wall-clock phases use a monotonic clock. Driver CPU time covers the entire JVM process, including
+  * concurrent driver threads; it excludes executor CPU and is absent when the JVM cannot provide it.
+  *
+  * @param compilationWallSeconds model validation, expansion, presolve, and solver-form construction.
+  * @param numericalSolveWallSeconds continuous or mixed-integer numerical search.
+  * @param resultReconstructionWallSeconds mapping solver values and diagnostics to original model data.
+  * @param totalWallSeconds elapsed time from solve entry through reconstruction.
+  * @param driverProcessCpuSeconds JVM process CPU consumed during the full solve, when supported.
   */
 final case class LpSolveTimings(
   compilationWallSeconds: Double,
   numericalSolveWallSeconds: Double,
   resultReconstructionWallSeconds: Double,
   totalWallSeconds: Double,
-  driverProcessCpuSeconds: Option[Double])
+  driverProcessCpuSeconds: Option[Double]
+)
 
 private[dsl] final class LpSolveClock(
   val nanoTime: () => Long,
-  val driverProcessCpuTime: () => Option[Long])
+  val driverProcessCpuTime: () => Option[Long]
+)
 
 private[dsl] object LpSolveClock {
   private val NoCpuTime: () => Option[Long] = () => None

@@ -5,11 +5,27 @@ import java.nio.file.{Files, Path, StandardCopyOption, StandardOpenOption}
 import org.json4s._
 import org.json4s.jackson.JsonMethods.{compact, parse, render}
 
+/**
+  * One finite BMF metric and optional observed range.
+  *
+  * @param value reported scalar, usually the sample median.
+  * @param lower observed minimum when a range is meaningful.
+  * @param upper observed maximum when a range is meaningful.
+  */
 final case class Measurement(value: Double, lower: Option[Double] = None, upper: Option[Double] = None) {
   require((Vector(value) ++ lower ++ upper).forall(BenchmarkResults.finite), "Non-finite BMF metric")
   require(lower.forall(_ <= value) && upper.forall(_ >= value), "Invalid metric bounds")
 }
 
+/**
+  * Complete outcome of one isolated benchmark worker attempt.
+  *
+  * @param repetition zero-based attempt position, including warmups.
+  * @param warmup true when the attempt is excluded from measured aggregates.
+  * @param status terminal outcome label.
+  * @param metrics finite measurements emitted by a successful or partially observed attempt.
+  * @param error captured failure detail, when the attempt did not complete successfully.
+  */
 final case class Attempt(repetition: Int, warmup: Boolean, status: String,
                          metrics: Map[String, Double] = Map.empty, error: Option[String] = None)
 

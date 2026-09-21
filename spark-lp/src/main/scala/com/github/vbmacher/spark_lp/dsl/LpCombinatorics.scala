@@ -1,6 +1,11 @@
 package com.github.vbmacher.spark_lp.dsl
 
-/** Local, position-based enumeration. Inputs are copied once; outputs are lazy. */
+/**
+  * Enumerates combinations and permutations of driver-local values.
+  *
+  * Input positions are distinct: equal values at different positions may therefore produce equal
+  * output vectors. Each method copies its input once and returns a lazy iterator.
+  */
 object LpCombinatorics {
   private def input[A](values: Iterable[A], size: Int): Vector[A] = {
     if (size < 0) throw new LpModelException("Enumeration size must be nonnegative")
@@ -21,7 +26,7 @@ object LpCombinatorics {
   def permutations[A](values: Iterable[A], size: Int): Iterator[Vector[A]] =
     permutationsOf(input(values, size), size)
 
-  /** Includes size zero; sizes above the input length produce no additional groups. */
+  /** Returns combinations for every size from zero through `maxSize`, capped at the input length. */
   def combinationsUpTo[A](values: Iterable[A], maxSize: Int): Iterator[Vector[A]] = {
     val data = input(values, maxSize)
     (0 to math.min(maxSize, data.size)).iterator.flatMap(combinationsOf(data, _))

@@ -7,7 +7,19 @@ import com.fasterxml.jackson.databind.{JsonNode, ObjectMapper}
 import scala.collection.JavaConverters._
 import scala.concurrent.duration._
 
-/** Optional local native HiGHS session through Python. No Python dependency is installed implicitly. */
+/**
+  * Solves an [[LpProblem]] with a local HiGHS installation exposed by the Python `highspy` package.
+  *
+  * Each prepared session exports the model to a temporary LP file and starts a dedicated Python
+  * process. The caller must install `highspy`; spark-lp neither installs Python packages nor sends
+  * the model to executors. Closing the session stops the process and removes its temporary files
+  * unless [[LpCommandOptions.retainArtifacts]] is enabled.
+  *
+  * @param python executable used to start the bridge process.
+  * @param artifacts limits and retention policy for temporary files and solver logs.
+  * @param startupTimeout maximum time allowed for bridge startup and non-solve requests.
+  * @param maxResponseCharacters maximum accepted size of one JSON response from the bridge.
+  */
 final class HighsPythonAdapter(python: String = "python3", artifacts: LpCommandOptions = LpCommandOptions(),
   startupTimeout: FiniteDuration = 60.seconds, maxResponseCharacters: Int = 32 * 1024 * 1024) extends LpSolverAdapter {
   require(startupTimeout.toNanos > 0 && maxResponseCharacters > 0, "Bridge limits must be positive")

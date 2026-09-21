@@ -8,38 +8,72 @@ import org.apache.spark.rdd.RDD
 import org.apache.spark.sql.SparkSession
 import scala.collection.JavaConverters._
 
-/** Imported solution metadata requires independent verification before making solver guarantees. */
-final case class LpJsonDocument(model: LpPortableModel, solution: Option[LpSolutionData],
-  source: String, solutionMetadataVerified: Boolean = false)
+/**
+  * Model and optional result metadata read from or written to an [[LpJson]] directory.
+  *
+  * Imported solution fields are informational; validate candidate values independently before
+  * treating them as feasible or optimal.
+  *
+  * @param model portable mathematical model reconstructed from the directory.
+  * @param solution optional serialized result metadata and candidate values.
+  * @param source input directory recorded for diagnostics.
+  * @param solutionMetadataVerified true when stored summary fields were verified against their
+  *                                 serialized candidate values while reading.
+  */
+final case class LpJsonDocument(
+  model: LpPortableModel,
+  solution: Option[LpSolutionData],
+  source: String,
+  solutionMetadataVerified: Boolean = false
+)
 
-/** Versioned JSON-lines directory format. All large collections use Spark partitions. */
+/**
+  * Reads and writes spark-lp's versioned JSON-lines directory format.
+  *
+  * Variables, constraints and coefficients remain partitioned Spark data rather than one
+  * driver-local JSON document.
+  */
 object LpJson {
   private val mapper = new ObjectMapper()
   private val factory = mapper.getNodeFactory
+
   private def obj(fields: (String, JsonNode)*): ObjectNode = {
     val result = mapper.createObjectNode()
     fields.foreach { case (key, value) => result.replace(key, value) }
     result
   }
+
   private def str(value: String): JsonNode = factory.textNode(value)
+
   private def num(value: Double): JsonNode = {
     if (value.isNaN) factory.nullNode()
     else if (value.isPosInfinity) str("positiveInfinity")
     else if (value.isNegInfinity) str("negativeInfinity")
     else factory.numberNode(value)
   }
+
   private def int(value: Int): JsonNode = factory.numberNode(value)
+
   private def bool(value: Boolean): JsonNode = factory.booleanNode(value)
+
   private def optional(value: Option[Double]): JsonNode = value.map(num).getOrElse(factory.nullNode())
+
   private def array(values: Iterable[JsonNode]): JsonNode = {
-    val node = mapper.createArrayNode(); values.foreach(node.add); node
+    val node = mapper.createArrayNode();
+    values.foreach(node.add);
+    node
   }
+
   private def id(value: LpVariableId): JsonNode = obj("family" -> int(value.family), "key" -> str(value.key))
+
   private def rowId(value: LpConstraintId): JsonNode = obj("declaration" -> int(value.declaration), "key" -> str(value.key))
+
   private def coefficient(value: LpCoefficient): JsonNode = obj("variable" -> id(value.variable), "value" -> num(value.value))
+
   private def variable(value: LpExpandedVariable): JsonNode = obj("id" -> id(value.id), "name" -> str(value.name),
     "lower" -> num(value.lower), "upper" -> optional(value.upper), "category" -> str(value.category.toString),
     "keyParts" -> array(value.keyParts.map(str)))
+
   private def row(value: LpExpandedConstraint): JsonNode = obj("id" -> rowId(value.id), "name" -> str(value.name),
     "sense" -> str(value.sense), "rhs" -> num(value.rhs), "group" -> array(value.group.map(str)))
 
@@ -47,44 +81,56 @@ object LpJson {
     if (!node.has(key)) throw new LpModelException(s"JSON field '$key' is missing")
     node.get(key)
   }
+
   private def text(node: JsonNode): String = {
     if (!node.isTextual) throw new LpModelException("Expected a JSON string")
     node.textValue()
   }
+
   private def number(node: JsonNode): Double = {
     if (!node.isNumber || !Numerics.isFinite(node.doubleValue()))
       throw new LpModelException("Expected a finite JSON number")
     node.doubleValue()
   }
+
   private def integer(node: JsonNode): Int = {
     if (!node.isIntegralNumber || !node.canConvertToInt) throw new LpModelException("Expected a JSON integer")
     node.intValue()
   }
+
   private def boolean(node: JsonNode): Boolean = {
     if (!node.isBoolean) throw new LpModelException("Expected a JSON boolean")
     node.booleanValue()
   }
+
   private def elements(node: JsonNode): Vector[JsonNode] = {
     if (!node.isArray) throw new LpModelException("Expected a JSON array")
     node.elements().asScala.toVector
   }
+
   private def lower(node: JsonNode): Double =
     if (node.isTextual && node.textValue() == "negativeInfinity") Double.NegativeInfinity else number(node)
+
   private def upper(node: JsonNode): Option[Double] = if (node.isNull) None else Some(number(node))
+
   private def resultNumber(node: JsonNode): Option[Double] =
     if (node.isNull) None else if (node.isTextual) text(node) match {
       case "positiveInfinity" => Some(Double.PositiveInfinity)
       case "negativeInfinity" => Some(Double.NegativeInfinity)
       case other => throw new LpModelException(s"Invalid non-finite JSON number '$other'")
     } else Some(number(node))
+
   private def category(node: JsonNode): VariableCategory = text(node) match {
     case "Continuous" => Continuous
     case "Integer" => Integer
     case "Binary" => Binary
     case other => throw new LpModelException(s"Invalid JSON variable category '$other'")
   }
+
   private def variableId(node: JsonNode): LpVariableId = LpVariableId(integer(field(node, "family")), text(field(node, "key")))
+
   private def constraintId(node: JsonNode): LpConstraintId = LpConstraintId(integer(field(node, "declaration")), text(field(node, "key")))
+
   private def readCoefficient(node: JsonNode): LpCoefficient =
     LpCoefficient(variableId(field(node, "variable")), number(field(node, "value")))
 
@@ -99,8 +145,10 @@ object LpJson {
     val fs = target.getFileSystem(configuration)
     if (fs.exists(target) && !overwrite) throw new LpModelException(s"JSON destination already exists: $destination")
     val temporary = new Path(target.toString + ".tmp-" + java.util.UUID.randomUUID().toString)
+
     def save[A](values: RDD[A], name: String)(encode: A => JsonNode): Unit =
       values.map(v => encode(v).toString).saveAsTextFile(new Path(temporary, name).toString)
+
     try {
       val declarations = data.declarations.map(d => obj("id" -> int(d.id), "name" -> str(d.name),
         "lower" -> num(d.lower), "upper" -> optional(d.upper), "category" -> str(d.category.toString),
@@ -128,13 +176,17 @@ object LpJson {
         obj("variable" -> id(v.variable), "value" -> num(v.value))))
       val context = FileContext.getFileContext(fs.getUri, configuration)
       var backup: Option[Path] = None
+
       def restoreBackup(): String = {
         backup.foreach { path =>
           if (!fs.exists(target)) try context.rename(path, target, Options.Rename.NONE)
-          catch { case _: java.io.IOException => () }
+          catch {
+            case _: java.io.IOException => ()
+          }
         }
         backup.filter(fs.exists).map(path => s"; previous destination retained at $path").getOrElse("")
       }
+
       try {
         if (overwrite && fs.exists(target)) {
           val path = new Path(target.toString + ".backup-" + java.util.UUID.randomUUID().toString)
@@ -157,10 +209,16 @@ object LpJson {
     }
   }
 
-  /** Reads partitioned data lazily; call model.toProblem to validate references and reconstruct handles. */
+  /**
+    * Reads a JSON model directory as distributed data.
+    *
+    * Call `document.model.toProblem()` to validate identities and construct an editable
+    * [[LpProblem]].
+    */
   def read(source: String)(implicit spark: SparkSession): LpJsonDocument = {
     def records(name: String): RDD[JsonNode] =
       spark.read.textFile(new Path(source, name).toString).rdd.map(line => mapper.readTree(line))
+
     // Parse the bounded header on the driver; older Jackson nodes are not serializable.
     val headers = spark.read.textFile(new Path(source, "header").toString).take(2)
     if (headers.length != 1) throw new LpModelException("JSON requires exactly one header record")

@@ -45,18 +45,20 @@ ThisBuild / publishMavenStyle := true
 
 credentials += Credentials(Path.userHome / ".sbt" / "sonatype.sbt")
 
+lazy val forkedJvmOptions = Seq("-Xms4G", "-Xmx4G")
+lazy val sparkLpAssemblyMergeStrategy = (path: String) => path match {
+  case PathList("META-INF", "services", _*) => MergeStrategy.concat
+  case PathList("META-INF", _*) => MergeStrategy.discard
+  case _ => MergeStrategy.first
+}
 
 lazy val `spark-lp` = sparkAxes.foldLeft(projectMatrix
         .settings(
           scalacOptions ++= Seq("-target:jvm-1.8", "-Xlint:_", "-language:experimental.macros", "-feature"),
           javacOptions ++= Seq("-source", "1.8", "-target", "1.8", "-Xlint"),
-          javaOptions ++= Seq("-Xms4G", "-Xmx4G"),
+          javaOptions ++= forkedJvmOptions,
           fork := true,
-          assembly / assemblyMergeStrategy := {
-            case PathList("META-INF", "services", _*) => MergeStrategy.concat
-            case PathList("META-INF", _*) => MergeStrategy.discard
-            case _ => MergeStrategy.first
-          },
+          assembly / assemblyMergeStrategy := sparkLpAssemblyMergeStrategy,
           libraryDependencies ++= Libs.scalaTestLibs ++ Seq(
             Libs.netlib,
             Libs.scalaLogging,
@@ -99,14 +101,10 @@ lazy val benchmarks = projectMatrix
             fork := true,
             Test / baseDirectory := (LocalRootProject / baseDirectory).value,
             Test / parallelExecution := false,
-            javaOptions ++= Seq("-Xms4G", "-Xmx4G"),
+            javaOptions ++= forkedJvmOptions,
             libraryDependencies ++= sparkAxes.last._1.sparkLibs.flatMap(r => Seq(r % Provided, r % Test)) ++
               Seq(Libs.log4jImpl % Test) ++ Libs.scalaTestLibs,
-            assembly / assemblyMergeStrategy := {
-              case PathList("META-INF", "services", _*) => MergeStrategy.concat
-              case PathList("META-INF", _*) => MergeStrategy.discard
-              case _ => MergeStrategy.first
-            },
+            assembly / assemblyMergeStrategy := sparkLpAssemblyMergeStrategy,
             publish / skip := true,
             publishArtifact := false))
 

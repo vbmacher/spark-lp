@@ -42,7 +42,7 @@ final class LpModelView private[dsl](problem: LpProblem) {
     case (Right(c), i) => LpConstraintDeclaration(i, c.explicitName.getOrElse(s"_c$i"), c.sense.symbol, true)
   }
 
-  def variables: RDD[LpExpandedVariable] = {
+  private lazy val expandedVariables: RDD[LpExpandedVariable] = {
     val pieces = handles.zip(variableDeclarations).zip(metadata).map { case ((h, d), m) =>
       h.domain.keyPairs().map { case (key, display) =>
         val bounds = m.at(key)
@@ -51,12 +51,17 @@ final class LpModelView private[dsl](problem: LpProblem) {
     }
     if (pieces.isEmpty) sc.emptyRDD else sc.union(pieces)
   }
+  def variables: RDD[LpExpandedVariable] = expandedVariables
 
-  def objectiveCoefficients: RDD[LpCoefficient] = coefficientsOf(objective)
-  def diagonalCoefficients: RDD[LpCoefficient] = quadratic.map(q => coefficientsOf(q.diagonal)).getOrElse(sc.emptyRDD)
-  def quadraticFactors: Vector[LpQuadraticFactor] = quadratic.toVector.flatMap(_.factors).zipWithIndex.map {
+  private lazy val expandedObjective: RDD[LpCoefficient] = coefficientsOf(objective)
+  private lazy val expandedDiagonal: RDD[LpCoefficient] =
+    quadratic.map(q => coefficientsOf(q.diagonal)).getOrElse(sc.emptyRDD)
+  private lazy val expandedFactors: Vector[LpQuadraticFactor] = quadratic.toVector.flatMap(_.factors).zipWithIndex.map {
     case ((e, weight), i) => LpQuadraticFactor(i, weight, e.constant, coefficientsOf(e))
   }
+  def objectiveCoefficients: RDD[LpCoefficient] = expandedObjective
+  def diagonalCoefficients: RDD[LpCoefficient] = expandedDiagonal
+  def quadraticFactors: Vector[LpQuadraticFactor] = expandedFactors
   val hasQuadraticObjective: Boolean = quadratic.nonEmpty
 
   private def coefficientsOf(e: LpExpr): RDD[LpCoefficient] =
@@ -64,7 +69,7 @@ final class LpModelView private[dsl](problem: LpProblem) {
       LpCoefficient(LpVariableId(family, key), value)
     }
 
-  private def expanded: Vector[(RDD[LpExpandedConstraint], RDD[LpMatrixCoefficient])] =
+  private lazy val expanded: Vector[(RDD[LpExpandedConstraint], RDD[LpMatrixCoefficient])] =
     rows.zip(constraintDeclarations).map {
       case (Left(c), d) =>
         LpExpressionData.check(c.rhs)
@@ -74,14 +79,16 @@ final class LpModelView private[dsl](problem: LpProblem) {
       case (Right(c), d) => expandGrouped(c, d)
     }
 
-  def constraints: RDD[LpExpandedConstraint] = {
+  private lazy val expandedConstraints: RDD[LpExpandedConstraint] = {
     val pieces = expanded.map(_._1)
     if (pieces.isEmpty) sc.emptyRDD else sc.union(pieces)
   }
-  def coefficients: RDD[LpMatrixCoefficient] = {
+  private lazy val expandedCoefficients: RDD[LpMatrixCoefficient] = {
     val pieces = expanded.map(_._2)
     if (pieces.isEmpty) sc.emptyRDD else sc.union(pieces)
   }
+  def constraints: RDD[LpExpandedConstraint] = expandedConstraints
+  def coefficients: RDD[LpMatrixCoefficient] = expandedCoefficients
 
   private def expandGrouped(c: LpConstraintSet, d: LpConstraintDeclaration):
       (RDD[LpExpandedConstraint], RDD[LpMatrixCoefficient]) = {

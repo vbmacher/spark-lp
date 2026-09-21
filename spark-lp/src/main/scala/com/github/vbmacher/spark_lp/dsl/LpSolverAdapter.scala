@@ -2,8 +2,6 @@ package com.github.vbmacher.spark_lp.dsl
 
 import com.github.vbmacher.spark_lp.CandidateInfo
 import org.apache.spark.rdd.RDD
-import org.apache.spark.sql.Row
-import org.apache.spark.sql.types._
 import scala.concurrent.duration.FiniteDuration
 
 final case class LpSolverCapabilities(lp: Boolean = true, mip: Boolean = false,
@@ -150,19 +148,16 @@ private[dsl] object LpAdapterSolve {
       val rows = view.constraints.map(r => r.id -> r).leftOuterJoin(activities).leftOuterJoin(duals)
         .map { case (_, ((r, activity), dual)) =>
           val a = if (!available) Double.NaN else activity.getOrElse(0.0)
-          val slack = if (r.sense == ">=") a - r.rhs else r.rhs - a
-          Row(r.name, if (r.group.isEmpty) null else r.group.mkString(","), a, r.sense, r.rhs, slack,
-            dual.map(Double.box).orNull, "External adapter", if (dual.isDefined) null else "Backend did not provide an LP dual")
+          ConstraintDiagnostics.row(r.name, if (r.group.isEmpty) null else r.group.mkString(","),
+            a, r.sense, r.rhs, dual.map(Double.box).orNull, "External adapter",
+            if (dual.isDefined) null else "Backend did not provide an LP dual")
         }
-      val schema = StructType(Seq(StructField("name", StringType, false), StructField("group", StringType),
-        StructField("activity", DoubleType), StructField("sense", StringType), StructField("rhs", DoubleType),
-        StructField("slack", DoubleType), StructField("dual", DoubleType), StructField("note", StringType), StructField("dual_note", StringType)))
       val value = raw.status match {
         case LpStatus.Infeasible | LpStatus.InfeasibleOrUnbounded => Double.NaN
         case LpStatus.Unbounded => if (problem.sense == Minimize) Double.NegativeInfinity else Double.PositiveInfinity
         case _ => objective.getOrElse(Double.NaN)
       }
-      val frame = problem.spark.createDataFrame(rows, schema).persist()
+      val frame = problem.spark.createDataFrame(rows, ConstraintDiagnostics.schema).persist()
       diagnosticsFrame = Some(frame)
       frame.count()
       val candidate = CandidateInfo(raw.values.nonEmpty, feasible, if (raw.values.nonEmpty) Some(raw.iterations) else None)

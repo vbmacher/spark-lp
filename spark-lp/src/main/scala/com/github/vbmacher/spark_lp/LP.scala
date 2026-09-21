@@ -90,6 +90,26 @@ object LP extends LazyLogging {
     candidate: CandidateInfo = CandidateInfo.Unavailable,
     innerRestarts: Int = 0)
 
+  private final case class SolveOptions(
+    tolerance: Double,
+    maxIter: Int,
+    etaIter: Double,
+    valueCap: Double,
+    eps: Double,
+    infeasibilityTolerance: Double,
+    solver: NewtonSolver,
+    cgTolerance: Double,
+    cgMaxIterations: Int,
+    stopAfterIteration: Option[Int => Boolean],
+    cgConfig: CgConfig,
+    control: SolveControl,
+    candidateViolation: Option[DVector => Double],
+    nanoTime: () => Long,
+    inspectConverged: Option[(DVector, DenseVector, DVector) => Unit],
+    quadratic: Option[DVector],
+    initialPrimal: Option[DVector],
+    onStartApplied: () => Unit)
+
   /**
     * Computes the optimal value and the corresponding vector for a LP problem.
     *
@@ -176,7 +196,14 @@ object LP extends LazyLogging {
     quadratic: Option[DVector] = None,
     initialPrimal: Option[DVector] = None,
     onStartApplied: () => Unit = () => ()
-  )(implicit spark: SparkSession): SolveSummary = {
+  )(implicit spark: SparkSession): SolveSummary = solveWithSummary(c, AT, b, SolveOptions(
+    tolerance, maxIter, etaIter, valueCap, eps, infeasibilityTolerance, solver, cgTolerance,
+    cgMaxIterations, stopAfterIteration, cgConfig, control, candidateViolation, nanoTime,
+    inspectConverged, quadratic, initialPrimal, onStartApplied))
+
+  private def solveWithSummary(c: DVector, AT: DMatrix, b: DenseVector, options: SolveOptions)
+    (implicit spark: SparkSession): SolveSummary = {
+    import options._
     validateParameters(tolerance, maxIter, etaIter, valueCap, eps, infeasibilityTolerance, cgTolerance)
     require(b.size > 0 && b.values.forall(v => !v.isNaN && !v.isInfinite), "b must be nonempty and finite")
     val caches = new CachedRDDs

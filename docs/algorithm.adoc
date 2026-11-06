@@ -2,12 +2,13 @@
 :toc: left
 :source-highlighter: highlightjs
 
-spark-lp first converts an `LpProblem` into the numerical form required by its continuous solver. A
-model containing `Integer` or `Binary` variables adds a branch-and-bound search around repeated
-continuous solves.
+spark-lp compiles an `LpProblem` into a numerical model, solves it and converts the result back to
+the original variables. Models containing `Integer` or `Binary` variables use branch-and-bound:
+a search that repeatedly solves continuous subproblems with tighter bounds.
 
 This guide explains solver behavior that affects configuration, memory use, reported status or solve
-evidence. See xref:usage.adoc[the usage guide] for the modelling and result APIs.
+evidence (numerical certificates for infeasibility or unboundedness). See
+xref:usage.adoc[the usage guide] for the modelling and result APIs.
 
 The equations below use these terms:
 
@@ -28,14 +29,14 @@ The equations below use these terms:
 |===
 
 The continuous solver minimizes `c^T*x` subject to `A*x = b` and `x >= 0`. Here `A` is the
-internal constraint matrix and `c` contains the linear objective coefficients. A continuous convex
-quadratic model adds `0.5*x^T*Q*x` to the objective.
+internal constraint matrix, `b` contains the right-hand sides and `c` contains the linear objective
+coefficients. Superscript `T` denotes a transpose. A continuous convex quadratic model adds
+`0.5*x^T*Q*x`, where `Q` is the quadratic coefficient matrix.
 
 == From `LpProblem` to equality form
 
-`LpCompiler` validates Spark keys and coefficients, applies automatic simplification (presolve),
-then converts every variable and constraint to the nonnegative equality form used by the continuous
-solver:
+The compiler validates Spark keys and coefficients, simplifies the model (presolve), then converts
+constraints to equalities and variables to nonnegative values:
 
 [source,mermaid]
 ----
@@ -64,11 +65,11 @@ flowchart LR
 Example: minimize `2*x + 7` with `5 <= x <= 10` becomes minimize `2*y + 17` with `y + slack = 5`;
 `y = 0` reconstructs `x = 5`, cost `17`.
 
-The internal matrix is stored by distributed sparse columns as `AT = A^T`. Original variables follow
+The internal matrix is stored as distributed sparse columns, written `AT = A^T`. Original variables follow
 declaration order; keys in a variable set follow encoded-key order. Rows follow constraint declaration
 order and then group-key order. Duplicate detection first hashes candidate rows, then compares their
 normalized coefficients before merging them; a hash match alone never merges rows. Contradictory
-declared bounds, inconsistent duplicate equalities and impossible constant rows raise
+declared bounds, inconsistent duplicate equalities and impossible constant-only constraints raise
 `LpModelException` before numerical optimization.
 
 == Continuous interior-point solve
@@ -95,9 +96,11 @@ flowchart TD
 ----
 
 Each iteration sets `mu = x^T*s/n`, where `n` is the number of internal variables, and
-`D2 = diag(x/s)` with guarded inverses. Both Newton directions solve
+`D2 = diag(x/s)`, a diagonal matrix with entries `x_i/s_i`, with guarded inverses.
+Both Newton directions solve
 `A*D2*A^T*deltaLambda = rhs`. The affine predictor sets
-`sigma = min(1, (muAffine/mu)^3)`; the corrector adds centering and a second-order correction, and
+`sigma = min(1, (muAffine/mu)^3)`, where `muAffine` is the predicted complementarity after the affine step.
+The corrector adds centering and a second-order correction, and
 the step uses `etaIteration` to stay inside the nonnegative cone. The predictor-corrector
 formulation follows Cui et al. <<cui2019>> (section 2.1).
 
@@ -135,17 +138,17 @@ slacks.
 |===
 |`NewtonSolver` value |Behavior |Driver memory
 |`Auto` |Use `Cholesky` when `m <= min(10000, maxLocalConstraints)`; otherwise use `ConjugateGradient`. |Depends on the selected method.
-|`Cholesky` |Collect the Gramian, factor its exactly disconnected row blocks on the driver and reuse the factors for predictor and corrector. |About `16*m*m` bytes for the Gramian, plus aggregation buffers.
+|`Cholesky` |Collect the Gramian on the driver, factor independent row blocks separately and reuse the factors for predictor and corrector. |About `16*m*m` bytes for the Gramian, plus aggregation buffers.
 |`ConjugateGradient` |Apply `v -> A*(W*(A^T*v)) + Rd*v` through Spark without collecting the Gramian. |Driver vectors plus about `32*m*rank` bytes for the preconditioner.
 |===
 
-The 10000-row `Auto` cutoff is a conservative policy, not a universal performance crossover.
+The 10000-row `Auto` cutoff is a conservative default. The faster method depends on the workload.
 `SolveConfig.maxLocalConstraints` also acts as the safety cap for explicit `Cholesky`. Selecting
 `Cholesky` above 10000 rows therefore requires raising the cap; raising the cap alone does not
 change `Auto`'s 10000-row cutoff.
 
 At `m = 10000`, the Gramian estimate is about 1.6 GB and executor aggregation buffers add roughly
-400 MB. Packed Cholesky arrays impose a separate 65535-row limit. CG avoids the Gramian allocation,
+400 MB. Packed Cholesky arrays impose a separate 65535-row limit. Conjugate gradient (CG) avoids the Gramian allocation,
 but the driver still retains row metadata, the RHS, residual vectors and group keys. One CG operator
 application streams all stored sparse columns, so Spark scheduling affects its cost more strongly.
 See xref:benchmarks.adoc[the benchmark methodology] for workload-specific comparisons.
@@ -191,7 +194,8 @@ Nonpositive, nonfinite or underflowed weights fail explicitly.
 
 === Preconditioner and inexact solves
 
-The adaptive preconditioner starts with the regularized diagonal (Jacobi). When an inner solve misses
+The preconditioner approximates the Newton matrix to help CG converge. Adaptive selection starts
+with the regularized diagonal (Jacobi). When an inner solve misses
 its tolerance, the solver builds a low-rank approximation using up to 50 partial-Cholesky columns and
 doubles the rank after further failures. Each selected column requires one distributed pass. Later
 outer iterations keep the selected rank but rebuild factors for the new weights.
@@ -213,7 +217,8 @@ unless the last completed iterate supplies a valid certificate. `CgConfig` affec
 
 == Convex quadratic objectives
 
-Continuous models support `0.5*x^T*Q*x + c^T*x + k` with linear constraints.
+Continuous models support `0.5*x^T*Q*x + c^T*x + k` with linear constraints, where `Q` contains the
+quadratic coefficients, `c` the linear coefficients and `k` the objective constant.
 `QpObjective.separable` supplies diagonal entries of `Q`; `QpObjective.squared`,
 `squaredDeviation` and `sumSquares` supply positive-semidefinite sparse factors. See
 xref:usage.adoc#_convex_quadratic_objectives[the quadratic-objective API].
@@ -239,7 +244,8 @@ described by Stellato et al. <<stellato2020>>. A candidate unbounded direction m
 
 === Sparse squared-expression factors
 
-A squared-expression term `w*(a^T*x + t)^2` contributes `Q = 2*w*a*a^T`. A nonnegative `w`
+A squared-expression term `w*(a^T*x + t)^2` has coefficient vector `a`, constant `t` and weight `w`.
+It contributes `Q = 2*w*a*a^T`. A nonnegative `w`
 proves nonnegative curvature. The API accepts these terms instead of arbitrary entries in the
 quadratic coefficient matrix. Repeated coefficients and terms add; the solver does not construct a
 dense quadratic matrix or its inverse.
@@ -256,8 +262,9 @@ become singular near convergence.
 
 == Solve evidence
 
-`LpSolution.evidence: Option[LpEvidence]` can contain evidence for an infeasible or unbounded
-continuous solve. It is `None` for optimal, stopped and mixed-integer results.
+`LpSolution.evidence` is an `Option[LpEvidence]` containing a numerical certificate when the continuous
+solver produces one for infeasibility or unboundedness. It is `None` for optimal, stopped and
+mixed-integer results.
 
 [cols="2,3",options="header"]
 |===
@@ -269,7 +276,7 @@ continuous solve. It is `None` for optimal, stopped and mixed-integer results.
 Call `evidence.verify(tolerance)` to recompute the certificate against the materialized
 original-model snapshot. Verification checks keys, finite values, multiplier signs, stationarity,
 feasibility and normalization without trusting solver status or internal residuals. Checks use
-absolute original units, so model scale and cancellation affect a suitable tolerance. Evidence is a
+absolute original units; choose a tolerance that accounts for model scale and cancellation. Evidence is a
 floating-point witness, not an exact-arithmetic proof, an irreducible infeasible set or a MIP proof.
 
 === Infeasibility certificate
@@ -331,8 +338,8 @@ callbacks, metrics, cancellation and candidate ownership.
 
 == Integer and binary models
 
-A model containing `Integer` or `Binary` variables is solved by branch-and-bound. Each search node
-sets tighter integer bounds and solves an LP relaxation. The compiled matrix and objective are reused;
+A model containing `Integer` or `Binary` variables uses branch-and-bound. Each search node
+sets tighter integer bounds and solves an LP relaxation. The solver reuses the compiled matrix and objective;
 node bounds change the RHS and objective offset. Optional cuts add temporary rows and slack columns.
 
 [source,mermaid]
@@ -391,10 +398,10 @@ unit-width bound interval at the current node. General integer variables may tig
 are not converted to binary variables. A generated cut must be violated by the current relaxation.
 The solver does not implement other standard cut families: Gomory, MIR or lifted-cover cuts.
 
-Root cuts are globally valid. A cut generated below the root records that node's integral bound domain
-and is inherited only by descendants inside that domain. Duplicate, round, per-node and whole-search
-budgets limit separation. Appended cut slacks are removed when converting the relaxation result back
-to original compiled coordinates. Every incumbent is checked against the original constraints and
+Root cuts apply throughout the search. A cut generated below the root applies only to descendants
+whose integer bounds stay within that node's bounds. Duplicate checks and limits on rounds, cuts
+per node and total cuts bound cut generation. The solver removes appended cut slacks when converting
+the relaxation result back to original compiled coordinates. Every incumbent is checked against the original constraints and
 special ordered set (SOS) groups.
 
 === Strong branching
@@ -410,8 +417,8 @@ probe budgets and do not produce incumbents.
 one driver coordinator owns the search tree, incumbent and global bound. Launched nodes reserve the
 node budget. Completion order can change branching, tie choices, node count and elapsed time.
 
-Cancellation remains cooperative. Started Spark operations finish or reach a solver stop check before
-workers drain and resources are released. No bound is inferred from an incomplete iterate. User
+Cancellation remains cooperative. The solver waits for started Spark operations to finish or for
+workers to reach a stop check before releasing resources. An incomplete iterate supplies no bound. User
 callbacks run on the coordinator thread.
 
 `MipSearchConfig.maxConcurrentLocalBytes` defaults to 1 GiB and guards estimated concurrent driver

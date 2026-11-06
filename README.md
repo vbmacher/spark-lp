@@ -150,6 +150,7 @@ representations, backend requirements and numerical checks.
 ## Documentation and validation
 
 - [Usage, installation and API vocabulary](docs/usage.adoc)
+- [Importing LP files](docs/usage.adoc#_lp_file_import)
 - [Algorithm, backend selection, scaling and certificate verification](docs/algorithm.adoc)
 - [Runnable examples](examples/src/main/scala/com/github/vbmacher/spark_lp/examples/)
 

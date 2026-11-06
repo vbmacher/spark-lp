@@ -383,7 +383,7 @@ try {
 ----
 
 Evidence is numerical and tolerance-dependent. See
-xref:algorithm.adoc#_verifying_solve_evidence[certificate verification] for each proof type and sign
+xref:algorithm.adoc#_solve_evidence[certificate verification] for each proof type and sign
 convention.
 
 === Evaluating expressions against a solution
@@ -480,7 +480,7 @@ with `TimeLimit`, `UserRequested`, or `NoProgress`. The solution retains the bes
 assignment when one exists. Always check `candidate.available` and `candidate.feasible`; a stopped result
 does not imply optimality. Use `MipControl`, described below, for integer models.
 
-The xref:algorithm.adoc#_opt_in_progress_policy[opt-in progress policy] describes how stagnation windows
+The xref:algorithm.adoc#_progress_and_cooperative_stopping[stagnation policy] describes how stagnation windows
 compare successive iterations.
 
 == Solve-time controls and tuning
@@ -841,6 +841,109 @@ of at most 200 characters.
 
 The parent directory must exist. Existing files require `overwrite = true`. Export performs Spark actions;
 keep lazy inputs stable until the export and any mapping reads finish, then close the mapping.
+
+=== LP-file import
+
+`LpImport.read(path, options)` reads a CPLEX-style linear LP file from the driver's local filesystem.
+It returns an `LpFileModel` containing:
+
+* `model`: an editable `LpProblem`, named after the input file;
+* `variables`: a `Map[String, LpVariable]` indexed by source variable name;
+* `constraints`: a `Map[String, LpConstraint]` indexed by source row name. Unnamed rows receive
+  `__row_1`, `__row_2`, and so on, using their position among all constraints. Name collisions are errors.
+
+Import creates the model without solving it. It preserves objective constants, comparison directions,
+variable bounds and integer declarations. Files written by `LpExport.lp` can be read directly.
+
+For example, save this model as `model.lp`:
+
+[source,text]
+----
+Minimize
+ cost: amount + 2 substitute + 7
+Subject To
+ demand: amount + substitute + 1 >= 5
+ capacity: amount <= 3
+Bounds
+ 0 <= amount <= 4
+ substitute >= 0
+End
+----
+
+Read and solve it with a local Spark session:
+
+[source,scala]
+----
+import java.nio.file.Paths
+import org.apache.spark.sql.SparkSession
+import com.github.vbmacher.spark_lp.dsl._
+
+implicit val spark: SparkSession = SparkSession.builder()
+  .master("local[*]").appName("lp-import").getOrCreate()
+spark.sparkContext.setCheckpointDir("/tmp/spark-lp-checkpoints")
+try {
+  val imported = LpImport.read(Paths.get("model.lp"))
+  val result = imported.model.solve()
+  try {
+    println(result.status)
+    if (result.candidate.available && result.candidate.feasible) {
+      println(result.value(imported.variables("amount"))) // approximately 3
+      println(result.objectiveValue) // approximately 12
+    }
+  } finally result.close()
+} finally spark.stop()
+----
+
+In a cluster, use a checkpoint directory accessible to every executor. The input LP file itself must
+be readable on the driver; `path` is a `java.nio.file.Path`, not an HDFS or S3 URI.
+
+==== Accepted syntax and defaults
+
+Section headings are case-insensitive and occupy their own lines. Start with `Minimize` or `Maximize`;
+`Minimum`, `Maximum`, `Min` and `Max` are also accepted. Constraints follow `Subject To`, `Such That`,
+`ST` or `S.T.`. Optional `Bounds` and variable-type sections follow the constraints. Finish with `End`.
+Each section may appear once; the constraint and bound sections may be empty or omitted.
+
+[cols="2,3",options="header"]
+|===
+|Construct |Behavior
+|Linear expressions |Accept signed terms, implicit coefficients (`x - y`), decimal numbers and scientific notation (`2.5e-3 x`). Repeated coefficients and constants are added.
+|Constraints |Accept `<=`, `>=` and `=` with a finite numeric right-hand side. Constants may appear on the left. Start each constraint on a new line; expressions may wrap across lines.
+|Bounds |Accept `x <= 5`, `x >= -2`, `-2 <= x <= 5`, `5 >= x >= -2`, `x = 3` and `x free`. Start each bound on a new line; an unfinished bound may wrap across lines. `inf` and `infinity`, with an optional sign, are accepted only for unbounded endpoints.
+|Variable types |Variables are continuous by default. `General`, `Generals`, `Integer` or `Integers` declares integer variables; `Binary` or `Binaries` declares binary variables. Each section lists names separated by whitespace.
+|Names |Accept a letter or underscore followed by letters, digits, underscores, dots or dollar signs. Names are case-sensitive; canonical section keywords, `free`, `inf` and `infinity` are reserved.
+|Comments |A backslash (`\`) starts a comment that continues to the end of the line.
+|===
+
+Variables default to a lower bound of zero and no upper bound. Bounds and variable-type declarations
+may introduce variables absent from expressions. Binary declarations intersect explicit bounds with
+`[0, 1]`. Repeated bound declarations replace the specified endpoint; a fixed or `free` declaration
+replaces both. Contradictory final bounds and conflicting integer/binary declarations are errors.
+
+The reader supports linear objectives and constraints only. It rejects quadratic terms, SOS groups,
+semi-continuous domains, ranged constraints, expressions on the right-hand side and other unsupported
+sections. It also rejects malformed numbers, non-finite coefficients, overflow, duplicate row names,
+missing `End` and trailing content. Parse errors raise `LpModelException` with the file and source line.
+See the https://docs.gurobi.com/projects/optimizer/en/current/reference/fileformats/modelformats.html#lp-format[LP format reference]
+for the broader format; the subset above defines spark-lp's reader.
+
+==== Import limits
+
+Parsing runs on the driver and stores declarations and coefficients locally before building the
+`LpProblem`. `LpReadOptions` sets these positive limits:
+
+[cols="2,1,3",options="header"]
+|===
+|Option |Default |Counts
+|`maxBytes` |64 MiB |All input bytes, including comments.
+|`maxVariables` |100000 |Distinct variable names across all sections.
+|`maxRows` |10000 |Constraint declarations.
+|`maxCoefficients` |1000000 |Variable terms in the objective and constraints, including repeated and zero terms.
+|===
+
+Pass options explicitly, for example `LpImport.read(path, LpReadOptions(maxRows = 20000))`.
+Raise limits only when the driver has enough memory. Import limits govern parsing; solver memory and
+integer-search limits still apply when the resulting model is solved.
 
 === MPS-file export
 

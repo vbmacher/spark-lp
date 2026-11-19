@@ -28,7 +28,7 @@ private[dsl] final class LpCompiler(problem: LpProblem, config: SolveConfig,
   /** Tolerance for presolved zero-term rows (`0 <sense> rhs`). */
   private val PresolveTolerance = 1e-11
 
-  /** Relative tolerance when comparing normalised right-hand sides of duplicate rows. */
+  /** Relative tolerance for comparing duplicate right-hand sides in each row's own units. */
   private val RhsMatchTolerance = 1e-9
 
   private implicit val spark: SparkSession = problem.spark
@@ -1173,7 +1173,10 @@ private[dsl] final class LpCompiler(problem: LpProblem, config: SolveConfig,
           case Some(keeper) =>
             val keeperRhsN = keeper.b0 / leading(keeper.rowId)
             val rhsN = rs.b0 / leading(rowId)
-            if (math.abs(rhsN - keeperRhsN) <= RhsMatchTolerance * math.max(1.0, math.abs(keeperRhsN))) {
+            val difference = rhsN - keeperRhsN
+            val keeperError = relativeRowViolation(LpSense.Eq, difference * leading(keeper.rowId), keeper.rhsUser)
+            val rowError = relativeRowViolation(LpSense.Eq, difference * leading(rowId), rs.rhsUser)
+            if (math.max(keeperError, rowError) <= RhsMatchTolerance) {
               rs.emitted = false
               rs.dualNonUnique = true
               keeper.dualNonUnique = true

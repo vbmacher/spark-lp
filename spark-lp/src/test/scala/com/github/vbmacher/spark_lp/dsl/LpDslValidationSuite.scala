@@ -50,6 +50,22 @@ class LpDslValidationSuite extends AnyFunSuite with DataFrameSuiteBase {
     assert(notes("second").exists(_.contains("merged")))
   }
 
+  test("duplicate detection checks scaled equality contradictions in both row orders") {
+    implicit val ss: SparkSession = spark
+    for (reverse <- Seq(false, true)) {
+      val model = LpProblem("scaled contradiction")
+      val x = model.variable("x")
+      val rows = Seq((x === 0.0).named("unit"), (1e9 * x === 0.5).named("scaled"))
+      (if (reverse) rows.reverse else rows).foreach(row => model += row)
+
+      val error = intercept[LpModelException](model.solve())
+
+      assert(error.getMessage.contains("inconsistent duplicate rows"))
+      assert(error.getMessage.contains("'unit'"))
+      assert(error.getMessage.contains("'scaled'"))
+    }
+  }
+
   test("scaled consistent duplicates (x + y === 1, 2x + 2y === 2) merge via normalised hashing") {
     implicit val ss: SparkSession = spark
     val model = LpProblem("dupScaled", Minimize)

@@ -11,6 +11,8 @@ jobs:
 
     name: Spark ${{ matrix.spark }}
     runs-on: ubuntu-latest
+    env:
+      SBT_OPTS: -Dsbt.override.build.repos=true -Dsbt.repository.config=${{ github.workspace }}/.github/sbt-repositories
     strategy:
       fail-fast: false
       matrix:

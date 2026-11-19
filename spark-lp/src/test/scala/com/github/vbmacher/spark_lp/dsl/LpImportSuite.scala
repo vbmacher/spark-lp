@@ -304,7 +304,7 @@ class LpImportSuite extends AnyFunSuite with DataFrameSuiteBase {
 
   test("right-hand expressions cannot silently become extra constraints") {
     implicit val ss: SparkSession = spark
-    val invalidRows = Seq("c: x <= 1 + y <= 2", "c: x <= 1\n + y <= 2")
+    val invalidRows = Seq("c: x <= 1 + y <= 2", "c: x <= 1\n + y")
     invalidRows.foreach { row =>
       fixture(s"Minimize\n x + y\nSubject To\n $row\nEnd\n") { path =>
         val error = intercept[LpModelException](LpImport.read(path))
@@ -343,21 +343,25 @@ class LpImportSuite extends AnyFunSuite with DataFrameSuiteBase {
     }
   }
 
-  test("unnamed constraints on separate lines receive distinct generated names") {
+  test("signed unnamed constraints on separate lines receive distinct generated names") {
     implicit val ss: SparkSession = spark
     fixture("""Minimize
       | x + y
       |Subject To
       | x <= 3
-      | y >= 1
-      | x + y <= 4
+      | -y <= -1
+      | + x + y <= 4
       |End
       |""") { path =>
       val imported = LpImport.read(path)
-      val rows = imported.model.inspect.constraints.collect().map(r => r.name -> r.rhs).toMap
+      val view = imported.model.inspect
+      val rows = view.constraints.collect().map(r => r.name -> r.rhs).toMap
+      val coefficients = view.coefficients.collect().groupBy(_.row.declaration)
 
       assert(imported.constraints.keySet == Set("__row_1", "__row_2", "__row_3"))
-      assert(rows == Map("__row_1" -> 3.0, "__row_2" -> 1.0, "__row_3" -> 4.0))
+      assert(rows == Map("__row_1" -> 3.0, "__row_2" -> -1.0, "__row_3" -> 4.0))
+      assert(coefficients(1).map(_.value).toVector == Vector(-1.0))
+      assert(coefficients(2).map(_.value).toVector == Vector(1.0, 1.0))
     }
   }
 

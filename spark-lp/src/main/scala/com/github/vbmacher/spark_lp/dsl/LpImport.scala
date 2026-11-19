@@ -297,8 +297,7 @@ object LpImport {
               val lhs = expression(t => Set("<=", ">=", "=")(t.text) || isHeader(t))
               val relation = comparison()
               val rhs = scalar(allowInfinity = false)
-              if (peek().text.nonEmpty && !isHeader(peek()) &&
-                (peek().line <= previousLine || Set("+", "-")(peek().text)))
+              if (peek().text.nonEmpty && peek().line <= previousLine)
                 fail(peek(), "Expected a new constraint line; RHS expressions and ranged constraints are unsupported")
               checked(rhs - lhs.constant, token)
               rows(rowName) = Row(rowName, lhs, relation.text, rhs)

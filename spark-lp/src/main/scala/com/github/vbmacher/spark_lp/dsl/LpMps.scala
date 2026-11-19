@@ -37,17 +37,20 @@ object LpMps extends Serializable {
         .map { case (_, ((name, value), row)) => ((2, name, 2, row), s" $name  $row  ${LpExport.number(value)}") }
       val rhs = namedRows.map { case (_, (r, name)) => ((3, name, 2, ""), s" RHS1  $name  ${LpExport.number(r.rhs)}") }
       val bounds = namedVars.flatMap { case (_, (v, name)) =>
-        val (lower, upper) = VariableCategory.domainBounds(v.category, v.lower, v.upper)
+        val binary = v.category == Binary && !relaxIntegrality
+        val (lower, upper) = if (binary) LpIntegrality.integralBounds(v.category, v.lower, v.upper)
+        else VariableCategory.domainBounds(v.category, v.lower, v.upper)
 
         def record(kind: String, value: Option[Double] = None): String =
           s" $kind  BND1  $name" + value.map(n => s"  ${LpExport.number(n)}").getOrElse("")
 
+        // BV sets both endpoints. Use FX alone for a fixed binary and retain its integer marker.
         val entries = if (upper.contains(lower)) Vector(record("FX", Some(lower)))
+        else if (binary && lower == 0.0 && upper.contains(1.0)) Vector(record("BV"))
         else if (lower.isNegInfinity && upper.isEmpty) Vector(record("FR"))
         else Vector(if (lower.isNegInfinity) record("MI") else record("LO", Some(lower))) ++
           Vector(upper.map(u => record("UP", Some(u))).getOrElse(record("PL")))
-        val binary = if (v.category == Binary && !relaxIntegrality) Vector(record("BV")) else Vector.empty
-        (binary ++ entries).zipWithIndex.map { case (line, index) => ((4, name, index + 1, ""), line) }
+        entries.zipWithIndex.map { case (line, index) => ((4, name, index + 1, ""), line) }
       }
       sc.union(Seq(header, rowLines, objective, matrix, rhs, bounds))
     }

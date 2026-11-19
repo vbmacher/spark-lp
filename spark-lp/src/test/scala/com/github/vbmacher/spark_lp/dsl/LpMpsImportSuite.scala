@@ -51,12 +51,12 @@ class LpMpsImportSuite extends AnyFunSuite with DataFrameSuiteBase {
         assert(solution.status == LpStatus.Optimal)
         assert(math.abs(solution.objectiveValue - 9.0) < 1e-7)
         assert(solution.value(imported.variables("amount")) == 1.0)
-        if (HighsInterop.available) assert(HighsInterop.inspect(path).get("objective").asDouble() == 9.0)
       } finally solution.close()
       val out = Files.createTempDirectory("spark-lp-roundtrip-").resolve("model.mps")
       val names = LpMps.write(imported.model.inspect, out, ExportNaming.Original)
       try {
         val restored = LpMpsImport.read(out)
+        if (HighsInterop.available) assert(HighsInterop.inspect(out).get("objective").asDouble() == 9.0)
 
         val result = restored.model.solve()
         try {

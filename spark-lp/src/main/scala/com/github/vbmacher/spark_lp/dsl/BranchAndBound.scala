@@ -36,9 +36,6 @@ private[dsl] final class BranchAndBound(
   config: SolveConfig)(implicit spark: SparkSession) {
 
   import BranchAndBound._
-  import com.github.vbmacher.spark_lp.vectors.dense_vector.implicits._
-  import com.github.vbmacher.spark_lp.vectors.dmatrix.implicits._
-
   private val control = config.mip.control
   private val search = config.mip.search
   private val coordinator = Thread.currentThread()
@@ -232,7 +229,8 @@ private[dsl] final class BranchAndBound(
     MipGap.accepted(inc.objMin, bound, compiled.senseMult * inc.objMin + compiled.objConstant, config.mip)
   }
 
-  private def solveRelaxation(node: Node, isRoot: Boolean, maxIterations: Int, ordinal: Int = solvedNodes): LP.SolveSummary = {
+  private def solveRelaxation(node: Node, isRoot: Boolean, maxIterations: Int, ordinal: Int = solvedNodes,
+    tolerance: Double = config.tolerance): LP.SolveSummary = {
     val bytes = estimatedLocalBytes(compiled.numRows + node.cuts.size, node.cuts.nonEmpty)
     val active = activeRelaxations.incrementAndGet()
     val memory = activeLocalBytes.addAndGet(bytes)
@@ -244,7 +242,7 @@ private[dsl] final class BranchAndBound(
       relaxation = new MipNodeRelaxation(compiled, nodeRhs(node), node.cuts, node.lower, node.upper)
       relaxation.toBase(LP.solveSummary(
       c = relaxation.c, AT = relaxation.AT, b = relaxation.b,
-      tolerance = config.tolerance, maxIter = maxIterations, etaIter = config.etaIteration,
+      tolerance = tolerance, maxIter = maxIterations, etaIter = config.etaIteration,
       valueCap = config.valueCap, eps = config.epsilon, infeasibilityTolerance = config.infeasibilityTolerance,
       solver = if (node.cuts.nonEmpty && config.newtonSolver == NewtonSolver.Auto) NewtonSolver.ConjugateGradient
         else compiler.newtonSolver(relaxation.rows),
@@ -264,6 +262,34 @@ private[dsl] final class BranchAndBound(
     val bound = summary.dualObjectiveValue + shiftCost(node)
     if (summary.termination == LP.Termination.Converged && java.lang.Double.isFinite(bound) && summary.dualResidual <= config.tolerance)
       Some(math.max(node.bound, bound)) else None
+  }
+
+  /** A fixed leaf cannot branch further. Refine its LP once when the requested MIP gap is tighter. */
+  private def refineLeafBound(node: Node, summary: LP.SolveSummary, nodeNumber: Int): Double = {
+    val allowedGap = incumbent.map { inc =>
+      val objective = compiled.senseMult * inc.objMin + compiled.objConstant
+      math.max(config.mip.absoluteGapTolerance, config.mip.gapTolerance * math.max(1.0, math.abs(objective)))
+    }.getOrElse(0.0)
+    // LP convergence scales the objective gap by 1 + |dual objective| in node coordinates.
+    val tolerance = 0.1 * allowedGap / (1.0 + math.abs(summary.dualObjectiveValue))
+    if (!(tolerance > 0.0 && tolerance < config.tolerance) || stopped()) return node.bound
+
+    val refined = try solveRelaxation(node, isRoot = false, config.maxIterations, nodeNumber, tolerance)
+    catch { case _: LpNumericalException => return node.bound }
+    try {
+      totalIterations += refined.iterations
+      usableBound(refined, node).map { bound =>
+        val values = integerValues(node, refined.x)
+        feasibleRoundedValues(node, refined, values).foreach { rounded =>
+          val objective = refined.objectiveValue + shiftCost(node)
+          acceptIncumbent(Candidate(roundedObjective(node, values, rounded, objective), refined.x, rounded, refined))
+        }
+        bound
+      }.getOrElse(node.bound)
+    } finally {
+      if (!incumbent.exists(_.x eq refined.x)) release(refined.x)
+      refined.dualCertificate.foreach(_.unpersist(false))
+    }
   }
 
   private def processNode(initialNode: Node, open: mutable.PriorityQueue[Node],
@@ -332,7 +358,11 @@ private[dsl] final class BranchAndBound(
                 case Some(rounded) =>
                   acceptIncumbent(Candidate(roundedObjective(node, vals, rounded, objMin),
                     summary.x, rounded, summary))
-                  remember(lowerBound)
+                  val refinedBound = if (!prunable(lowerBound) && node.lower.sameElements(node.upper))
+                    refineLeafBound(node.copy(bound = lowerBound), summary, nodeNumber)
+                  else lowerBound
+                  if (prunable(refinedBound)) remember(refinedBound)
+                  else branchOrGiveUp(node.copy(bound = refinedBound), vals, open)
                 case _ => branchOrGiveUp(node, vals, open)
               }
           }
@@ -483,24 +513,9 @@ private[dsl] final class BranchAndBound(
     Some(intCols.indices.map(j => intCols(j).g -> out(j)).toMap)
   }
 
-  /** Rounding an almost-integral value can still violate a row with a large coefficient. */
-  private def feasibleRounding(
-    node: Node, x: DVector, vals: Map[Long, Double], rounded: Map[Long, Double]): Boolean = {
-    val rhs = nodeRhs(node)
-    val residual = compiled.AT.adjointProduct(x).combine(1.0, -1.0, rhs).values
-    intCols.indices.foreach { j =>
-      val col = intCols(j)
-      val delta = rounded(col.g) - node.lower(j) - vals(col.g)
-      col.rowCoeffs.foreach { case (r, a) => residual(r) += a * delta }
-      residual(col.boundRow) += delta
-    }
-    math.sqrt(residual.map(v => v * v).sum) / (1.0 + math.sqrt(rhs.dot(rhs))) < config.tolerance &&
-      compiler.sosFeasible(compiled, x, rounded, config.mip.sosZeroTolerance)
-  }
-
   private def feasibleRoundedValues(node: Node, summary: LP.SolveSummary,
     values: Map[Long, Double]): Option[Map[Long, Double]] =
-    roundedValues(node, values).filter(feasibleRounding(node, summary.x, values, _))
+    roundedValues(node, values).filter(compiler.roundedCandidateFeasible(compiled, summary.x, _))
 
   private def roundedObjective(node: Node, values: Map[Long, Double], rounded: Map[Long, Double],
     relaxationObjective: Double): Double =

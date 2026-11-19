@@ -1,0 +1,339 @@
+{
+  "execution_step": "step-03-execute-teams.md",
+  "tasks": [
+    {
+      "id": "feature-136",
+      "objective": "Validate rounded MIP candidates in original coordinates",
+      "dependencies": [],
+      "read_set": [
+        "Ticket and baseline tests"
+      ],
+      "write_set": [
+        ".worktrees/feature-136/spark-lp/src/main/scala/com/github/vbmacher/spark_lp/dsl/BranchAndBound.scala",
+        ".worktrees/feature-136/spark-lp/src/main/scala/com/github/vbmacher/spark_lp/dsl/compiler/LpCompiler.scala",
+        ".worktrees/feature-136/spark-lp/src/test/scala relevant regression suite only"
+      ],
+      "side_effects": [
+        "Coordinator alone stages, commits and pushes refs/heads/feature-136"
+      ],
+      "owner": "coordinator",
+      "inputs": [
+        "development d4c121e",
+        "GitHub issue #136"
+      ],
+      "expected_outputs": [
+        "Minimal source diff and regression",
+        "One verified pushed commit"
+      ],
+      "validation": [
+        "LpMipGapIntegrationSuite",
+        "Spark 3.5.6 minimum",
+        "Combined compatibility where relevant"
+      ],
+      "evidence_required": [
+        "Reviewed diff, regression runtime and local/remote SHA"
+      ],
+      "stop_condition": "Implementation and validation ready for coordinator approval, or identify concrete blocker",
+      "status": "complete",
+      "commit": "f9a50054cd300e5a503d2dd20530975f5ed02b40",
+      "remote_sha_verified": true,
+      "milestone": "2.2.0"
+    },
+    {
+      "id": "feature-137",
+      "objective": "Close MIP nodes only with supported bounds and gap",
+      "dependencies": [],
+      "read_set": [
+        "Ticket and baseline tests"
+      ],
+      "write_set": [
+        ".worktrees/feature-137/spark-lp/src/main/scala/com/github/vbmacher/spark_lp/dsl/BranchAndBound.scala",
+        ".worktrees/feature-137/spark-lp/src/test/scala relevant regression suite only"
+      ],
+      "side_effects": [
+        "Coordinator alone stages, commits and pushes refs/heads/feature-137"
+      ],
+      "owner": "mip",
+      "inputs": [
+        "development d4c121e",
+        "GitHub issue #137"
+      ],
+      "expected_outputs": [
+        "Minimal source diff and regression",
+        "One verified pushed commit"
+      ],
+      "validation": [
+        "LpMipGapIntegrationSuite",
+        "Spark 3.5.6 minimum",
+        "Combined compatibility where relevant"
+      ],
+      "evidence_required": [
+        "Reviewed diff, regression runtime and local/remote SHA"
+      ],
+      "stop_condition": "Implementation and validation ready for coordinator approval, or identify concrete blocker",
+      "status": "complete",
+      "commit": "b170805f2985337206ec198cf7f283543c52aec5",
+      "remote_sha_verified": true,
+      "milestone": "2.2.0"
+    },
+    {
+      "id": "feature-138",
+      "objective": "Reject contradictory scaled duplicate equalities",
+      "dependencies": [],
+      "read_set": [
+        "Ticket and baseline tests"
+      ],
+      "write_set": [
+        ".worktrees/feature-138/spark-lp/src/main/scala/com/github/vbmacher/spark_lp/dsl/compiler/LpCompiler.scala",
+        ".worktrees/feature-138/spark-lp/src/test/scala relevant regression suite only"
+      ],
+      "side_effects": [
+        "Coordinator alone stages, commits and pushes refs/heads/feature-138"
+      ],
+      "owner": "compiler",
+      "inputs": [
+        "development d4c121e",
+        "GitHub issue #138"
+      ],
+      "expected_outputs": [
+        "Minimal source diff and regression",
+        "One verified pushed commit"
+      ],
+      "validation": [
+        "LpDslValidationSuite",
+        "Spark 3.5.6 minimum",
+        "Combined compatibility where relevant"
+      ],
+      "evidence_required": [
+        "Reviewed diff, regression runtime and local/remote SHA"
+      ],
+      "stop_condition": "Implementation and validation ready for coordinator approval, or identify concrete blocker",
+      "status": "complete",
+      "commit": "d90e15ecd3bdf244b2510f7436870ea1797b2130",
+      "remote_sha_verified": true,
+      "milestone": "2.2.0"
+    },
+    {
+      "id": "feature-139",
+      "objective": "Preserve binary domains in exported MPS and HiGHS",
+      "dependencies": [],
+      "read_set": [
+        "Ticket and baseline tests"
+      ],
+      "write_set": [
+        ".worktrees/feature-139/spark-lp/src/main/scala/com/github/vbmacher/spark_lp/dsl/LpMps.scala",
+        ".worktrees/feature-139/spark-lp/src/test/scala relevant regression suite only"
+      ],
+      "side_effects": [
+        "Coordinator alone stages, commits and pushes refs/heads/feature-139"
+      ],
+      "owner": "formats",
+      "inputs": [
+        "development d4c121e",
+        "GitHub issue #139"
+      ],
+      "expected_outputs": [
+        "Minimal source diff and regression",
+        "One verified pushed commit"
+      ],
+      "validation": [
+        "LpMpsSuite and LpMpsImportSuite",
+        "Spark 3.5.6 minimum",
+        "Combined compatibility where relevant"
+      ],
+      "evidence_required": [
+        "Reviewed diff, regression runtime and local/remote SHA"
+      ],
+      "stop_condition": "Implementation and validation ready for coordinator approval, or identify concrete blocker",
+      "status": "complete",
+      "commit": "6dcf38c517dc736e4433a41cfe8e3bb40490fe6d",
+      "remote_sha_verified": true,
+      "milestone": "2.2.0"
+    },
+    {
+      "id": "feature-140",
+      "objective": "Apply maxLocalChanges to actual reductions",
+      "dependencies": [],
+      "read_set": [
+        "Ticket and baseline tests"
+      ],
+      "write_set": [
+        ".worktrees/feature-140/spark-lp/src/main/scala/com/github/vbmacher/spark_lp/dsl/compiler/LpCompiler.scala",
+        ".worktrees/feature-140/spark-lp/src/test/scala relevant regression suite only"
+      ],
+      "side_effects": [
+        "Coordinator alone stages, commits and pushes refs/heads/feature-140"
+      ],
+      "owner": "coordinator",
+      "inputs": [
+        "development d4c121e",
+        "GitHub issue #140"
+      ],
+      "expected_outputs": [
+        "Minimal source diff and regression",
+        "One verified pushed commit"
+      ],
+      "validation": [
+        "LpPresolveSuite and LpInferredBoundsSuite",
+        "Spark 3.5.6 minimum",
+        "Combined compatibility where relevant"
+      ],
+      "evidence_required": [
+        "Reviewed diff, regression runtime and local/remote SHA"
+      ],
+      "stop_condition": "Implementation and validation ready for coordinator approval, or identify concrete blocker",
+      "status": "complete",
+      "commit": "745709dfca6d3e3784874de35bda9676f353e4c1",
+      "remote_sha_verified": true,
+      "milestone": "2.2.0"
+    },
+    {
+      "id": "feature-141",
+      "objective": "Round member-specific integer bounds in relaxation",
+      "dependencies": [],
+      "read_set": [
+        "Ticket and baseline tests"
+      ],
+      "write_set": [
+        ".worktrees/feature-141/spark-lp/src/main/scala/com/github/vbmacher/spark_lp/dsl/compiler/LpCompiler.scala",
+        ".worktrees/feature-141/spark-lp/src/test/scala relevant regression suite only"
+      ],
+      "side_effects": [
+        "Coordinator alone stages, commits and pushes refs/heads/feature-141"
+      ],
+      "owner": "compiler",
+      "inputs": [
+        "development d4c121e",
+        "GitHub issue #141"
+      ],
+      "expected_outputs": [
+        "Minimal source diff and regression",
+        "One verified pushed commit"
+      ],
+      "validation": [
+        "LpRelaxationSuite",
+        "Spark 3.5.6 minimum",
+        "Combined compatibility where relevant"
+      ],
+      "evidence_required": [
+        "Reviewed diff, regression runtime and local/remote SHA"
+      ],
+      "stop_condition": "Implementation and validation ready for coordinator approval, or identify concrete blocker",
+      "status": "complete",
+      "commit": "ad83a2e56523f20464c3adf33611aafa250ec28b",
+      "remote_sha_verified": true,
+      "milestone": "2.2.0"
+    },
+    {
+      "id": "feature-142",
+      "objective": "Recognize signed unnamed LP rows at a new line",
+      "dependencies": [],
+      "read_set": [
+        "Ticket and baseline tests"
+      ],
+      "write_set": [
+        ".worktrees/feature-142/spark-lp/src/main/scala/com/github/vbmacher/spark_lp/dsl/LpImport.scala",
+        ".worktrees/feature-142/spark-lp/src/test/scala relevant regression suite only"
+      ],
+      "side_effects": [
+        "Coordinator alone stages, commits and pushes refs/heads/feature-142"
+      ],
+      "owner": "formats",
+      "inputs": [
+        "development d4c121e",
+        "GitHub issue #142"
+      ],
+      "expected_outputs": [
+        "Minimal source diff and regression",
+        "One verified pushed commit"
+      ],
+      "validation": [
+        "LpImportSuite",
+        "Spark 3.5.6 minimum",
+        "Combined compatibility where relevant"
+      ],
+      "evidence_required": [
+        "Reviewed diff, regression runtime and local/remote SHA"
+      ],
+      "stop_condition": "Implementation and validation ready for coordinator approval, or identify concrete blocker",
+      "status": "complete",
+      "commit": "fb6514c7b1a2d9dedf7032bfcb8f3054a98f2ecf",
+      "remote_sha_verified": true,
+      "milestone": "2.2.0"
+    },
+    {
+      "id": "feature-143",
+      "objective": "Recognize LP row labels that resemble headings",
+      "dependencies": [],
+      "read_set": [
+        "Ticket and baseline tests"
+      ],
+      "write_set": [
+        ".worktrees/feature-143/spark-lp/src/main/scala/com/github/vbmacher/spark_lp/dsl/LpImport.scala",
+        ".worktrees/feature-143/spark-lp/src/test/scala relevant regression suite only"
+      ],
+      "side_effects": [
+        "Coordinator alone stages, commits and pushes refs/heads/feature-143"
+      ],
+      "owner": "formats",
+      "inputs": [
+        "development d4c121e",
+        "GitHub issue #143"
+      ],
+      "expected_outputs": [
+        "Minimal source diff and regression",
+        "One verified pushed commit"
+      ],
+      "validation": [
+        "LpImportSuite",
+        "Spark 3.5.6 minimum",
+        "Combined compatibility where relevant"
+      ],
+      "evidence_required": [
+        "Reviewed diff, regression runtime and local/remote SHA"
+      ],
+      "stop_condition": "Implementation and validation ready for coordinator approval, or identify concrete blocker",
+      "status": "complete",
+      "commit": "8723e241be438bfd3687d6972c1e2729bbb23a31",
+      "remote_sha_verified": true,
+      "milestone": "2.2.0"
+    },
+    {
+      "id": "feature-144",
+      "objective": "Check adapter capability against effective binary bounds",
+      "dependencies": [],
+      "read_set": [
+        "Ticket and baseline tests"
+      ],
+      "write_set": [
+        ".worktrees/feature-144/spark-lp/src/main/scala/com/github/vbmacher/spark_lp/dsl/LpSolverAdapter.scala",
+        ".worktrees/feature-144/spark-lp/src/test/scala relevant regression suite only"
+      ],
+      "side_effects": [
+        "Coordinator alone stages, commits and pushes refs/heads/feature-144"
+      ],
+      "owner": "compiler",
+      "inputs": [
+        "development d4c121e",
+        "GitHub issue #144"
+      ],
+      "expected_outputs": [
+        "Minimal source diff and regression",
+        "One verified pushed commit"
+      ],
+      "validation": [
+        "AdapterConformanceSuite",
+        "Spark 3.5.6 minimum",
+        "Combined compatibility where relevant"
+      ],
+      "evidence_required": [
+        "Reviewed diff, regression runtime and local/remote SHA"
+      ],
+      "stop_condition": "Implementation and validation ready for coordinator approval, or identify concrete blocker",
+      "status": "complete",
+      "commit": "287838e6a5f8337ee8a2e567ceea77e17ab226ce",
+      "remote_sha_verified": true,
+      "milestone": "2.2.0"
+    }
+  ]
+}

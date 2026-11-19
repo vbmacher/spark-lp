@@ -11,23 +11,32 @@ jobs:
 
     name: Spark ${{ matrix.spark }}
     runs-on: ubuntu-latest
+    env:
+      SBT_OPTS: -Dsbt.override.build.repos=true -Dsbt.repository.config=${{ github.workspace }}/.github/sbt-repositories
     strategy:
       fail-fast: false
       matrix:
         spark: ['2_4', '3_0', '3_1', '3_2', '3_3', '3_4', '3_5']
+        java: ['11']
+        scalaSuffix: ['2_12']
+        include:
+        - {spark: '4_0', java: '21', scalaSuffix: ''}
+        - {spark: '4_1', java: '21', scalaSuffix: ''}
+        - {spark: '4_2', java: '21', scalaSuffix: ''}
+        - {spark: '4_3', java: '21', scalaSuffix: ''}
 
     steps:
     - uses: actions/checkout@v4
-    - name: Set up JDK 11
+    - name: Set up JDK ${{ matrix.java }}
       uses: actions/setup-java@v4
       with:
-        java-version: '11'
+        java-version: ${{ matrix.java }}
         distribution: 'temurin'
         cache: 'sbt'
     - name: Setup sbt launcher
       uses: sbt/setup-sbt@v1
     - name: Run tests
-      run: sbt "spark-lpSpark_${{ matrix.spark }}2_12/test"
+      run: sbt "spark-lpSpark_${{ matrix.spark }}${{ matrix.scalaSuffix }}/test"
     - name: Check examples
       if: matrix.spark == '3_5'
       run: sbt examplesSpark_3_5/test

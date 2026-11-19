@@ -10,11 +10,10 @@ ThisBuild / homepage := Some(url("https://github.com/vbmacher/spark-lp"))
 ThisBuild / versionScheme := Some("semver-spec")
 
 // CHANGE VERSION HERE:
-lazy val productVersion = "2.1.0"
+lazy val productVersion = "2.2.0-SNAPSHOT"
 ThisBuild / version := productVersion // needs to be defined at root, so isSnapshot setting is properly set
 
-lazy val scalaLibVersion = "2.12.20"
-ThisBuild / scalaVersion := scalaLibVersion
+ThisBuild / scalaVersion := scala212
 ThisBuild / autoAPIMappings := true
 
 ThisBuild / description := "Linear, mixed-integer linear, and continuous convex quadratic programming using Apache Spark."
@@ -46,17 +45,28 @@ ThisBuild / publishMavenStyle := true
 credentials += Credentials(Path.userHome / ".sbt" / "sonatype.sbt")
 
 lazy val forkedJvmOptions = Seq("-Xms4G", "-Xmx4G")
+// sbt starts the test JVM directly, so apply the module opens used by the Spark launcher.
+lazy val spark4TestModuleOptions = Seq(
+  "java.base/java.lang", "java.base/java.lang.invoke", "java.base/java.lang.reflect",
+  "java.base/java.io", "java.base/java.net", "java.base/java.nio", "java.base/java.util",
+  "java.base/java.util.concurrent", "java.base/java.util.concurrent.atomic", "java.base/jdk.internal.ref",
+  "java.base/sun.nio.ch", "java.base/sun.nio.cs", "java.base/sun.security.action",
+  "java.base/sun.util.calendar", "java.security.jgss/sun.security.krb5"
+).map(pkg => s"--add-opens=$pkg=ALL-UNNAMED")
+
 lazy val sparkLpAssemblyMergeStrategy = (path: String) => path match {
   case PathList("META-INF", "services", _*) => MergeStrategy.concat
   case PathList("META-INF", _*) => MergeStrategy.discard
   case _ => MergeStrategy.first
 }
 
-lazy val `spark-lp` = sparkAxes.foldLeft(projectMatrix
+lazy val `spark-lp` = sparkVersions.foldLeft(projectMatrix
         .settings(
           scalacOptions ++= Seq("-target:jvm-1.8", "-Xlint:_", "-language:experimental.macros", "-feature"),
           javacOptions ++= Seq("-source", "1.8", "-target", "1.8", "-Xlint"),
           javaOptions ++= forkedJvmOptions,
+          // Tiny fixtures need multiple partitions, but not one task per host core or 200 shuffle tasks.
+          Test / javaOptions ++= Seq("-Dspark.default.parallelism=2", "-Dspark.sql.shuffle.partitions=2"),
           fork := true,
           assembly / assemblyMergeStrategy := sparkLpAssemblyMergeStrategy,
           libraryDependencies ++= Libs.scalaTestLibs ++ Seq(
@@ -66,17 +76,15 @@ lazy val `spark-lp` = sparkAxes.foldLeft(projectMatrix
           Test / parallelExecution := false
         )) {
 
-  case (matrix, ax) =>
+  case (matrix, spark) =>
     matrix.customRow(
-      scalaVersions = Seq(scalaLibVersion),
-      axisValues = Seq(ax._2, VirtualAxis.jvm),
+      scalaVersions = Seq(spark.scalaVersion),
+      axisValues = Seq(spark.axis, VirtualAxis.jvm),
       _.settings(
-        libraryDependencies ++= ax._1.sparkLibs.flatMap(r => Seq(r % Test, r % Provided)) ++ Seq(ax._1.sparkTestingBaseLib),
+        libraryDependencies ++= spark.sparkLibs.flatMap(r => Seq(r % Test, r % Provided)) ++ spark.sparkTestLibs,
+        Test / javaOptions ++= (if (spark.isSpark4) spark4TestModuleOptions else Nil),
         name := "spark-lp",
-        version := {
-          val sparkVersion = ax._2.sparkVersion
-          s"${sparkVersion}_$productVersion"
-        },
+        version := s"${spark.sparkLine}_$productVersion",
       ))
 }
 
@@ -84,25 +92,25 @@ lazy val examples = projectMatrix
         .dependsOn(`spark-lp`)
         .customRow(
           autoScalaLibrary = true,
-          axisValues = Seq(sparkAxes.last._2, VirtualAxis.jvm),
+          axisValues = Seq(spark35.axis, VirtualAxis.jvm),
           _.settings(
             name := "examples",
             fork := true,
-            libraryDependencies ++= Libs.jOptimizer +: sparkAxes.last._1.sparkLibs,
+            libraryDependencies ++= Libs.jOptimizer +: spark35.sparkLibs,
             publishArtifact := false))
 
 lazy val benchmarks = projectMatrix
         .dependsOn(`spark-lp`)
         .customRow(
-          scalaVersions = Seq(scalaLibVersion),
-          axisValues = Seq(sparkAxes.last._2, VirtualAxis.jvm),
+          scalaVersions = Seq(spark35.scalaVersion),
+          axisValues = Seq(spark35.axis, VirtualAxis.jvm),
           _.settings(
             name := "benchmarks",
             fork := true,
             Test / baseDirectory := (LocalRootProject / baseDirectory).value,
             Test / parallelExecution := false,
             javaOptions ++= forkedJvmOptions,
-            libraryDependencies ++= sparkAxes.last._1.sparkLibs.flatMap(r => Seq(r % Provided, r % Test)) ++
+            libraryDependencies ++= spark35.sparkLibs.flatMap(r => Seq(r % Provided, r % Test)) ++
               Seq(Libs.log4jImpl % Test) ++ Libs.scalaTestLibs,
             assembly / assemblyMergeStrategy := sparkLpAssemblyMergeStrategy,
             publish / skip := true,

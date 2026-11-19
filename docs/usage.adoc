@@ -2,15 +2,19 @@
 :toc: left
 :source-highlighter: highlightjs
 
-spark-lp is an optimization solver built for Apache Spark. It provides a Scala 2.12 modelling API for
-linear, mixed-integer linear and supported quadratic models. Your application supplies Spark
-(supported: 2.4.8 and 3.0.2–3.5.3 — test the version you deploy). Depend on the
-`com.github.vbmacher:spark-lp` artifact, whose versions follow the `<spark-version>_<library-version>`
-scheme (for example `3.5.3_2.1.0`); pick one matching your Spark version. Native BLAS/LAPACK
-(optimized linear-algebra libraries) can improve performance; the Java implementation also works.
+spark-lp provides a Scala API for linear, mixed-integer linear and continuous convex quadratic
+optimization models on Apache Spark.
 
-This guide starts with the modelling API, then covers solving, diagnostics,
-interchange and tuning.
+This guide covers installation, modelling, solving, diagnostics, interchange and tuning.
+
+== Installation
+
+Your application supplies Spark. Choose the `com.github.vbmacher:spark-lp` artifact for your Scala
+binary version. Artifact versions use `<spark-line>_<spark-lp-release>`, where `spark-line` is the
+major.minor part of your Spark runtime version.
+
+Native BLAS/LAPACK libraries provide optimized linear algebra and can improve performance.
+The Java implementation also works.
 
 == A quick example
 
@@ -39,8 +43,7 @@ flowchart LR
 [#_modelling_with_the_dsl]
 == Modelling with the Scala API
 
-Import the modelling API, create an `LpProblem`, declare its decision variables, add constraints and an objective,
-then call `solve()`:
+Start by importing the modelling API and creating an `LpProblem`, which holds the model's declarations:
 
 [source,scala]
 ----
@@ -49,6 +52,8 @@ import com.github.vbmacher.spark_lp.dsl.implicits._
 
 val model = LpProblem("production", Minimize)
 ----
+
+Then declare decision variables, add constraints and an objective, and call `solve()`.
 
 This guide uses these terms:
 
@@ -90,8 +95,8 @@ This guide uses these terms:
 |`model.matrixVariables("flow", origins, destinations)` |Declare one local variable for each `(origin, destination)` pair. |`LpLocalVariables[(Origin, Destination)]`
 |===
 
-All five methods accept `lowerBound`, `upperBound` and `category`. Their defaults declare a continuous
-variable with `0.0` as its lower bound and no upper bound.
+All five methods accept `lowerBound`, `upperBound` and `category`. By default, each variable is
+continuous, with a lower bound of `0.0` and no upper bound.
 
 Use `variables` or `variablesOf` when Spark holds the keys. Use `indexedVariables` or `matrixVariables`
 only for small local collections: these methods create every `LpVariable` object on the driver.
@@ -126,8 +131,8 @@ with no lower limit.
 |`variable.lowerBound`, `variable.upperBound` |Read the current bounds.
 |===
 
-These methods are available on one variable, an entire `LpVariableSet`, or one selected variable. They
-return the same `LpVariable` or `LpVariableSet`, so existing expressions remain valid. Edits apply to
+These methods apply to an entire `LpVariableSet` or an `LpVariable`, including one selected from a set.
+They return the same `LpVariable` or `LpVariableSet`, so existing expressions remain valid. Edits apply to
 later solves; they do not change an existing `LpSolution`. Editing while a solve is active is rejected.
 
 [source,scala]
@@ -143,7 +148,7 @@ capacity.unfix() // restores [0,80]
 [cols="1,2",options="header"]
 |===
 |Expression |Meaning
-|`x + 2.0 * y` |A linear expression. Multiplying two variables is unsupported.
+|`x + 2.0 * y` |A linear expression with coefficients `1.0` for `x` and `2.0` for `y`.
 |`amount.sum` |Sum every variable in `amount`.
 |`amount.sum($"cost")` |Multiply each variable by the `cost` column from the DataFrame used to declare `amount`, then sum.
 |`amount.sumBy("region")()` |Build one sum for each `region` value.
@@ -223,8 +228,7 @@ limits.
 
 === Special ordered sets
 
-Special ordered sets restrict which variables may be nonzero:
-`SOS1` and `SOS2` are the two supported special ordered set types.
+Special ordered sets (SOS) restrict which variables may be nonzero. spark-lp supports two types:
 
 [cols="2,3",options="header"]
 |===
@@ -264,7 +268,8 @@ val choices = pairs.map { pair =>
 model += (lpSum(choices.map(x => 1.0 * x)) >= 1.0)
 ----
 
-The input must already be local. The result is lazy, but the number of results can still be very large.
+The input must already be local. Iterators generate results lazily, but enumerating every result can
+still take substantial time and memory.
 
 === Inspecting and editing expressions
 
@@ -295,8 +300,8 @@ new numeric values must be finite.
 |`scenario.expression(expression)` |The same expression rebound to copied variables.
 |===
 
-The copy shares the original lazy DataFrame and Dataset inputs; it is not a copy of their rows. Store
-changing inputs in stable storage before solving either model when both must read identical data.
+The copy shares the original lazy DataFrame and Dataset inputs. To make both models read identical
+rows, write changing inputs to stable storage before solving either model.
 
 == Solving and reading results
 
@@ -350,13 +355,14 @@ An `LpSolution` may contain a candidate assignment (a value for every decision v
 |`dual_note` |Reason why `dual` is unavailable, or `null` when it is available.
 |===
 
-`LpModelException` flags invalid input, including a contradictory constant-only constraint.
-`LpNumericalException` flags a failed solve, not a proof of infeasibility. Invalid solver settings throw
-`IllegalArgumentException` before computation.
+`LpModelException` reports invalid input, including a contradictory constant-only constraint.
+`LpNumericalException` reports a numerical failure; it does not establish infeasibility.
+Invalid solver settings throw `IllegalArgumentException` before computation.
 
-`LpSolution` owns cached Spark data. Complete calls to `values`, `constraints`, `evaluate`, evidence APIs,
-and other result DataFrames or RDDs before `solution.close()`. Closing releases the solution's cached data;
-it does not delete checkpoint files or caller-owned caches.
+`LpSolution` owns cached Spark data. Read values, evaluate expressions and finish Spark actions on
+result DataFrames and RDDs before calling `solution.close()`. This includes constraint diagnostics
+and evidence. Closing releases the solution's cached data; it does not delete checkpoint files or
+caller-owned caches.
 
 Set `spark.sparkContext.setCheckpointDir(checkpointUri)` before solving. In a cluster, use storage that
 every executor can reach, such as HDFS (Hadoop Distributed File System) or Amazon S3. A later `solve()` reads lazy model inputs again; cache
@@ -367,9 +373,10 @@ See xref:algorithm.adoc[how the solver works] for implementation details and num
 [#_solve_evidence_and_certificates]
 === Evidence for infeasible or unbounded results
 
-`solution.evidence` is an `Option` containing a proof for an `Infeasible`, `Unbounded`, or
-`InfeasibleOrUnbounded` result when the solver produced one. `proof.verify(tolerance)` recomputes the proof
-checks from stored coefficients and bounds and returns a report with `valid`, `residual` and `margin`.
+`solution.evidence` contains numerical evidence for an `Infeasible`, `Unbounded` or
+`InfeasibleOrUnbounded` result when the solver produced it; otherwise it is `None`.
+`proof.verify(tolerance)` checks the evidence against stored coefficients and bounds and returns
+a report with `valid`, `residual` and `margin`.
 
 [source,scala]
 ----
@@ -383,7 +390,7 @@ try {
 ----
 
 Evidence is numerical and tolerance-dependent. See
-xref:algorithm.adoc#_verifying_solve_evidence[certificate verification] for each proof type and sign
+xref:algorithm.adoc#_solve_evidence[certificate verification] for each evidence type and sign
 convention.
 
 === Evaluating expressions against a solution
@@ -473,14 +480,13 @@ Every `SolveProgress` has `phase`, `iteration` and `elapsedSeconds`.
 |`work.residual` |The numerical error of the current inner solve.
 |===
 
-Stop checks occur between solver operations; they cannot interrupt an active Spark task or compiled-library
-operation.
+Stop checks occur between solver operations; they cannot interrupt an active Spark action or native call.
 `maxIterations` returns `IterationLimit`. A time limit, `shouldStop`, or stagnation rule returns `Stopped`
 with `TimeLimit`, `UserRequested`, or `NoProgress`. The solution retains the best completed feasible
 assignment when one exists. Always check `candidate.available` and `candidate.feasible`; a stopped result
 does not imply optimality. Use `MipControl`, described below, for integer models.
 
-The xref:algorithm.adoc#_opt_in_progress_policy[opt-in progress policy] describes how stagnation windows
+The xref:algorithm.adoc#_progress_and_cooperative_stopping[stagnation policy] describes how stagnation windows
 compare successive iterations.
 
 == Solve-time controls and tuning
@@ -575,8 +581,8 @@ try {
 } finally initial.close()
 ----
 
-See xref:benchmarks.adoc[benchmark methodology] for start/no-start comparisons that include construction
-and validation time. Initial values can reduce solver work and can also increase total elapsed time.
+Compare total elapsed time with and without a start, including construction and validation. A start
+can reduce solver work while increasing total time. See xref:benchmarks.adoc[benchmark methodology].
 
 [#_mip_progress_and_cooperative_stopping]
 === MIP progress callbacks and stopping
@@ -810,7 +816,7 @@ Schema `1` preserves IDs, encoded keys, display names, bounds, variable types, t
 and squared-expression terms. It excludes application-specific DataFrame columns, closures, credentials and
 Spark execution plans. Unknown schemas and invalid references are rejected.
 
-The destination is a Hadoop filesystem directory, not a single file. Existing destinations require
+The destination is a directory on a Hadoop-compatible filesystem. Existing destinations require
 `overwrite = true`. Large model data remains partitioned. Keep lazy inputs stable until the write action
 finishes.
 
@@ -841,6 +847,109 @@ of at most 200 characters.
 
 The parent directory must exist. Existing files require `overwrite = true`. Export performs Spark actions;
 keep lazy inputs stable until the export and any mapping reads finish, then close the mapping.
+
+=== LP-file import
+
+`LpImport.read(path, options)` reads a CPLEX-style linear LP file from the driver's local filesystem.
+It returns an `LpFileModel` containing:
+
+* `model`: an editable `LpProblem`, named after the input file;
+* `variables`: a `Map[String, LpVariable]` indexed by source variable name;
+* `constraints`: a `Map[String, LpConstraint]` indexed by source row name. Unnamed rows receive
+  `__row_1`, `__row_2`, and so on, using their position among all constraints. Name collisions are errors.
+
+Import creates the model without solving it. It preserves objective constants, comparison directions,
+variable bounds and integer declarations. Files written by `LpExport.lp` can be read directly.
+
+For example, save this model as `model.lp`:
+
+[source,text]
+----
+Minimize
+ cost: amount + 2 substitute + 7
+Subject To
+ demand: amount + substitute + 1 >= 5
+ capacity: amount <= 3
+Bounds
+ 0 <= amount <= 4
+ substitute >= 0
+End
+----
+
+Read and solve it with a local Spark session:
+
+[source,scala]
+----
+import java.nio.file.Paths
+import org.apache.spark.sql.SparkSession
+import com.github.vbmacher.spark_lp.dsl._
+
+implicit val spark: SparkSession = SparkSession.builder()
+  .master("local[*]").appName("lp-import").getOrCreate()
+spark.sparkContext.setCheckpointDir("/tmp/spark-lp-checkpoints")
+try {
+  val imported = LpImport.read(Paths.get("model.lp"))
+  val result = imported.model.solve()
+  try {
+    println(result.status)
+    if (result.candidate.available && result.candidate.feasible) {
+      println(result.value(imported.variables("amount"))) // approximately 3
+      println(result.objectiveValue) // approximately 12
+    }
+  } finally result.close()
+} finally spark.stop()
+----
+
+In a cluster, use a checkpoint directory accessible to every executor. The input LP file itself must
+be readable on the driver; `path` is a `java.nio.file.Path`, not an HDFS or S3 URI.
+
+==== Accepted syntax and defaults
+
+Section headings are case-insensitive and occupy their own lines. Start with `Minimize` or `Maximize`;
+`Minimum`, `Maximum`, `Min` and `Max` are also accepted. Constraints follow `Subject To`, `Such That`,
+`ST` or `S.T.`. Optional `Bounds` and variable-type sections follow the constraints. Finish with `End`.
+Each section may appear once; the constraint and bound sections may be empty or omitted.
+
+[cols="2,3",options="header"]
+|===
+|Construct |Behavior
+|Linear expressions |Accept signed terms, implicit coefficients (`x - y`), decimal numbers and scientific notation (`2.5e-3 x`). Repeated coefficients and constants are added.
+|Constraints |Accept `<=`, `>=` and `=` with a finite numeric right-hand side. Constants may appear on the left. Start each constraint on a new line; expressions may wrap across lines.
+|Bounds |Accept `x <= 5`, `x >= -2`, `-2 <= x <= 5`, `5 >= x >= -2`, `x = 3` and `x free`. Start each bound on a new line; an unfinished bound may wrap across lines. `inf` and `infinity`, with an optional sign, are accepted only for unbounded endpoints.
+|Variable types |Variables are continuous by default. `General`, `Generals`, `Integer` or `Integers` declares integer variables; `Binary` or `Binaries` declares binary variables. Each section lists names separated by whitespace.
+|Names |Accept a letter or underscore followed by letters, digits, underscores, dots or dollar signs. Names are case-sensitive; canonical section keywords, `free`, `inf` and `infinity` are reserved.
+|Comments |A backslash (`\`) starts a comment that continues to the end of the line.
+|===
+
+Variables default to a lower bound of zero and no upper bound. Bounds and variable-type declarations
+may introduce variables absent from expressions. Binary declarations intersect explicit bounds with
+`[0, 1]`. Repeated bound declarations replace the specified endpoint; a fixed or `free` declaration
+replaces both. Contradictory final bounds and conflicting integer/binary declarations are errors.
+
+The reader supports linear objectives and constraints only. It rejects quadratic terms, SOS groups,
+semi-continuous domains, ranged constraints, expressions on the right-hand side and other unsupported
+sections. It also rejects malformed numbers, non-finite coefficients, overflow, duplicate row names,
+missing `End` and trailing content. Parse errors raise `LpModelException` with the file and source line.
+See the https://docs.gurobi.com/projects/optimizer/en/current/reference/fileformats/modelformats.html#lp-format[LP format reference]
+for the broader format; the subset above defines spark-lp's reader.
+
+==== Import limits
+
+Parsing runs on the driver and stores declarations and coefficients locally before building the
+`LpProblem`. `LpReadOptions` sets these positive limits:
+
+[cols="2,1,3",options="header"]
+|===
+|Option |Default |Counts
+|`maxBytes` |64 MiB |All input bytes, including comments.
+|`maxVariables` |100000 |Distinct variable names across all sections.
+|`maxRows` |10000 |Constraint declarations.
+|`maxCoefficients` |1000000 |Variable terms in the objective and constraints, including repeated and zero terms.
+|===
+
+Pass options explicitly, for example `LpImport.read(path, LpReadOptions(maxRows = 20000))`.
+Raise limits only when the driver has enough memory. Import limits govern parsing; solver memory and
+integer-search limits still apply when the resulting model is solved.
 
 === MPS-file export
 

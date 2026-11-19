@@ -1,13 +1,15 @@
 = Benchmarks
 
-https://bencher.dev/perf/spark-lp[Bencher: spark-lp] compares solver time, memory
-and convergence across use cases.
+The https://bencher.dev/perf/spark-lp[Bencher dashboard] compares solve time, memory
+and convergence across workloads. For commands and configuration, see
 https://github.com/vbmacher/spark-lp/blob/master/benchmarks/README.md[Running and extending benchmarks].
 
-Compare Cholesky and CG on the *same case, resources and testbed*. Scenario names
-identify dimensions, density/conditioning, tolerance, backend, CPU allocation,
-partitions and heap limits. Check convergence first, then time and memory: missing
-timing is not a fast solve, and a heap limit is not measured memory usage.
+Compare Cholesky and conjugate gradient (CG) on the same case, resources and testbed
+(execution environment). Scenario names identify problem dimensions, density, conditioning,
+tolerance, solver backend, CPU allocation, partitions and heap limits.
+
+Check convergence before comparing time and memory. A missing time means no successful timing
+was published. Heap limits describe configuration; memory measures report observed usage.
 
 == Coverage
 
@@ -32,15 +34,15 @@ timing is not a fast solve, and a heap limit is not measured memory usage.
 |`solve-seconds` |Median successful solve time in seconds; bounds are observed min/max, not confidence intervals
 |`local/driver/executor-heap-bytes-max` |Observed peak used JVM heap, in bytes
 |`local/driver/executor-rss-bytes-max` |Observed peak resident memory, in bytes; unavailable observations are omitted
-|`cpus` |Configured local threads, total executor cores, or native kernel threads--not partitions or CPU utilization
+|`cpus` |Configured local threads, total executor cores or native kernel threads. Measures allocation, not CPU utilization or partition count.
 |`converged` |1: every attempt produced a validated solution; 0: failure, timeout, exclusion or incomplete execution
 |===
 
 Each scenario uses a fresh JVM, normally one warmup and five measured repetitions.
-LP timing excludes generation, preparation and independent validation; DSL timing
-includes compilation, presolve/search and start preparation. Kernel timing covers
-factorization only. Correctness checks remain mandatory but residuals and iteration
-counts are not Bencher measures. Failed scenarios publish no partial timing.
+Linear-program (LP) timing excludes generation, preparation and independent validation.
+Modelling-API (DSL) timing includes compilation, presolve, search and start preparation.
+Kernel timing covers factorization only. Every successful scenario must pass correctness
+checks. Residuals and iteration counts are not Bencher measures. Failed scenarios publish no partial timing.
 
 Memory peaks cover the worker application, including preparation and warmup.
 Driver/local sampling runs every 20 ms; executor peaks come from Spark telemetry.
@@ -50,5 +52,5 @@ and efficiency are printed locally, not added to the primary measures.
 
 == Testbeds
 
-Names are automatic, derived from the environment where the benchmarks run.
+Testbed names are derived automatically from the execution environment.
 Native LAPACK and BLAS use `-native-lapack` and `-native-blas` suffixes.

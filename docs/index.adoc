@@ -2,9 +2,10 @@
 :toc: left
 :source-highlighter: highlightjs
 
-`spark-lp` is a linear, mixed-integer linear, and continuous convex quadratic programming over
-Apache Spark. It provides a sparse modeling compiler, a predictor-corrector interior-point solver (https://epubs.siam.org/doi/10.1137/0802028[Mehrotra]), and
-https://doi.org/10.2307/1910129[branch-and-bound] for integer variables.
+spark-lp solves linear, mixed-integer linear and continuous convex quadratic optimization models
+using Apache Spark. Its Scala API compiles model declarations into sparse numerical data. A
+https://epubs.siam.org/doi/10.1137/0802028[Mehrotra predictor-corrector interior-point method]
+solves continuous models; https://doi.org/10.2307/1910129[branch-and-bound] handles integer variables.
 
 == Guides
 
@@ -23,9 +24,9 @@ https://doi.org/10.2307/1910129[branch-and-bound] for integer variables.
 
 == Performance
 
-The https://bencher.dev/perf/spark-lp[live benchmark dashboard] tracks solver time,
-memory and convergence. The charts below summarize the current Cholesky and
-conjugate-gradient comparison.
+The https://bencher.dev/perf/spark-lp[live benchmark dashboard] tracks solve time,
+memory and convergence. The charts below compare the Cholesky and conjugate-gradient
+linear-system solvers. See xref:benchmarks.adoc[the benchmark guide] for measures and comparison rules.
 
 image::benchmark-runtime.svg[Cholesky versus conjugate gradient solve time]
 

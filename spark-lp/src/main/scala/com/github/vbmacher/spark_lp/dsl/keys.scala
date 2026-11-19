@@ -87,8 +87,8 @@ private[dsl] object KeyCodec {
 
   /** Escapes `,`, `[`, `]` and `\` inside a display part with `\`. */
   def escapePart(part: String): String = part.flatMap {
-    case c @ (',' | '[' | ']' | '\\') => Seq('\\', c)
-    case c => Seq(c)
+    case c @ (',' | '[' | ']' | '\\') => "\\" + c
+    case c => c.toString
   }
 
   def displayName(setName: String, parts: Seq[String]): String =

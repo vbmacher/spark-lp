@@ -163,9 +163,10 @@ object LpImport {
     private val canonicalHeaders = Set("minimize", "maximize", "subject", "bounds", "generals", "binaries", "end")
     private def isHeader(token: Token): Boolean = {
       val knownVariableAlias = variables.contains(token.text) && !canonicalHeaders(token.lower)
+      val rowLabel = peek(1).text == ":"
       val boundRecord = peek(1).line == token.line &&
         (peek(1).lower == "free" || Set("<=", ">=", "=")(peek(1).text))
-      headers(token.lower) && !knownVariableAlias && !boundRecord && token.line > previousLine &&
+      headers(token.lower) && !knownVariableAlias && !rowLabel && !boundRecord && token.line > previousLine &&
         (unsupported(token.lower) || peek(1).text.isEmpty || peek(1).line > token.line ||
           Set("subject", "such")(token.lower))
     }

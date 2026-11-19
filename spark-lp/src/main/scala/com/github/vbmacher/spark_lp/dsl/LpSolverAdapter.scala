@@ -157,8 +157,13 @@ private[dsl] object LpAdapterSolve {
     need(!options.validation.relaxIntegrality, "implicit relaxation; export an explicit relaxed model instead")
     need(options.onProgress.isEmpty || capabilities.callbacks, "progress callbacks")
     need(!options.requireDuals || capabilities.duals && !discrete, "continuous LP duals")
-    if (!capabilities.infiniteBounds)
-      need(view.variables.filter(v => !java.lang.Double.isFinite(v.lower) || v.upper.isEmpty).take(1).isEmpty, "infinite bounds")
+    if (!capabilities.infiniteBounds) {
+      val unbounded = view.variables.filter { v =>
+        val (lower, upper) = VariableCategory.domainBoundsFinite(v.category, v.lower, v.upper)
+        !java.lang.Double.isFinite(lower) || !java.lang.Double.isFinite(upper)
+      }
+      need(unbounded.take(1).isEmpty, "infinite bounds")
+    }
     val size = view.statistics()
     need(size.variables <= options.maxVariables && size.constraints <= options.maxConstraints &&
       size.constraintNonzeros <= options.maxNonzeros, "the requested transfer size (increase explicit adapter limits)")

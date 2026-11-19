@@ -30,6 +30,26 @@ class LpRelaxationSuite extends AnyFunSuite with DataFrameSuiteBase {
     } finally { relaxed.close(); integral.close() }
   }
 
+  test("continuous relaxation rounds both endpoints of per-member integer bounds inward") {
+    implicit val ss: SparkSession = spark
+    import ss.implicits._
+    val model = LpProblem("member bounds", Maximize)
+    val x = model.variables("x", Seq("low", "high").toDF("key"), $"key",
+      upperBound = Some(10.0), category = Integer)
+    val low = x("low").setBounds(0.2, Some(10.0))
+    val high = x("high").setBounds(0.0, Some(3.8))
+    model += high - low
+
+    val result = model.solve(SolveConfig(relaxIntegrality = true))
+    try {
+      assert(result.status == LpStatus.Optimal)
+      assert(math.abs(result.value(low) - 1.0) < 1e-6)
+      assert(math.abs(result.value(high) - 3.0) < 1e-6)
+      assert(low.lowerBound == 0.2)
+      assert(high.upperBound.contains(3.8))
+    } finally result.close()
+  }
+
   test("effective integer and binary bounds tighten before relaxation while mixed continuous bounds remain") {
     implicit val ss: SparkSession = spark
     val model = LpProblem("bounds")

@@ -9,6 +9,29 @@ class LpPresolveSuite extends AnyFunSuite with DataFrameSuiteBase {
   private val full = SolveConfig(presolve = PresolveConfig(effort = PresolveEffort.Full))
   private val off = SolveConfig(presolve = PresolveConfig(enabled = false))
 
+  test("bound inference counts only tightened variables toward its change limit") {
+    implicit val ss: SparkSession = spark
+    val model = LpProblem("bound change limit")
+    val x = model.variable("x", upperBound = Some(1.0))
+    val y = model.variable("y", upperBound = Some(1.0))
+    model += x + y
+    model += (x + y <= 3.0)
+    val oneChange = full.copy(boundInference = BoundInferenceConfig(maxLocalChanges = 1))
+
+    val unchanged = model.solve(oneChange)
+    try assert(unchanged.presolve.get.bounds.isEmpty)
+    finally unchanged.close()
+
+    model += (x <= 0.5)
+    val tightened = model.solve(oneChange)
+    try assert(tightened.presolve.get.bounds.map(_.variable) == Vector(LpPortableModel.variable(x).id))
+    finally tightened.close()
+
+    model += (y <= 0.5)
+    val error = intercept[LpModelException](model.solve(oneChange))
+    assert(error.getMessage.contains("maxLocalChanges=1"))
+  }
+
   test("singleton equality fixing and coupled bound propagation retain LP/MIP objectives and offsets") {
     implicit val ss: SparkSession = spark
     for (category <- Seq(Continuous, Integer); sense <- Seq(Minimize, Maximize)) {

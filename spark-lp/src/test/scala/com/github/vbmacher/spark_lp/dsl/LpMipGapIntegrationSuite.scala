@@ -6,6 +6,27 @@ import org.apache.spark.sql.SparkSession
 import org.scalatest.funsuite.AnyFunSuite
 
 class LpMipGapIntegrationSuite extends AnyFunSuite with DataFrameSuiteBase {
+  test("a large bound cannot mask a constraint violation introduced by MIP rounding") {
+    implicit val ss: SparkSession = spark
+    for (offset <- Seq(0.0, 1000.0)) {
+      val model = LpProblem("rounded feasibility")
+      val b = model.variable("b", category = Binary)
+      val y = model.variable("y", upperBound = Some(1000.0))
+      val fixed = model.variable("fixed", lowerBound = offset, upperBound = Some(offset))
+      model += lpSum(y)
+      model += (b + y + fixed === offset + 9e-7)
+
+      val solution = model.solve()
+      try {
+        assert(solution.candidate.feasible)
+        val assignment = Seq(b -> solution.value(b), y -> solution.value(y), fixed -> offset)
+        val report = model.validateCandidate(model.candidateValues(assignment))
+        try assert(report.feasible)
+        finally report.close()
+      } finally solution.close()
+    }
+  }
+
   test("MIP bounds and gaps preserve maximization, constants and missing incumbents") {
     implicit val ss: SparkSession = spark
     for (sense <- Seq(Minimize, Maximize); constant <- Seq(0.0, -10.0, 10.0)) {

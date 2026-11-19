@@ -116,16 +116,17 @@ private[dsl] final class LpCompiler(problem: LpProblem, config: SolveConfig,
             problem.inspect.coefficients.map(c => c.row -> 1L)
             .reduceByKey(_ + _).filter(_._2 > 1L).take(1).isEmpty
           val selected = if (separableInteger || full) propagation.variables else propagation.variables.filter(_.category == Integer)
-          val inferred = selected.take(config.boundInference.maxLocalChanges + 1)
-          if (inferred.length > config.boundInference.maxLocalChanges)
-            fail(s"Integer bound inference exceeds maxLocalChanges=${config.boundInference.maxLocalChanges}")
-          boundReductions = inferred.toVector.flatMap { v =>
-            val original = problem.handles(v.id.family).metadata.at(v.id.key)
+          val declarations = problem.handles.map(_.metadata).toVector
+          val limit = config.boundInference.maxLocalChanges
+          val changes = selected.flatMap { v =>
+            val original = declarations(v.id.family).at(v.id.key)
             val implied = LpBounds(v.lower, v.upper)
             if (original == implied) None else Some(LpBoundReduction(v.id, original, implied))
-          }
-          inferredBounds = inferred.groupBy(_.id.family).map { case (family, variables) =>
-            family -> variables.map(v => v.id.key -> LpBounds(v.lower, v.upper)).toMap
+          }.take(limit + 1)
+          if (changes.length > limit) fail(s"Integer bound inference exceeds maxLocalChanges=$limit")
+          boundReductions = changes.toVector
+          inferredBounds = boundReductions.groupBy(_.variable.family).map { case (family, reductions) =>
+            family -> reductions.map(r => r.variable.key -> r.implied).toMap
           }
         }
         propagation.contradiction

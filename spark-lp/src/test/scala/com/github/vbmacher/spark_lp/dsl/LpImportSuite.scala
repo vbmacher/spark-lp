@@ -11,8 +11,10 @@ import org.scalatest.funsuite.AnyFunSuite
 class LpImportSuite extends AnyFunSuite with DataFrameSuiteBase {
   private def fixture(text: String)(run: Path => Unit): Unit = {
     val path = Files.createTempFile("spark-lp-import-", ".lp")
-    Files.write(path, text.stripMargin.getBytes(StandardCharsets.UTF_8))
-    try run(path) finally Files.deleteIfExists(path)
+    try {
+      Files.write(path, text.stripMargin.getBytes(StandardCharsets.UTF_8))
+      run(path)
+    } finally Files.deleteIfExists(path)
   }
 
   private val continuous = """\ A handwritten model with a wrapped objective and constraint.
@@ -29,9 +31,10 @@ class LpImportSuite extends AnyFunSuite with DataFrameSuiteBase {
     |End
     |"""
 
-  test("handwritten continuous LP preserves names, objective constants and constraint constants") {
+  test("a handwritten continuous LP can be imported, solved and extended") {
     implicit val ss: SparkSession = spark
     fixture(continuous) { path =>
+      // Import the wrapped expressions and retain the names used later to edit the model.
       val imported = LpImport.read(path)
 
       assert(imported.model.sense == Minimize)
@@ -39,6 +42,7 @@ class LpImportSuite extends AnyFunSuite with DataFrameSuiteBase {
       assert(imported.constraints.keySet == Set("demand", "cap"))
       assert(imported.model.inspect.objectiveConstant == 7.0)
 
+      // The constant in the demand row leaves four units to allocate.
       val result = imported.model.solve()
       try {
         assert(result.status == LpStatus.Optimal)
@@ -47,7 +51,9 @@ class LpImportSuite extends AnyFunSuite with DataFrameSuiteBase {
         assert(math.abs(result.value(imported.variables("substitute")) - 1.0) < 1e-6)
       } finally result.close()
 
-      imported.model += (imported.variables("amount") <= 2.0).named("new_cap")
+      val amount = imported.variables("amount")
+
+      imported.model += (amount <= 2.0).named("new_cap")
 
       assert(imported.model.inspect.constraintDeclarations.exists(_.name == "new_cap"))
     }
@@ -236,44 +242,51 @@ class LpImportSuite extends AnyFunSuite with DataFrameSuiteBase {
 
   test("malformed and unsupported LP input reports the path and source line") {
     implicit val ss: SparkSession = spark
-    val invalid = Seq(
-      continuous.replace("End", ""),
-      continuous + "trailing content\n",
-      continuous.replace("cap: amount <= 3", "demand: amount <= 3"),
-      continuous.replace("cap: amount <= 3", "cap: amount < 3"),
-      continuous.replace("cap: amount <= 3", "cap: amount <="),
-      continuous.replace("cap: amount <= 3", "cap: amount <= 3 <= 4"),
-      continuous.replace("+ 1e0 amount", "+ 1e999 amount"),
-      continuous.replace("+ 1e0 amount", "+ NaN amount"),
-      continuous.replace("+ 1e0 amount", "+ 1e amount"),
-      continuous.replace("+ 1e0 amount", "+ [ amount ^ 2 ]"),
-      continuous.replace("+ 1e0 amount", "+ amount * substitute"),
-      continuous.replace("End", "SOS\n group: S1:: amount:1 substitute:2\nEnd"),
-      continuous.replace("End", "Semi-continuous\n amount\nEnd"),
-      continuous.replace("0 <= amount <= 4", "5 <= amount <= 3"),
-      continuous.replace("cost: + 1e0 amount", "cost: + 1e308 amount + 1e308 amount"))
+    val invalidInputs = Seq(
+      "missing End" -> continuous.replace("End", ""),
+      "trailing text" -> (continuous + "trailing content\n"),
+      "duplicate row name" -> continuous.replace("cap: amount <= 3", "demand: amount <= 3"),
+      "strict inequality" -> continuous.replace("cap: amount <= 3", "cap: amount < 3"),
+      "missing right-hand side" -> continuous.replace("cap: amount <= 3", "cap: amount <="),
+      "ranged row" -> continuous.replace("cap: amount <= 3", "cap: amount <= 3 <= 4"),
+      "overflowing coefficient" -> continuous.replace("+ 1e0 amount", "+ 1e999 amount"),
+      "NaN coefficient" -> continuous.replace("+ 1e0 amount", "+ NaN amount"),
+      "missing exponent" -> continuous.replace("+ 1e0 amount", "+ 1e amount"),
+      "quadratic section" -> continuous.replace("+ 1e0 amount", "+ [ amount ^ 2 ]"),
+      "variable product" -> continuous.replace("+ 1e0 amount", "+ amount * substitute"),
+      "SOS section" -> continuous.replace("End", "SOS\n group: S1:: amount:1 substitute:2\nEnd"),
+      "semi-continuous section" -> continuous.replace("End", "Semi-continuous\n amount\nEnd"),
+      "inverted bounds" -> continuous.replace("0 <= amount <= 4", "5 <= amount <= 3"),
+      "overflowing sum of coefficients" -> continuous.replace("cost: + 1e0 amount", "cost: + 1e308 amount + 1e308 amount"))
 
-    invalid.foreach { text => fixture(text) { path =>
-      val error = intercept[LpModelException](LpImport.read(path))
+    invalidInputs.foreach { case (scenario, input) =>
+      withClue(s"$scenario: ") {
+        fixture(input) { path =>
+          val error = intercept[LpModelException](LpImport.read(path))
 
-      assert(error.getMessage.contains(path.toString))
-      assert(error.getMessage.matches("(?s).*:[0-9]+.*"))
-    } }
+          assert(error.getMessage.contains(path.toString))
+          assert(error.getMessage.matches("(?s).*:[0-9]+.*"))
+        }
+      }
+    }
   }
 
   test("byte, variable, constraint and coefficient limits reject excess input") {
     implicit val ss: SparkSession = spark
     fixture(continuous) { path =>
       val limits = Seq(
-        LpReadOptions(maxBytes = 1L),
-        LpReadOptions(maxVariables = 1),
-        LpReadOptions(maxRows = 1),
-        LpReadOptions(maxCoefficients = 1))
+        "maxBytes=1" -> LpReadOptions(maxBytes = 1L),
+        "maxVariables=1" -> LpReadOptions(maxVariables = 1),
+        "maxRows=1" -> LpReadOptions(maxRows = 1),
+        "maxCoefficients=1" -> LpReadOptions(maxCoefficients = 1))
 
-      limits.foreach { options =>
-        val error = intercept[LpModelException](LpImport.read(path, options))
+      limits.foreach { case (limit, options) =>
+        withClue(s"$limit: ") {
+          val error = intercept[LpModelException](LpImport.read(path, options))
 
-        assert(error.getMessage.contains(path.toString))
+          assert(error.getMessage.contains(path.toString))
+          assert(error.getMessage.contains(limit))
+        }
       }
     }
   }

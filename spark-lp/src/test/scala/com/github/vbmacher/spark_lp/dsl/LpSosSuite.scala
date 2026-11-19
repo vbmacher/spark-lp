@@ -83,41 +83,73 @@ class LpSosSuite extends AnyFunSuite with DataFrameSuiteBase {
     }
   }
 
-  test("SOS validation handles tolerances, overlaps, integer/binary members and invalid declarations") {
+  test("overlapping SOS1 groups can share a binary member with integer and continuous members") {
     implicit val ss: SparkSession = spark
     val model = LpProblem("mixed", Maximize)
-    val i = model.variable("i", upperBound = Some(2.0), category = Integer)
-    val b = model.variable("b", category = Binary)
-    val x = model.variable("x", upperBound = Some(1.0))
-    model += i + b + x
-    model.addSos1("first", Seq(i -> 1.0, b -> 2.0))
-    model.addSos1("overlap", Seq(b -> 1.0, x -> 2.0))
+    val integer = model.variable("integer", upperBound = Some(2.0), category = Integer)
+    val shared = model.variable("shared", category = Binary)
+    val continuous = model.variable("continuous", upperBound = Some(1.0))
+    model += integer + shared + continuous
+    model.addSos1("first", Seq(integer -> 1.0, shared -> 2.0))
+    model.addSos1("overlap", Seq(shared -> 1.0, continuous -> 2.0))
 
     val result = model.solve()
     try {
       assert(result.status == LpStatus.Optimal)
       assert(math.abs(result.objectiveValue - 3.0) < 1e-6)
     } finally result.close()
-    val values = model.candidateValues(Seq(i -> 1.0, b -> 1e-8, x -> 0.0))
+  }
+
+  test("candidate validation counts a tiny SOS1 member only when the zero tolerance is strict") {
+    implicit val ss: SparkSession = spark
+    val model = LpProblem("SOS zero tolerance", Maximize)
+    val integer = model.variable("integer", upperBound = Some(2.0), category = Integer)
+    val binary = model.variable("binary", category = Binary)
+    model += integer + binary
+    model.addSos1("one_nonzero", Seq(integer -> 1.0, binary -> 2.0))
+    val values = model.candidateValues(Seq(integer -> 1.0, binary -> 1e-8))
 
     val tolerant = model.validateCandidate(values)
-
     val strict = model.validateCandidate(values, CandidateValidationConfig(sosZeroTolerance = 0.0))
     try {
       assert(tolerant.feasible)
-      assert(!strict.feasible) } finally { tolerant.close()
+      assert(!strict.feasible)
+    } finally {
+      tolerant.close()
       strict.close()
     }
+  }
 
-    intercept[LpModelException](model.addSos1("first", Seq(x -> 1.0)))
-    intercept[LpModelException](model.addSos1("duplicate", Seq(x -> 1.0, x -> 2.0)))
-    intercept[LpModelException](model.addSos2("ties", Seq(x -> 1.0, b -> 1.0)))
-    intercept[LpModelException](model.addSos1("weight", Seq(x -> Double.NaN)))
-    intercept[LpModelException](model.addSos1("foreign", Seq(LpProblem("other").variable("x") -> 1.0)))
-    val unsupported = LpProblem("finite bounds")
-    val free = unsupported.variable("free", Double.NegativeInfinity)
-    unsupported.addSos1("group", Seq(free -> 1.0))
+  test("SOS declarations reject invalid names, members and weights") {
+    implicit val ss: SparkSession = spark
+    val model = LpProblem("SOS declarations")
+    val first = model.variable("first", upperBound = Some(1.0))
+    val second = model.variable("second", category = Binary)
+    val foreign = LpProblem("other").variable("other", upperBound = Some(1.0))
+    model.addSos1("existing", Seq(first -> 1.0, second -> 2.0))
 
-    assert(intercept[LpModelException](unsupported.solve()).getMessage.contains("finite declared bounds"))
+    val invalidGroups: Seq[(String, () => LpSosGroup)] = Seq(
+      "duplicate group name" -> (() => model.addSos1("existing", Seq(first -> 1.0))),
+      "duplicate member" -> (() => model.addSos1("duplicate", Seq(first -> 1.0, first -> 2.0))),
+      "tied SOS2 weights" -> (() => model.addSos2("ties", Seq(first -> 1.0, second -> 1.0))),
+      "non-finite weight" -> (() => model.addSos1("weight", Seq(first -> Double.NaN))),
+      "member from another model" -> (() => model.addSos1("foreign", Seq(foreign -> 1.0))))
+
+    invalidGroups.foreach { case (scenario, addGroup) =>
+      withClue(s"$scenario: ") {
+        intercept[LpModelException](addGroup())
+      }
+    }
+  }
+
+  test("solving an SOS model requires finite declared member bounds") {
+    implicit val ss: SparkSession = spark
+    val model = LpProblem("finite bounds")
+    val free = model.variable("free", Double.NegativeInfinity)
+    model.addSos1("group", Seq(free -> 1.0))
+
+    val error = intercept[LpModelException](model.solve())
+
+    assert(error.getMessage.contains("finite declared bounds"))
   }
 }

@@ -15,7 +15,7 @@ case class KeyedWeight(name: String, w: Double)
 
 class LpDslValidationSuite extends AnyFunSuite with DataFrameSuiteBase {
 
-  test("x === 1 and x === 2 fail as inconsistent duplicate rows, never reaching the solver") {
+  test("inconsistent duplicate equality rows are rejected with both constraint names") {
     implicit val ss: SparkSession = spark
     val model = LpProblem("dup", Minimize)
     val x = model.variable("x")
@@ -40,14 +40,15 @@ class LpDslValidationSuite extends AnyFunSuite with DataFrameSuiteBase {
     model += (x + y === 4.0).named("second")
 
     val solution = model.solve()
+    try {
+      val notes = solution.constraints.collect().map(row => row.getString(0) -> Option(row.getString(7))).toMap
 
-    assert(solution.status == LpStatus.Optimal)
-    assert(math.abs(solution.value(x) - 4.0) < 1e-4)
-    assert(math.abs(solution.value(y)) < 1e-4)
-    val notes = solution.constraints.collect().map(r => r.getString(0) -> Option(r.getString(7))).toMap
-
-    assert(notes("first").isEmpty)
-    assert(notes("second").exists(_.contains("merged")))
+      assert(solution.status == LpStatus.Optimal)
+      assert(math.abs(solution.value(x) - 4.0) < 1e-4)
+      assert(math.abs(solution.value(y)) < 1e-4)
+      assert(notes("first").isEmpty)
+      assert(notes("second").exists(_.contains("merged")))
+    } finally solution.close()
   }
 
   test("duplicate detection checks scaled equality contradictions in both row orders") {
@@ -66,7 +67,7 @@ class LpDslValidationSuite extends AnyFunSuite with DataFrameSuiteBase {
     }
   }
 
-  test("scaled consistent duplicates (x + y === 1, 2x + 2y === 2) merge via normalised hashing") {
+  test("scaling a duplicate equality row leaves the optimal result unchanged") {
     implicit val ss: SparkSession = spark
     val model = LpProblem("dupScaled", Minimize)
     val x = model.variable("x")
@@ -77,9 +78,11 @@ class LpDslValidationSuite extends AnyFunSuite with DataFrameSuiteBase {
 
     val solution = model.solve()
 
-    assert(solution.status == LpStatus.Optimal)
-    assert(math.abs(solution.value(x) - 1.0) < 1e-4)
-    assert(math.abs(solution.objectiveValue - 1.0) < 1e-4)
+    try {
+      assert(solution.status == LpStatus.Optimal)
+      assert(math.abs(solution.value(x) - 1.0) < 1e-4)
+      assert(math.abs(solution.objectiveValue - 1.0) < 1e-4)
+    } finally solution.close()
   }
 
   test("duplicate variable keys in a DataFrame domain are rejected with display names") {
@@ -113,21 +116,29 @@ class LpDslValidationSuite extends AnyFunSuite with DataFrameSuiteBase {
     assert(error.getMessage.contains("null"))
   }
 
-  test("a second objective via += throws; setObjective replaces deliberately") {
+  test("adding a second objective with += is rejected") {
     implicit val ss: SparkSession = spark
     val model = LpProblem("obj", Minimize)
     val x = model.variable("x")
     model += lpSum(x)
+
     val error = intercept[LpModelException](model += 2.0 * x)
 
     assert(error.getMessage.contains("objective"))
+  }
 
-    model.setObjective(3.0 * x)
+  test("setObjective replaces the original objective used by the solve") {
+    implicit val ss: SparkSession = spark
+    val model = LpProblem("replace objective", Minimize)
+    val x = model.variable("x")
+    model += lpSum(x)
     model += (x >= 2.0).named("floor")
 
+    model.setObjective(3.0 * x)
     val solution = model.solve()
 
-    assert(math.abs(solution.objectiveValue - 6.0) < 1e-5)
+    try assert(math.abs(solution.objectiveValue - 6.0) < 1e-5)
+    finally solution.close()
   }
 
   test("a model without an objective solves feasibility") {
@@ -214,37 +225,41 @@ class LpDslValidationSuite extends AnyFunSuite with DataFrameSuiteBase {
     val model = LpProblem("zeroWeights", Minimize)
     val domain = spark.createDataset(Seq(KeyedWeight("a", 0.0), KeyedWeight("b", 0.0)))
     val v = model.variablesOf("v", domain, (k: KeyedWeight) => k.name)
-    val weights = spark.createDataset(Seq(KeyedWeight("a", 1.0))) // b missing -> coefficient 0
+    // Only member a has a coefficient in the weighted constraint.
+    val weights = spark.createDataset(Seq(KeyedWeight("a", 1.0)))
     model += lpSum(v)
     model += (lpSum(v.weightedBy(weights)(_.w)) >= 3.0).named("floor")
 
     val solution = model.solve()
 
-    assert(solution.status == LpStatus.Optimal)
-    // only a's coefficient is non-zero, so a alone satisfies the constraint
-
-    assert(math.abs(solution.objectiveValue - 3.0) < 1e-4)
+    try {
+      assert(solution.status == LpStatus.Optimal)
+      assert(math.abs(solution.objectiveValue - 3.0) < 1e-4)
+    } finally solution.close()
   }
 
-  test("non-finite coefficients and right-hand sides are rejected") {
+  test("a NaN coefficient is rejected during model compilation") {
     implicit val ss: SparkSession = spark
     val model = LpProblem("nonFinite", Minimize)
     val x = model.variable("x")
     model += lpSum(x)
     model += (Double.NaN * x >= 1.0).named("nanCoeff")
 
-    val e1 = intercept[LpModelException](model.solve())
+    val error = intercept[LpModelException](model.solve())
 
-    assert(e1.getMessage.contains("non-finite coefficient"))
+    assert(error.getMessage.contains("non-finite coefficient"))
+  }
 
-    val model2 = LpProblem("nonFiniteRhs", Minimize)
-    val y = model2.variable("y")
-    model2 += lpSum(y)
-    model2 += (y >= Double.PositiveInfinity).named("infRhs")
+  test("an infinite right-hand side is rejected during model compilation") {
+    implicit val ss: SparkSession = spark
+    val model = LpProblem("nonFiniteRhs", Minimize)
+    val x = model.variable("x")
+    model += lpSum(x)
+    model += (x >= Double.PositiveInfinity).named("infRhs")
 
-    val e2 = intercept[LpModelException](model2.solve())
+    val error = intercept[LpModelException](model.solve())
 
-    assert(e2.getMessage.contains("right-hand side"))
+    assert(error.getMessage.contains("right-hand side"))
   }
 
   test("exceeding maxLocalConstraints with explicit Cholesky names the asymmetry and the way out") {

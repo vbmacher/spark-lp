@@ -1,0 +1,31 @@
+{
+  "artifacts": [
+    {
+      "created_at": "2026-11-06T10:14:16+00:00",
+      "id": "d2d7e6a4-d1e8-48cc-aaca-b2b479a36a82",
+      "layer": "local",
+      "path": "/tmp/spark-lp-test-redesign-tasks.json",
+      "phase": "plan",
+      "revision": "7d5e440a62be49acb676d12bfbf6f04810aa4211",
+      "sha256": "35bb0df8b5522b9483ca0b347718dff308152120c1ed3d0cf1031b313157a235",
+      "size": 1314,
+      "status": "current",
+      "task_id": null,
+      "type": "task-graph"
+    },
+    {
+      "created_at": "2026-11-06T10:15:55+00:00",
+      "id": "b6b0baed-2dc1-49b4-9954-74619e3e9a53",
+      "layer": "local",
+      "path": "/tmp/spark-lp-test-redesign-tasks.json",
+      "phase": "handoff",
+      "revision": "7d5e440a62be49acb676d12bfbf6f04810aa4211",
+      "sha256": "1dd40ab46b60c4dc361602248d359770a6bc54bac1402495398ed035e00060eb",
+      "size": 1316,
+      "status": "current",
+      "task_id": null,
+      "type": "task-graph"
+    }
+  ],
+  "schema_version": 1
+}

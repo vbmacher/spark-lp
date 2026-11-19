@@ -24,12 +24,18 @@ class LpArithmeticSuite extends AnyFunSuite {
     assert(product.constant == 0.0)
   }
 
-  test("dot products reject either input being longer than the other") {
-    val coefficient = Seq(1.0)
-    val expression = Seq(LpExpr.zero)
+  test("dot products reject an unmatched coefficient") {
+    val coefficients = Seq(1.0)
+    val expressions = Seq.empty[LpExpr]
 
-    intercept[LpModelException](lpDot(coefficient, Seq.empty[LpExpr]))
-    intercept[LpModelException](lpDot(Seq.empty[Double], expression))
+    intercept[LpModelException](lpDot(coefficients, expressions))
+  }
+
+  test("dot products reject an unmatched expression") {
+    val coefficients = Seq.empty[Double]
+    val expressions = Seq(LpExpr.zero)
+
+    intercept[LpModelException](lpDot(coefficients, expressions))
   }
 
   test("division rejects zero and non-finite divisors") {

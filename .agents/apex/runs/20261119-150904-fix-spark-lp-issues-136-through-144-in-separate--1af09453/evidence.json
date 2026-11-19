@@ -1,0 +1,18 @@
+{
+  "artifacts": [
+    {
+      "created_at": "2026-11-19T14:25:30+00:00",
+      "id": "59d6758e-6993-417f-a649-fa970a8bf948",
+      "layer": "provider",
+      "path": ".agents/apex/runs/20261119-150904-fix-spark-lp-issues-136-through-144-in-separate--1af09453/delivery.tsv",
+      "phase": "verify",
+      "revision": "d4c121e70572e3e8711c52e50c51196f96375eb4",
+      "sha256": "93031c911c6287491ec1467b32542d7906563a2893695853ad1d54fdd18a00e2",
+      "size": 457,
+      "status": "current",
+      "task_id": null,
+      "type": "remote-refs"
+    }
+  ],
+  "schema_version": 1
+}

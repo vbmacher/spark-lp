@@ -19,12 +19,17 @@ class LpExpressionEditSuite extends AnyFunSuite with DataFrameSuiteBase {
     assert(original.constant == 4.0)
     assert(changed.coefficient(x) == 5.0)
     assert(changed.coefficient(y) == 0.0)
-    // RHS edits return a new constraint while preserving the original name.
+    assert(changed.constant == -1.0)
+
+    // The edited constraint is a separate value with the original name.
     val pending = (x >= 1.0).named("floor")
+
     val updated = pending.withRhs(2.0)
 
     assert(pending.rhs == 1.0)
+    assert(updated.rhs == 2.0)
     assert(updated.explicitName == pending.explicitName)
+
     // Optimize with the edited expression and RHS, leaving the original expression intact.
     model += changed
     model += updated
@@ -34,22 +39,34 @@ class LpExpressionEditSuite extends AnyFunSuite with DataFrameSuiteBase {
     try {
       assert(math.abs(result.objectiveValue - 9.0) < 1e-6)
     } finally result.close()
-
   }
 
-  test("scalar edits reject foreign variables and non-finite coefficients, constants and RHS values") {
+  test("a coefficient edit rejects a variable from another model") {
     implicit val ss: SparkSession = spark
     val model = LpProblem("invalid edits")
     val x = model.variable("x")
     val original = lpSum(x)
-    val pending = (x >= 1.0).named("floor")
     val foreignVariable = LpProblem("foreign").variable("z")
 
     intercept[LpModelException](original.withCoefficient(foreignVariable, 1.0))
-    for (bad <- Seq(Double.NaN, Double.PositiveInfinity)) {
-      intercept[LpModelException](original.withCoefficient(x, bad))
-      intercept[LpModelException](original.withConstant(bad))
-      intercept[LpModelException](pending.withRhs(bad))
+  }
+
+  test("expression and constraint edits reject non-finite replacements") {
+    implicit val ss: SparkSession = spark
+    val model = LpProblem("invalid numeric edits")
+    val x = model.variable("x")
+    val original = lpSum(x)
+    val pending = (x >= 1.0).named("floor")
+    val invalidValues = Seq(Double.NaN, Double.PositiveInfinity)
+    val edits: Seq[(String, Double => Any)] = Seq(
+      "coefficient" -> ((value: Double) => original.withCoefficient(x, value)),
+      "constant" -> ((value: Double) => original.withConstant(value)),
+      "right-hand side" -> ((value: Double) => pending.withRhs(value)))
+
+    for ((field, edit) <- edits; value <- invalidValues) {
+      withClue(s"$field = $value: ") {
+        intercept[LpModelException](edit(value))
+      }
     }
   }
 

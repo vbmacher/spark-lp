@@ -146,26 +146,35 @@ class SolveControlIntegrationSuite extends AnyFunSuite with DataFrameSuiteBase {
     assert(result.stopReason.contains(StopReason.UserRequested))
   }
 
-  test("stops are checked after actual preconditioner pivots and CG steps") {
-    implicit val ss: SparkSession = spark
-    for (duringPivot <- Seq(true, false)) {
+  private val stopTriggers: Seq[(String, SolveProgress => Boolean)] = Seq(
+    "after the first preconditioner pivot" -> ((event: SolveProgress) =>
+      event.phase == SolvePhase.SystemSetup && event.work.flatMap(_.preconditionerRank).contains(1)),
+    "after the first CG step" -> ((event: SolveProgress) =>
+      event.phase == SolvePhase.InnerSolve && event.work.exists(_.completed == 1)))
+
+  stopTriggers.foreach { case (scenario, requestStop) =>
+    test(s"cancelling $scenario leaves the candidate unavailable") {
+      implicit val ss: SparkSession = spark
       val (c, at, b) = cachedEqualityInputs(
-      costs = Seq(0.0, 0.0),
-      rows = Seq(Vectors.dense(1.0), Vectors.dense(1.0)),
-      rhs = Array(1.0))
-      var stop = false
+        costs = Seq(0.0, 0.0),
+        rows = Seq(Vectors.dense(1.0), Vectors.dense(1.0)),
+        rhs = Array(1.0))
+      var stopRequested = false
+      val control = SolveControl(shouldStop = () => stopRequested, onProgress = event => {
+        if (requestStop(event)) stopRequested = true
+      })
 
-      val result = LP.solveSummary(c, at, b, solver = NewtonSolver.ConjugateGradient,
-        cgConfig = CgConfig(preconditionerRank = 1),
-        control = SolveControl(shouldStop = () => stop, onProgress = { e =>
-          if ((duringPivot && e.phase == SolvePhase.SystemSetup && e.work.flatMap(_.preconditionerRank).contains(1)) ||
-              (!duringPivot && e.phase == SolvePhase.InnerSolve && e.work.exists(_.completed == 1))) stop = true
-        }))
+      try {
+        val result = LP.solveSummary(c, at, b, solver = NewtonSolver.ConjugateGradient,
+          cgConfig = CgConfig(preconditionerRank = 1), control = control)
 
-      assert(stop)
-      assert(!result.candidate.available)
-      assert(result.stopReason.contains(StopReason.UserRequested))
-      c.unpersist(); at.unpersist()
+        assert(stopRequested)
+        assert(!result.candidate.available)
+        assert(result.stopReason.contains(StopReason.UserRequested))
+      } finally {
+        c.unpersist()
+        at.unpersist()
+      }
     }
   }
 
@@ -224,15 +233,19 @@ class SolveControlIntegrationSuite extends AnyFunSuite with DataFrameSuiteBase {
       rhs = Array(1.0))
     val baseline = sc.getPersistentRDDs.keySet
     val failure = new IllegalStateException("application callback failed")
-    val thrown = intercept[IllegalStateException] {
-      LP.solveSummary(c, at, b, control = SolveControl(onProgress = { e =>
+    val control = SolveControl(onProgress = e => {
         if (e.phase == SolvePhase.OuterIteration) throw failure
-      }))
-    }
+    })
 
-    assert(thrown eq failure)
-    assert(sc.getPersistentRDDs.keySet == baseline)
-    c.unpersist(); at.unpersist()
+    try {
+      val thrown = intercept[IllegalStateException](LP.solveSummary(c, at, b, control = control))
+
+      assert(thrown eq failure)
+      assert(sc.getPersistentRDDs.keySet == baseline)
+    } finally {
+      c.unpersist()
+      at.unpersist()
+    }
   }
 
   test("a completed but infeasible iterate remains available only for diagnostics") {

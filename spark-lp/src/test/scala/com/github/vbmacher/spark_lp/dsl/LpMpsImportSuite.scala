@@ -10,8 +10,10 @@ import java.nio.file.{Files, Path}
 class LpMpsImportSuite extends AnyFunSuite with DataFrameSuiteBase {
   private def fixture(text: String)(run: Path => Unit): Unit = {
     val path = Files.createTempFile("spark-lp-import-", ".mps")
-    Files.write(path, text.stripMargin.getBytes(StandardCharsets.UTF_8))
-    try run(path) finally Files.delete(path)
+    try {
+      Files.write(path, text.stripMargin.getBytes(StandardCharsets.UTF_8))
+      run(path)
+    } finally Files.deleteIfExists(path)
   }
   private val mip = """NAME HAND_AUTHORED
     |OBJSENSE
@@ -36,7 +38,7 @@ class LpMpsImportSuite extends AnyFunSuite with DataFrameSuiteBase {
     | BV alternate choose
     |ENDATA
     |"""
-  test("independently authored MPS retains names and integer optima, and round trips through the writer") {
+  test("a handwritten MPS retains its mixed-integer optimum and editable variable handles") {
     implicit val ss: SparkSession = spark
     fixture(mip) { path =>
       val imported = LpMpsImport.read(path)
@@ -52,29 +54,52 @@ class LpMpsImportSuite extends AnyFunSuite with DataFrameSuiteBase {
         assert(math.abs(solution.objectiveValue - 9.0) < 1e-7)
         assert(solution.value(imported.variables("amount")) == 1.0)
       } finally solution.close()
-      val out = Files.createTempDirectory("spark-lp-roundtrip-").resolve("model.mps")
-      val names = LpMps.write(imported.model.inspect, out, ExportNaming.Original)
-      try {
-        val restored = LpMpsImport.read(out)
-        if (HighsInterop.available) assert(HighsInterop.inspect(out).get("objective").asDouble() == 9.0)
 
-        val result = restored.model.solve()
-        try {
-          assert(math.abs(result.objectiveValue - 9.0) < 1e-7)
-        } finally result.close()
+      // The imported handle can be used to add a constraint to the same model.
+      val amount = imported.variables("amount")
 
-        assert(restored.variables.keySet == imported.variables.keySet)
-      } finally { names.close(); Files.delete(out); Files.delete(out.getParent) }
-      val selected = LpMpsImport.read(path, MpsReadOptions(rhsSet = Some("alternate"), boundSet = Some("alternate")))
-
-      val other = selected.model.solve()
-      try {
-        assert(math.abs(other.objectiveValue - 3.0) < 1e-7)
-      } finally other.close()
-      // Imported handles remain usable in the ordinary modeling API.
-      imported.model += (imported.variables("amount") <= 0.0).named("extension")
+      imported.model += (amount <= 0.0).named("extension")
 
       assert(imported.model.inspect.constraintDeclarations.exists(_.name == "extension"))
+    }
+  }
+
+  test("an MPS round trip preserves original variable names and the optimum") {
+    implicit val ss: SparkSession = spark
+    fixture(mip) { path =>
+      val imported = LpMpsImport.read(path)
+      val directory = Files.createTempDirectory("spark-lp-roundtrip-")
+      val out = directory.resolve("model.mps")
+      try {
+        val names = LpMps.write(imported.model.inspect, out, ExportNaming.Original)
+        try {
+          val restored = LpMpsImport.read(out)
+          if (HighsInterop.available) assert(HighsInterop.inspect(out).get("objective").asDouble() == 9.0)
+
+          val result = restored.model.solve()
+
+          try {
+            assert(math.abs(result.objectiveValue - 9.0) < 1e-7)
+            assert(restored.variables.keySet == Set("amount", "choose"))
+          } finally result.close()
+        } finally names.close()
+      } finally {
+        Files.deleteIfExists(out)
+        Files.deleteIfExists(directory)
+      }
+    }
+  }
+
+  test("selecting alternate MPS RHS and bound sets changes the optimum") {
+    implicit val ss: SparkSession = spark
+    fixture(mip) { path =>
+      val options = MpsReadOptions(rhsSet = Some("alternate"), boundSet = Some("alternate"))
+
+      val selected = LpMpsImport.read(path, options)
+      val result = selected.model.solve()
+
+      try assert(math.abs(result.objectiveValue - 3.0) < 1e-7)
+      finally result.close()
     }
   }
 
@@ -244,30 +269,75 @@ class LpMpsImportSuite extends AnyFunSuite with DataFrameSuiteBase {
     }
   }
 
-  test("malformed and unsupported data fail with source context; limits and named sets are explicit") {
+  test("malformed or unsupported MPS records report their source file and section") {
     implicit val ss: SparkSession = spark
-    val invalid = Vector(mip.replace("BV standard choose", "SC standard choose 2"),
-      mip.replace("ENDATA", "SOS\n S1 GROUP\nENDATA"), mip.replace("INTEND", "INTORG"),
-      mip.replace("CAPACITY 1.5", "UNKNOWN 1.5"), mip.replace("ENDATA", ""),
-      mip.replace("PROFIT -7", "PROFIT NaN"))
-    invalid.foreach { text => fixture(text) { path =>
-      val error = intercept[LpModelException](LpMpsImport.read(path))
+    val invalidInputs = Seq(
+      "semi-continuous bound" -> mip.replace("BV standard choose", "SC standard choose 2"),
+      "SOS section" -> mip.replace("ENDATA", "SOS\n S1 GROUP\nENDATA"),
+      "nested integer marker" -> mip.replace("INTEND", "INTORG"),
+      "unknown RHS row" -> mip.replace("CAPACITY 1.5", "UNKNOWN 1.5"),
+      "missing ENDATA" -> mip.replace("ENDATA", ""),
+      "NaN objective constant" -> mip.replace("PROFIT -7", "PROFIT NaN"))
 
-      assert(error.getMessage.contains(path.toString))
-      assert(error.getMessage.contains("["))
-    } }
-    fixture(mip) { path =>
-      intercept[LpModelException](LpMpsImport.read(path, MpsReadOptions(rhsSet = Some("missing"))))
-      intercept[LpModelException](LpMpsImport.read(path, MpsReadOptions(maxVariables = 1)))
-      intercept[LpModelException](LpMpsImport.read(path, MpsReadOptions(maxBytes = 1)))
-      val preserved = LpMpsImport.read(path, MpsReadOptions(boundSet = Some("standard")))
+    invalidInputs.foreach { case (scenario, input) =>
+      withClue(s"$scenario: ") {
+        fixture(input) { path =>
+          val error = intercept[LpModelException](LpMpsImport.read(path))
 
-      assert(preserved.model.inspect.variableDeclarations.find(_.name == "amount").get.upper.contains(3.0))
+          assert(error.getMessage.contains(path.toString))
+          assert(error.getMessage.contains("["))
+        }
+      }
     }
-    fixture(mip.replace("UP standard amount 3", "PL standard amount")) { path =>
-      val unboundedDomain = LpMpsImport.read(path)
+  }
 
-      assert(unboundedDomain.model.inspect.variableDeclarations.find(_.name == "amount").get.upper.isEmpty)
+  test("requesting an unknown RHS set reports its name") {
+    implicit val ss: SparkSession = spark
+    fixture(mip) { path =>
+      val options = MpsReadOptions(rhsSet = Some("missing"))
+
+      val error = intercept[LpModelException](LpMpsImport.read(path, options))
+
+      assert(error.getMessage.contains("missing"))
+    }
+  }
+
+  test("MPS imports report the input limit that was exceeded") {
+    implicit val ss: SparkSession = spark
+    val limits = Seq(
+      "maxVariables=1" -> MpsReadOptions(maxVariables = 1),
+      "maxBytes=1" -> MpsReadOptions(maxBytes = 1))
+
+    fixture(mip) { path =>
+      limits.foreach { case (limit, options) =>
+        withClue(s"$limit: ") {
+          val error = intercept[LpModelException](LpMpsImport.read(path, options))
+
+          assert(error.getMessage.contains(limit))
+        }
+      }
+    }
+  }
+
+  test("the selected MPS bounds set supplies the upper endpoint") {
+    implicit val ss: SparkSession = spark
+    fixture(mip) { path =>
+      val options = MpsReadOptions(boundSet = Some("standard"))
+
+      val imported = LpMpsImport.read(path, options)
+      val amount = imported.model.inspect.variableDeclarations.find(_.name == "amount")
+
+      assert(amount.exists(_.upper.contains(3.0)))
+    }
+  }
+
+  test("a PL bound leaves the MPS variable without an upper endpoint") {
+    implicit val ss: SparkSession = spark
+    fixture(mip.replace("UP standard amount 3", "PL standard amount")) { path =>
+      val imported = LpMpsImport.read(path)
+      val amount = imported.model.inspect.variableDeclarations.find(_.name == "amount")
+
+      assert(amount.exists(_.upper.isEmpty))
     }
   }
 }

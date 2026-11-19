@@ -6,12 +6,22 @@ import com.holdenkarau.spark.testing.DataFrameSuiteBase
 import org.apache.spark.sql.SparkSession
 import org.scalatest.funsuite.AnyFunSuite
 import java.nio.file.{Files, Path}
+import java.util.concurrent.TimeUnit
 import scala.collection.JavaConverters._
 
 class NativeSessionSuite extends AnyFunSuite with DataFrameSuiteBase {
   private def available(): Unit = {
-    val p = new ProcessBuilder("python3", "-c", "import importlib.util; assert importlib.util.find_spec('highspy') or importlib.util.find_spec('scipy')").start()
-    if (p.waitFor() != 0) cancel("Optional HiGHS Python dependency unavailable")
+    val probe = new ProcessBuilder("python3", "-c",
+      "import importlib.util; assert importlib.util.find_spec('highspy') or importlib.util.find_spec('scipy')").start()
+    try {
+      if (!probe.waitFor(10, TimeUnit.SECONDS) || probe.exitValue() != 0)
+        cancel("Optional HiGHS Python dependency unavailable")
+    } finally {
+      if (probe.isAlive) {
+        probe.destroyForcibly()
+        probe.waitFor(5, TimeUnit.SECONDS)
+      }
+    }
   }
   private def empty(path: Path): Boolean = { val stream = Files.list(path); try !stream.findAny().isPresent finally stream.close() }
   private def remove(path: Path): Unit = {
@@ -123,28 +133,51 @@ class NativeSessionSuite extends AnyFunSuite with DataFrameSuiteBase {
     intercept[LpModelException](model.solve(new BoxAdapter, LpAdapterOptions(requireDuals = true)))
   }
 
-  test("callback exceptions and missing dependencies release sessions, processes and edit locks") {
-    available()
+  test("a missing native executable leaves no artifacts and the model remains editable") {
     implicit val ss: SparkSession = spark
-    val model = LpProblem("cleanup")
+    val model = LpProblem("missing native executable")
     val x = model.variable("x", upperBound = Some(2.0))
     model += x
     val root = Files.createTempDirectory("native cleanup ")
     try {
-      intercept[java.io.IOException](model.prepareNative(new HighsPythonAdapter(python = "/missing/python",
-        artifacts = LpCommandOptions(temporaryRoot = Some(root)))))
+      val adapter = new HighsPythonAdapter(python = "/missing/python",
+        artifacts = LpCommandOptions(temporaryRoot = Some(root)))
+
+      intercept[java.io.IOException](model.prepareNative(adapter))
 
       assert(empty(root))
+
+      // A failed preparation must release the edit lock.
       x.rename("still editable")
-      val session = model.prepareNative(new HighsPythonAdapter(artifacts = LpCommandOptions(temporaryRoot = Some(root)))).right.get
-      session.callback(_ => throw new IllegalStateException("callback failure"))
 
-      assert(intercept[IllegalStateException](session.solve()).getMessage.contains("callback failure"))
-      assert(empty(root))
-      x.rename("editable after exception")
+      assert(model.inspect.variableDeclarations.exists(_.name == "still editable"))
+    } finally remove(root)
+  }
 
-      intercept[IllegalStateException](session.latestSolution)
-      session.close()
+  test("a callback failure closes the native session and releases the model edit lock") {
+    available()
+    implicit val ss: SparkSession = spark
+    val model = LpProblem("native callback cleanup")
+    val x = model.variable("x", upperBound = Some(2.0))
+    model += x
+    val root = Files.createTempDirectory("native cleanup ")
+    try {
+      val adapter = new HighsPythonAdapter(artifacts = LpCommandOptions(temporaryRoot = Some(root)))
+      val session = model.prepareNative(adapter).fold(error => throw new IllegalStateException(error.toString), identity)
+      val callbackFailure = new IllegalStateException("callback failure")
+      try {
+        session.callback(_ => throw callbackFailure)
+
+        val error = intercept[IllegalStateException](session.solve())
+
+        assert(error.getMessage.contains("callback failure"))
+        assert(empty(root))
+        intercept[IllegalStateException](session.latestSolution)
+
+        x.rename("editable after exception")
+
+        assert(model.inspect.variableDeclarations.exists(_.name == "editable after exception"))
+      } finally session.close()
     } finally remove(root)
   }
 

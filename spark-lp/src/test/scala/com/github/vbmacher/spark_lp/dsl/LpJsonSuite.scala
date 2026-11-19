@@ -1,14 +1,34 @@
 package com.github.vbmacher.spark_lp.dsl
 
+import com.github.vbmacher.spark_lp.CandidateInfo
 import com.github.vbmacher.spark_lp.dsl.implicits._
 import com.holdenkarau.spark.testing.DataFrameSuiteBase
 import org.apache.spark.sql.SparkSession
 import org.scalatest.funsuite.AnyFunSuite
-import java.nio.file.Files
+import java.nio.file.{Files, Path, Paths, StandardWatchEventKinds}
+import java.util.concurrent.TimeUnit
 import scala.collection.JavaConverters._
 import scala.concurrent.duration._
 import scala.concurrent.{Await, Future}
-import scala.util.Try
+import scala.util.{Failure, Success, Try}
+
+private object LpJsonPublicationSignals {
+  def awaitFile(path: Path, timeout: FiniteDuration): Unit = {
+    val watcher = path.getFileSystem.newWatchService()
+    try {
+      path.getParent.register(watcher, StandardWatchEventKinds.ENTRY_CREATE)
+      val deadline = timeout.fromNow
+      while (!Files.exists(path) && deadline.hasTimeLeft()) {
+        val key = watcher.poll(deadline.timeLeft.toNanos.max(0L), TimeUnit.NANOSECONDS)
+        if (key != null) {
+          key.pollEvents()
+          key.reset()
+        }
+      }
+      require(Files.exists(path), s"Timed out waiting for $path")
+    } finally watcher.close()
+  }
+}
 
 class LpJsonSuite extends AnyFunSuite with DataFrameSuiteBase {
   test("JSON preserves model algebra and separately marked solution metadata") {
@@ -89,30 +109,59 @@ class LpJsonSuite extends AnyFunSuite with DataFrameSuiteBase {
     implicit val ss: SparkSession = spark
     implicit val executionContext: scala.concurrent.ExecutionContext = scala.concurrent.ExecutionContext.global
     val model = LpProblem("concurrent publication")
-    model.variable("x")
+    val x = model.variable("x")
     val root = Files.createTempDirectory("spark-lp-json-race-")
     val directory = root.resolve("model")
-    val writing = Future(Try(LpJson.write(model, directory.toString)))
+    val signalDirectory = root.toString
+    val writerIsStaging = root.resolve("writer-is-staging")
+    val allowPublication = root.resolve("allow-publication")
+    val markerBytes = Array[Byte](1)
+    val timeout = 30.seconds
+    val jobGroup = root.getFileName.toString
+
+    // The local Spark task writes solution values after staging starts and before publication.
+    val stagedValues = model.candidateValues(Seq(x -> 0.0)).map { value =>
+      val signals = Paths.get(signalDirectory)
+      Files.write(signals.resolve("writer-is-staging"), Array.emptyByteArray)
+      LpJsonPublicationSignals.awaitFile(signals.resolve("allow-publication"), timeout)
+      value
+    }
+    val candidate = CandidateInfo(available = true, feasible = true, iteration = None)
+    val solution = LpSolutionData(LpStatus.Optimal, Some(0.0), candidate, Some(stagedValues))
+    val context = sc
+
+    val writing = Future {
+      context.setJobGroup(jobGroup, "JSON publication race", interruptOnCancel = true)
+      try Try(LpJson.write(model, directory.toString, Some(solution)))
+      finally context.clearJobGroup()
+    }
     try {
-      val deadline = 30.seconds.fromNow
-      var temporarySeen = false
-      while (!temporarySeen && !writing.isCompleted && deadline.hasTimeLeft()) {
-        val children = Files.list(root)
-        try temporarySeen = children.iterator().asScala.exists(_.getFileName.toString.startsWith("model.tmp-"))
-        finally children.close()
-        if (!temporarySeen) Thread.`yield`()
+      // A competing writer creates the destination after the first writer has passed its initial check.
+      LpJsonPublicationSignals.awaitFile(writerIsStaging, timeout)
+      Files.createDirectory(directory)
+      val marker = Files.write(directory.resolve("concurrent-marker"), markerBytes)
+      Files.write(allowPublication, Array.emptyByteArray)
+      val result = Await.result(writing, timeout)
+
+      result match {
+        case Failure(error: LpModelException) =>
+          assert(error.getMessage.contains("JSON destination already exists"))
+        case Failure(error) => fail("Expected the existing destination to block publication", error)
+        case Success(_) => assert(false, "The writer published over the competing destination")
       }
-
-      assert(temporarySeen, "writer did not expose its temporary publication directory")
-      Files.createDirectories(directory)
-      val marker = Files.write(directory.resolve("concurrent-marker"), Array[Byte](1))
-
-      assert(Await.result(writing, 30.seconds).isFailure)
-      assert(Files.exists(marker))
+      assert(Files.readAllBytes(marker).sameElements(markerBytes))
     } finally {
-      Await.ready(writing, 30.seconds)
-      val path = new org.apache.hadoop.fs.Path(root.toString)
-      path.getFileSystem(spark.sparkContext.hadoopConfiguration).delete(path, true)
+      try {
+        Files.write(allowPublication, Array.emptyByteArray)
+        Await.ready(writing, timeout)
+      } catch {
+        case _: scala.concurrent.TimeoutException =>
+          context.cancelJobGroup(jobGroup)
+          Await.ready(writing, timeout)
+      } finally {
+        val path = new org.apache.hadoop.fs.Path(root.toString)
+        path.getFileSystem(spark.sparkContext.hadoopConfiguration).delete(path, true)
+      }
     }
   }
 }

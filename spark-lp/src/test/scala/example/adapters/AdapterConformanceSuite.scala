@@ -6,6 +6,7 @@ import com.holdenkarau.spark.testing.DataFrameSuiteBase
 import org.apache.spark.sql.SparkSession
 import org.scalatest.funsuite.AnyFunSuite
 import java.nio.file.{Files, Path}
+import java.util.concurrent.TimeUnit
 import scala.collection.JavaConverters._
 import scala.concurrent.duration._
 
@@ -62,7 +63,29 @@ with open(sys.argv[2],'w') as f: json.dump({'objective':h.getInfo().objective_fu
 }
 
 class AdapterConformanceSuite extends AnyFunSuite with DataFrameSuiteBase {
-  private def empty(path: Path): Boolean = { val s = Files.list(path); try !s.findAny().isPresent finally s.close() }
+  private def empty(path: Path): Boolean = {
+    val entries = Files.list(path)
+    try !entries.findAny().isPresent finally entries.close()
+  }
+
+  private def withCliDirectory(run: Path => Unit): Unit = {
+    val root = Files.createTempDirectory("adapter lifecycle ")
+    try run(root) finally {
+      val paths = Files.walk(root)
+      try paths.iterator().asScala.toVector.sortBy(_.getNameCount).reverse.foreach(Files.deleteIfExists)
+      finally paths.close()
+    }
+  }
+
+  private def cli(root: Path, code: String, retain: Boolean = false, executable: String = "python3"): LpCommandAdapter =
+    new LpCommandAdapter(LpCommandOptions(retainArtifacts = retain, temporaryRoot = Some(root))) {
+      override val name = "failure-fixture"
+      override val capabilities = LpSolverCapabilities()
+      override protected def command(input: Path, output: Path, options: LpAdapterOptions): Seq[String] =
+        Seq(executable, "-c", code, output.toString)
+      override protected def parse(path: Path, mapping: LpExportMapping, options: LpAdapterOptions): LpAdapterResult =
+        throw new IllegalArgumentException("malformed solution")
+    }
 
   test("external in-process adapter preserves keyed identities, sense, constants and caller caches") {
     implicit val ss: SparkSession = spark
@@ -112,7 +135,15 @@ class AdapterConformanceSuite extends AnyFunSuite with DataFrameSuiteBase {
 
   test("real CLI solver maps continuous and mixed models and cleans its artifacts") {
     val probe = new ProcessBuilder("python3", "-c", "from scipy.optimize._highspy._core import _Highs").start()
-    if (probe.waitFor() != 0) cancel("Optional SciPy HiGHS installation unavailable")
+    try {
+      if (!probe.waitFor(10, TimeUnit.SECONDS) || probe.exitValue() != 0)
+        cancel("Optional SciPy HiGHS installation unavailable")
+    } finally {
+      if (probe.isAlive) {
+        probe.destroyForcibly()
+        probe.waitFor(5, TimeUnit.SECONDS)
+      }
+    }
     implicit val ss: SparkSession = spark
     val root = Files.createTempDirectory("adapter path with spaces ")
     try for (category <- Seq(Continuous, Integer)) {
@@ -193,51 +224,88 @@ class AdapterConformanceSuite extends AnyFunSuite with DataFrameSuiteBase {
     intercept[LpModelException](model.solve(adapter, LpAdapterOptions(requireDuals = true)))
   }
 
-  test("CLI failure, missing executable, malformed output, timeout, cancellation and retained artifacts") {
+  test("CLI launch, execution and output failures clean their temporary files") {
     implicit val ss: SparkSession = spark
-    val model = LpProblem("lifecycle")
+    val model = LpProblem("CLI failures")
     model.variable("x", upperBound = Some(1.0))
-    val root = Files.createTempDirectory("adapter lifecycle ")
-    def cli(code: String, retain: Boolean = false, executable: String = "python3"): LpCommandAdapter =
-      new LpCommandAdapter(LpCommandOptions(retainArtifacts = retain, temporaryRoot = Some(root))) {
-        override val name = "failure-fixture"
-        override val capabilities = LpSolverCapabilities()
-        override protected def command(input: Path, output: Path, options: LpAdapterOptions): Seq[String] =
-          Seq(executable, "-c", code, output.toString)
-        override protected def parse(path: Path, mapping: LpExportMapping, options: LpAdapterOptions): LpAdapterResult =
-          throw new IllegalArgumentException("malformed solution")
-      }
-    try {
-      intercept[java.io.IOException](model.solve(cli("", executable = "/missing/spark-lp-executable")))
+    withCliDirectory { root =>
+      val missing = cli(root, "", executable = "/missing/spark-lp-executable")
+
+      intercept[java.io.IOException](model.solve(missing))
+
       assert(empty(root))
 
-      val failure = intercept[IllegalStateException](model.solve(cli("import sys; print('diagnostic'); sys.exit(7)")))
+      val nonzeroExit = cli(root, "import sys; print('diagnostic'); sys.exit(7)")
+
+      val failure = intercept[IllegalStateException](model.solve(nonzeroExit))
 
       assert(failure.getMessage.contains("diagnostic"))
       assert(empty(root))
-      intercept[IllegalStateException](model.solve(cli("pass")))
-      intercept[IllegalArgumentException](model.solve(cli("import sys; open(sys.argv[1],'w').write('bad')")))
+
+      val noOutput = cli(root, "pass")
+
+      intercept[IllegalStateException](model.solve(noOutput))
+
       assert(empty(root))
 
-      val timeout = model.solve(cli("import time; time.sleep(10)"), LpAdapterOptions(timeLimit = Some(100.millis)))
+      val malformed = cli(root, "import sys; open(sys.argv[1],'w').write('bad')")
+
+      intercept[IllegalArgumentException](model.solve(malformed))
+
+      assert(empty(root))
+    }
+  }
+
+  test("a timed-out CLI solve has no candidate and removes its temporary files") {
+    implicit val ss: SparkSession = spark
+    val model = LpProblem("CLI timeout")
+    model.variable("x", upperBound = Some(1.0))
+    val options = LpAdapterOptions(timeLimit = Some(100.millis))
+    withCliDirectory { root =>
+      val slowSolver = cli(root, "import time; time.sleep(10)")
+
+      val timeout = model.solve(slowSolver, options)
+
       try {
         assert(timeout.status == LpStatus.Stopped)
         assert(!timeout.candidate.available)
+        assert(empty(root))
       } finally timeout.close()
+    }
+  }
 
-      val cancel = model.solve(cli("raise RuntimeError('must not run')"), LpAdapterOptions(shouldStop = () => true))
+  test("cancelling a CLI solve before launch leaves no artifacts") {
+    implicit val ss: SparkSession = spark
+    val model = LpProblem("CLI cancellation")
+    model.variable("x", upperBound = Some(1.0))
+    val options = LpAdapterOptions(shouldStop = () => true)
+    withCliDirectory { root =>
+      val solver = cli(root, "raise RuntimeError('must not run')")
+
+      val cancel = model.solve(solver, options)
+
       try {
         assert(cancel.status == LpStatus.Stopped)
         assert(empty(root))
       } finally cancel.close()
+    }
+  }
 
-      val retained = model.solve(cli("import time; time.sleep(10)", retain = true), LpAdapterOptions(timeLimit = Some(100.millis)))
+  test("a timed-out CLI solve can retain its working directory") {
+    implicit val ss: SparkSession = spark
+    val model = LpProblem("CLI retained artifacts")
+    model.variable("x", upperBound = Some(1.0))
+    val options = LpAdapterOptions(timeLimit = Some(100.millis))
+    withCliDirectory { root =>
+      val slowSolver = cli(root, "import time; time.sleep(10)", retain = true)
+
+      val retained = model.solve(slowSolver, options)
+
       try {
-        assert(Files.isDirectory(java.nio.file.Paths.get(retained.backend.get.diagnostics("artifacts"))))
+        val artifacts = retained.backend.flatMap(_.diagnostics.get("artifacts"))
+        assert(retained.status == LpStatus.Stopped)
+        assert(artifacts.exists(path => Files.isDirectory(java.nio.file.Paths.get(path))))
       } finally retained.close()
-    } finally {
-      val paths = Files.walk(root)
-      try paths.iterator().asScala.toVector.sortBy(_.getNameCount).reverse.foreach(Files.deleteIfExists) finally paths.close()
     }
   }
 }

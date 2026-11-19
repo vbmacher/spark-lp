@@ -1,0 +1,47 @@
+[
+  {
+    "id": "fix-123",
+    "objective": "Reject scaled false certificates and solve both reported bounded feasible LPs correctly",
+    "dependencies": [],
+    "read_set": ["LP.scala", "newton", "LpEvidence.scala", "solver tests"],
+    "write_set": ["feature-123 solver implementation, numerical docs and regression tests"],
+    "side_effects": ["local sbt build outputs"],
+    "owner": "coordinator",
+    "inputs": ["GitHub123", "agreed readiness scope", "base7b3b8b7"],
+    "expected_outputs": ["minimal numerical fix and regressions"],
+    "validation": ["scaled model assertions", "existing Newton/certificate/QP suites"],
+    "evidence_required": ["automated runtime tests", "independent numerical review"],
+    "stop_condition": "default-tolerance examples correct and no introduced test/review failures",
+    "status": "complete"
+  },
+  {
+    "id": "fix-124",
+    "objective": "Honor MPS negative upper-only implicit lower bounds",
+    "dependencies": [],
+    "read_set": ["LpMpsImport.scala", "LpMpsImportSuite.scala"],
+    "write_set": ["feature-124 importer and importer suite"],
+    "side_effects": ["local sbt build outputs"],
+    "owner": "fix_124",
+    "inputs": ["GitHub124", "MPS bound rules", "base7b3b8b7"],
+    "expected_outputs": ["one-line finalization correction and tests"],
+    "validation": ["LpMpsImportSuite"],
+    "evidence_required": ["baseline regression failures then passing tests", "independent review"],
+    "stop_condition": "selected and explicit bounds preserved and suite passes",
+    "status": "complete"
+  },
+  {
+    "id": "fix-125",
+    "objective": "Preserve every requested Gramian column including duplicates",
+    "dependencies": [],
+    "read_set": ["dmatrix.scala", "DMatrixSuite.scala"],
+    "write_set": ["feature-125 matrix and matrix suite"],
+    "side_effects": ["local sbt build outputs"],
+    "owner": "fix_125",
+    "inputs": ["GitHub125", "user decision preserve duplicates", "base7b3b8b7"],
+    "expected_outputs": ["driver duplicate-column copying and regression coverage"],
+    "validation": ["DMatrixSuite"],
+    "evidence_required": ["baseline regression failure then passing tests", "independent review"],
+    "stop_condition": "weighted sparse and dense duplicates correct in one distributed pass",
+    "status": "complete"
+  }
+]

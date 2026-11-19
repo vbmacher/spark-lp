@@ -16,18 +16,17 @@ class ImplicitsSuite extends AnyFunSuite {
   test("checkedZip rejects unequal lengths without consuming the unmatched element") {
     val numbers = Iterator(1, 2, 3)
     val letters = Iterator("a", "b")
+
     val pairs = numbers.checkedZip(letters)
+    val matchedPrefix = List(pairs.next(), pairs.next())
 
-    val firstPair = pairs.next()
-    val secondPair = pairs.next()
-
-    assert(firstPair == Tuple2(1, "a"))
-    assert(secondPair == Tuple2(2, "b"))
+    assert(matchedPrefix == List((1, "a"), (2, "b")))
 
     // Exhausting the shorter iterator must leave the unmatched number available.
     intercept[IllegalArgumentException](pairs.next())
 
     assert(numbers.hasNext)
     assert(!letters.hasNext)
+    assert(numbers.next() == 3)
   }
 }

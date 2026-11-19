@@ -12,18 +12,31 @@ class MipCoverCutsSuite extends AnyFunSuite {
   test("global covers preserve every independently enumerated feasible binary assignment") {
     val weights = Vector(2.0, 3.0, 4.0, 5.0, 7.0, 9.0)
     val cols = columns(weights)
-    val cuts = MipCoverCuts.generate(cols, Array(12.0), Array.fill(6)(0.0), Array.fill(6)(1.0), Set.empty,
-      Map(0L -> 1.0, 1L -> 1.0, 2L -> 1.0, 3L -> 0.6), global = true, enabled, Set.empty, 10)
+    val capacity = 12.0
+    val lower = Array.fill(weights.size)(0.0)
+    val upper = Array.fill(weights.size)(1.0)
+    val relaxedValues = Map(0L -> 1.0, 1L -> 1.0, 2L -> 1.0, 3L -> 0.6)
+    val feasibleAssignments = (0 until 64).map { mask =>
+      weights.indices.map(index => if ((mask & (1 << index)) != 0) 1.0 else 0.0)
+    }.filter(bits => weights.zip(bits).map { case (weight, bit) => weight * bit }.sum <= capacity)
+
+    val cuts = MipCoverCuts.generate(cols, Array(capacity), lower, upper, Set.empty,
+      relaxedValues, global = true, enabled, Set.empty, 10)
 
     assert(cuts.nonEmpty)
     assert(cuts.forall(_.scope == GlobalCut))
-    for (mask <- 0 until 64) {
-      val bits = weights.indices.map(i => if ((mask & (1 << i)) != 0) 1.0 else 0.0)
-      if (weights.zip(bits).map { case (a, b) => a * b }.sum <= 12.0)
-        assert(cuts.forall(cut => cut.columns.map(g => bits(g.toInt)).sum <= cut.rhs))
+    feasibleAssignments.foreach { bits =>
+      cuts.foreach { cut =>
+        assert(cut.columns.map(column => bits(column.toInt)).sum <= cut.rhs,
+          s"cut $cut ruled out feasible assignment $bits")
+      }
     }
-    val repeated = MipCoverCuts.generate(cols, Array(12.0), Array.fill(6)(0.0), Array.fill(6)(1.0), Set.empty,
-      Map(0L -> 1.0, 1L -> 1.0, 2L -> 1.0, 3L -> 0.6), global = true, enabled, cuts.map(_.signature).toSet, 10)
+
+    // Feeding the same relaxation back with already known signatures must add no cuts.
+    val knownCuts = cuts.map(_.signature).toSet
+
+    val repeated = MipCoverCuts.generate(cols, Array(capacity), lower, upper, Set.empty,
+      relaxedValues, global = true, enabled, knownCuts, 10)
 
     assert(repeated.isEmpty)
   }
@@ -44,16 +57,22 @@ class MipCoverCutsSuite extends AnyFunSuite {
       Map(0L -> 0.5), global = true, enabled, Set.empty, 10))
   }
 
-  test("numerically marginal, unbounded-negative and exhausted-budget deductions are rejected") {
-    val cols = columns(Vector(1.0, 1.0))
-    val lo = Array(0.0, 0.0)
-    val hi = Array(1.0, 1.0)
-    val values = Map(0L -> 1.0, 1L -> 1.0)
+  test("cover generation declines unsafe candidates or an exhausted cut budget") {
+    val lower = Array(0.0, 0.0)
+    val upper = Array(1.0, 1.0)
+    val relaxedValues = Map(0L -> 1.0, 1L -> 1.0)
+    val inputs = Seq(
+      ("capacity exceeded by numerical noise", Vector(1.0, 1.0), 2.0 - 1e-12, Set.empty[Int], 10),
+      ("unbounded negative contributor", Vector(1.0, 1.0), 1.5, Set(0), 10),
+      ("no remaining cut budget", Vector(1.0, 1.0), 1.5, Set.empty[Int], 0),
+      ("numerically tiny coefficient", Vector(1e-15, 1.0), 0.5, Set.empty[Int], 10))
 
-    assert(MipCoverCuts.generate(cols, Array(2.0 - 1e-12), lo, hi, Set.empty, values, true, enabled, Set.empty, 10).isEmpty)
-    assert(MipCoverCuts.generate(cols, Array(1.5), lo, hi, Set(0), values, true, enabled, Set.empty, 10).isEmpty)
-    assert(MipCoverCuts.generate(cols, Array(1.5), lo, hi, Set.empty, values, true, enabled, Set.empty, 0).isEmpty)
-    assert(MipCoverCuts.generate(columns(Vector(1e-15, 1.0)), Array(0.5), lo, hi, Set.empty, values, true, enabled, Set.empty, 10).isEmpty)
+    inputs.foreach { case (scenario, weights, capacity, unboundedRows, budget) =>
+      val cuts = MipCoverCuts.generate(columns(weights), Array(capacity), lower, upper, unboundedRows,
+        relaxedValues, global = true, enabled, Set.empty, budget)
+
+      assert(cuts.isEmpty, scenario)
+    }
   }
 
   test("covers remain valid with shifted binaries and negative bounded integer contributions") {

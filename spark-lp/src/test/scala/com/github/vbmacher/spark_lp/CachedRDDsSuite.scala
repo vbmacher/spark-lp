@@ -9,21 +9,26 @@ class CachedRDDsSuite extends AnyFunSuite with DataFrameSuiteBase {
   test("checkpointed values survive cache loss without recomputing their source") {
     val caches = new CachedRDDs
     val evaluations = sc.longAccumulator("source evaluations")
-    val values = caches.checkpoint(sc.parallelize(1 to 8, 2).map { value =>
+    val source = sc.parallelize(1 to 8, 2).map { value =>
       evaluations.add(1L)
       value * 2
-    })
+    }
+    val expected = Array(2, 4, 6, 8, 10, 12, 14, 16)
     try {
-      val expected = (1 to 8).map(_ * 2).toArray
+      val checkpointed = caches.checkpoint(source)
+      val valuesBeforeEviction = checkpointed.collect()
 
-      assert(values.collect().sameElements(expected))
-      assert(values.getCheckpointFile.nonEmpty)
-      val before = evaluations.value
+      assert(valuesBeforeEviction.sameElements(expected))
+      assert(checkpointed.getCheckpointFile.nonEmpty)
 
-      values.unpersist(blocking = true)
+      // Evict the in-memory data and check that the next action reads the checkpoint.
+      val evaluationsBeforeEviction = evaluations.value
 
-      assert(values.collect().sameElements(expected))
-      assert(evaluations.value == before)
+      checkpointed.unpersist(blocking = true)
+      val valuesAfterEviction = checkpointed.collect()
+
+      assert(valuesAfterEviction.sameElements(expected))
+      assert(evaluations.value == evaluationsBeforeEviction)
     } finally caches.close()
   }
 
@@ -34,6 +39,7 @@ class CachedRDDsSuite extends AnyFunSuite with DataFrameSuiteBase {
       caches.checkpoint(caller).count()
       val owned = caches.checkpoint(caller.map(_ * 2))
       owned.count()
+
       caches.close()
 
       assert(caller.getStorageLevel == StorageLevel.DISK_ONLY)

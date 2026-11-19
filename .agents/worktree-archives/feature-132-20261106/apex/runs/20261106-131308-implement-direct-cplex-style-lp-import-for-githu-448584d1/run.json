@@ -1,0 +1,90 @@
+{
+  "baseline": {
+    "available": true,
+    "branch": "feature-132",
+    "branch_fingerprint": "e144a0a78d112761beda046c02efc2695ec4dec29c49cd045a6d640df5c8126c",
+    "changes": [],
+    "errors": [],
+    "paths_redacted": false,
+    "revision": "7d5e440a62be49acb676d12bfbf6f04810aa4211",
+    "status_fingerprint": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "upstream": null,
+    "upstream_error": "fatal: no upstream configured for branch 'feature-132'",
+    "verified": true
+  },
+  "checkpoints": [
+    {
+      "git": {
+        "available": true,
+        "branch": "feature-132",
+        "branch_fingerprint": "e144a0a78d112761beda046c02efc2695ec4dec29c49cd045a6d640df5c8126c",
+        "changes": [
+          {
+            "path": ".agents/",
+            "status": "??"
+          }
+        ],
+        "errors": [],
+        "paths_redacted": false,
+        "revision": "7d5e440a62be49acb676d12bfbf6f04810aa4211",
+        "status_fingerprint": "30880ab1433d27c7fc6c764d060701b123f172e13c02bfe7d614283cb6deb0df",
+        "upstream": null,
+        "upstream_error": "fatal: no upstream configured for branch 'feature-132'",
+        "verified": true
+      },
+      "id": "a7b1a861-5d1d-499c-a804-b3a7249edcd9",
+      "message": "Reader local; tests delegated with disjoint write set; docs and review after integration",
+      "phase": "plan",
+      "timestamp": "2026-11-06T12:13:47+00:00"
+    },
+    {
+      "git": {
+        "available": true,
+        "branch": "feature-132",
+        "branch_fingerprint": "e144a0a78d112761beda046c02efc2695ec4dec29c49cd045a6d640df5c8126c",
+        "changes": [
+          {
+            "path": "README.md",
+            "status": " M"
+          },
+          {
+            "path": "docs/usage.adoc",
+            "status": " M"
+          },
+          {
+            "path": ".agents/",
+            "status": "??"
+          },
+          {
+            "path": "spark-lp/src/main/scala/com/github/vbmacher/spark_lp/dsl/LpImport.scala",
+            "status": "??"
+          },
+          {
+            "path": "spark-lp/src/test/scala/com/github/vbmacher/spark_lp/dsl/LpImportSuite.scala",
+            "status": "??"
+          }
+        ],
+        "errors": [],
+        "paths_redacted": false,
+        "revision": "7d5e440a62be49acb676d12bfbf6f04810aa4211",
+        "status_fingerprint": "fae0157d7eaf522d7c784ad708a8659895ac037a228ecf00484109349eede568",
+        "upstream": null,
+        "upstream_error": "fatal: no upstream configured for branch 'feature-132'",
+        "verified": true
+      },
+      "id": "09ee8eda-2628-49fc-a6be-5ad28e2a2092",
+      "message": "APEX run complete",
+      "phase": "handoff",
+      "timestamp": "2026-11-06T12:24:27+00:00"
+    }
+  ],
+  "created_at": "2026-11-06T12:13:08+00:00",
+  "current_phase": "handoff",
+  "last_event_id": "420969ce-8dfb-4ea2-8086-3e27ac52d8cd",
+  "root": "/home/vbmacher/projects/spark-lp/.worktrees/feature-132",
+  "run_id": "20261106-131308-implement-direct-cplex-style-lp-import-for-githu-448584d1",
+  "schema_version": 1,
+  "status": "complete",
+  "task": "Implement direct CPLEX-style LP import for GitHub issue 132",
+  "updated_at": "2026-11-06T12:24:28+00:00"
+}

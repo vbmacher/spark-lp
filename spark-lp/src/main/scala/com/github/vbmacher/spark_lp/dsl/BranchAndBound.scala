@@ -332,7 +332,8 @@ private[dsl] final class BranchAndBound(
                 case Some(rounded) =>
                   acceptIncumbent(Candidate(roundedObjective(node, vals, rounded, objMin),
                     summary.x, rounded, summary))
-                  remember(lowerBound)
+                  if (prunable(lowerBound)) remember(lowerBound)
+                  else branchOrGiveUp(node.copy(bound = lowerBound), vals, open)
                 case _ => branchOrGiveUp(node, vals, open)
               }
           }

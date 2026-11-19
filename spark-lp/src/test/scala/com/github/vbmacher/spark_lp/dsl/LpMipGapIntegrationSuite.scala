@@ -40,4 +40,29 @@ class LpMipGapIntegrationSuite extends AnyFunSuite with DataFrameSuiteBase {
       } finally stopped.close()
     }
   }
+
+  test("a feasible rounded incumbent only closes a node within the configured gap") {
+    implicit val ss: SparkSession = spark
+    val model = LpProblem("rounded incumbent", Maximize)
+    val b = model.variable("b", category = Binary)
+    val y = model.variable("y", upperBound = Some(1000.0))
+    model += b - y
+    model += (y - 1.2 * b >= -0.3)
+
+    val mip = MipConfig(integralityTolerance = 0.4, gapTolerance = 0.0)
+    val limited = model.solve(SolveConfig(tolerance = 1e-3, mip = mip.copy(maxNodes = 1)))
+    try {
+      assert(limited.status == LpStatus.IterationLimit)
+      assert(limited.candidate.feasible)
+      assert(limited.value(b) == 0.0)
+      assert(limited.mip.get.absoluteGap.exists(_ > 0.2))
+    } finally limited.close()
+
+    val continued = model.solve(SolveConfig(tolerance = 1e-3, mip = mip))
+    try {
+      assert(continued.value(b) == 1.0)
+      assert(math.abs(continued.objectiveValue - 0.1) < 1e-3)
+      assert(continued.status != LpStatus.Optimal || continued.mip.get.absoluteGap.contains(0.0))
+    } finally continued.close()
+  }
 }

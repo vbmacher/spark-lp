@@ -2,17 +2,16 @@
 :toc: left
 :source-highlighter: highlightjs
 
-spark-lp provides a Scala 2.12 API for linear, mixed-integer linear and continuous convex quadratic
+spark-lp provides a Scala API for linear, mixed-integer linear and continuous convex quadratic
 optimization models on Apache Spark.
 
 This guide covers installation, modelling, solving, diagnostics, interchange and tuning.
 
 == Installation
 
-Your application supplies Spark. Supported versions are 2.4.8 and 3.0.2–3.5.3; test the version you
-deploy. Add the `com.github.vbmacher:spark-lp` artifact for Scala 2.12 and choose a version matching
-your Spark version. Artifact versions use `<spark-version>_<library-version>`, for example
-`3.5.3_2.1.0`.
+Your application supplies Spark. Choose the `com.github.vbmacher:spark-lp` artifact for your Scala
+binary version. Artifact versions use `<spark-line>_<spark-lp-release>`, where `spark-line` is the
+major.minor part of your Spark runtime version.
 
 Native BLAS/LAPACK libraries provide optimized linear algebra and can improve performance.
 The Java implementation also works.

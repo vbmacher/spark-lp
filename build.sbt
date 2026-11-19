@@ -75,10 +75,7 @@ lazy val `spark-lp` = sparkAxes.foldLeft(projectMatrix
       _.settings(
         libraryDependencies ++= ax._1.sparkLibs.flatMap(r => Seq(r % Test, r % Provided)) ++ Seq(ax._1.sparkTestingBaseLib),
         name := "spark-lp",
-        version := {
-          val sparkVersion = ax._2.sparkVersion
-          s"${sparkVersion}_$productVersion"
-        },
+        version := s"${ax._1.sparkLine}_$productVersion",
       ))
 }
 

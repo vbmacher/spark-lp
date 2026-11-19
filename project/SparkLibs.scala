@@ -5,20 +5,19 @@ import sbt.*
  *
  * @param idSuffix suffix added to generated sbt project identifiers.
  * @param directorySuffix suffix used for axis-specific target directories.
- * @param sparkVersion complete Spark dependency version.
  */
-case class SparkAxis(idSuffix: String, directorySuffix: String, sparkVersion: String) extends VirtualAxis.WeakAxis
+case class SparkAxis(idSuffix: String, directorySuffix: String) extends VirtualAxis.WeakAxis
 
 /**
- * Dependency coordinates derived for one supported Spark version.
+ * Dependency coordinates for one supported Spark line.
  *
  * @param sparkFull complete Spark dependency version.
- * @param sparkShort major-minor Spark line used in project names.
- * @param sparkTestingBase compatible spark-testing-base version suffix.
+ * @param sparkLine major.minor Spark line used in project and artifact names.
+ * @param sparkTestingBase compatible spark-testing-base version.
  */
 case class SparkLibs(
   sparkFull: String,
-  sparkShort: String,
+  sparkLine: String,
   sparkTestingBase: String,
 ) {
 
@@ -32,17 +31,23 @@ case class SparkLibs(
 
 object SparkLibs {
 
-  lazy val sparkVersions: Seq[SparkLibs] = Seq("2.4.8", "3.0.2", "3.1.3", "3.2.4", "3.3.2", "3.4.2", "3.5.3")
-    .map(version => SparkLibs(
-      sparkFull = version,
-      sparkShort = version.split('.').take(2).mkString("."),
-      sparkTestingBase = s"${version}_2.0.1"
-    ))
+  private def spark(line: String, patch: Int, testingBaseRelease: String = "2.0.1"): SparkLibs = {
+    val version = s"$line.$patch"
+    SparkLibs(version, line, s"${version}_$testingBaseRelease")
+  }
+
+  lazy val sparkVersions: Seq[SparkLibs] = Seq(
+    spark("2.4", 8),
+    spark("3.0", 2),
+    spark("3.1", 3),
+    spark("3.2", 4),
+    spark("3.3", 2),
+    spark("3.4", 2),
+    spark("3.5", 6, testingBaseRelease = "2.1.3"))
 
   lazy val sparkAxes: Seq[(SparkLibs, SparkAxis)] = sparkVersions
     .map(v => (v, SparkAxis(
-      idSuffix = "Spark_" + v.sparkShort.replace(".", "_"),
-      directorySuffix = "spark_" + v.sparkShort,
-      sparkVersion = v.sparkFull
+      idSuffix = "Spark_" + v.sparkLine.replace(".", "_"),
+      directorySuffix = "spark_" + v.sparkLine
     )))
 }

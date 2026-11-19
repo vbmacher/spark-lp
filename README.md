@@ -25,29 +25,25 @@ The DSL uses syntax very similar to [PuLP][pulp].
 
 ## Usage
 
-Requires **JDK 11** and **Scala 2.12**; Spark is provided by your application.
-Artifacts are published for seven Spark variants (**2.4.8, 3.0.2, 3.1.3, 3.2.4,
-3.3.2, 3.4.2, 3.5.3**), each versioned `<spark-version>_<library-version>`.
-
-Add the coordinate matching your Spark runtime — for example Spark 3.5.3 with
-library 2.1.0:
+Requires **JDK 11**. Your application supplies Spark. Choose the artifact for
+your Scala binary version and use your Spark major.minor line in the coordinate.
+The [build matrix](project/SparkLibs.scala) lists the supported lines.
 
 ```scala
-libraryDependencies += "com.github.vbmacher" %% "spark-lp" % "3.5.3_2.1.0"
+libraryDependencies += "com.github.vbmacher" %% "spark-lp" % "<spark-line>_<spark-lp-release>"
 ```
 
 Native BLAS/LAPACK can accelerate CPU linear algebra; a Java fallback is available.
 
 ## Build and publish
 
-Each Spark variant is a separate sbt module named
-`spark-lpSpark_<major>_<minor>2_12` (Scala 2.12) — e.g. `spark-lpSpark_3_52_12`
-for Spark 3.5. The library version is `productVersion` in `build.sbt`.
+Each Spark line is a separate sbt module. Use `sbt projects` to list the modules.
+The library version is `productVersion` in `build.sbt`.
 
 Publish one variant to the local Ivy repository, then depend on it as above:
 
 ```sh
-sbt 'spark-lpSpark_3_52_12/publishLocal'
+sbt '<module>/publishLocal'
 ```
 
 Publish every variant locally (the root project aggregates all modules):
@@ -154,10 +150,10 @@ representations, backend requirements and numerical checks.
 - [Algorithm, backend selection, scaling and certificate verification](docs/algorithm.adoc)
 - [Runnable examples](examples/src/main/scala/com/github/vbmacher/spark_lp/examples/)
 
-Run the supported Spark matrix with `sbt +test`, or Spark 3.5 only:
+Run the supported Spark matrix with `sbt +test`, or select one module:
 
 ```sh
-sbt 'spark-lpSpark_3_52_12/test' 'examplesSpark_3_5/compile'
+sbt '<module>/test'
 ```
 
 ## Benchmarks

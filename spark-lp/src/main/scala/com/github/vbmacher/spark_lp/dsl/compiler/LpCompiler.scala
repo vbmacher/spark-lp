@@ -23,7 +23,7 @@ import scala.util.hashing.MurmurHash3
   */
 private[dsl] final class LpCompiler(problem: LpProblem, config: SolveConfig,
   clock: LpSolveClock = LpSolveClock.system) extends AutoCloseable {
-  import LpCompiler.{BoundBlock, notFinite, relativeBoundViolation, relativeRowViolation}
+  import LpCompiler.{BoundBlock, boundViolation, notFinite, relativeRowViolation, rowViolation}
 
   /** Tolerance for presolved zero-term rows (`0 <sense> rhs`). */
   private val PresolveTolerance = 1e-11
@@ -1312,27 +1312,34 @@ private[dsl] final class LpCompiler(problem: LpProblem, config: SolveConfig,
     })
   }
 
+  /** Checks each original row and bound after the integral columns are rounded. */
+  private[dsl] def roundedCandidateFeasible(compiled: Compiled, x: DVector,
+    overrides: Map[Long, Double]): Boolean = {
+    val values = reconstructValues(compiled, x, overrides)
+    originalValuesViolation(compiled, values, normalize = false) <= config.tolerance && sosFeasible(values)
+  }
+
+  private def sosFeasible(values: RDD[((Int, String), Double)]): Boolean = {
+    val groups = problem.sosGroups.map(_.data).toVector
+    if (groups.isEmpty) true
+    else {
+      val members = groups.flatMap(_.members.map(_.variable)).toSet
+      val memberValues = values.filter { case ((si, key), _) => members(LpVariableId(si, key)) }.collect().toMap
+      groups.forall { group =>
+        val active = group.members.zipWithIndex.collect { case (m, i) if
+          memberValues.get((m.variable.family, m.variable.key)).exists(v => math.abs(v) > config.mip.sosZeroTolerance) => i }
+        group.members.forall(m => memberValues.get((m.variable.family, m.variable.key)).exists(java.lang.Double.isFinite)) &&
+          LpSos.valid(group, active)
+      }
+    }
+  }
+
   /**
     * Rebuilds user-facing per-variable values from a solver iterate: undoes bound shifts (`shift + y`),
     * recombines free-variable splits (`x_plus - x_minus`), drops internal slack columns, and re-adds
     * fixed variables that were presolved out. `integerOverrides` supplies exact user-unit values for
     * integral columns keyed by global column index, taking precedence over the reconstructed value.
     */
-  private[dsl] def sosFeasible(compiled: Compiled, x: DVector, overrides: Map[Long, Double], tolerance: Double): Boolean = {
-    val groups = problem.sosGroups.map(_.data).toVector
-    if (groups.isEmpty) true
-    else {
-      val members = groups.flatMap(_.members.map(_.variable)).toSet
-      val values = reconstructValues(compiled, x, overrides)
-        .filter { case ((si, key), _) => members(LpVariableId(si, key)) }.collect().toMap
-      groups.forall { group =>
-        val active = group.members.zipWithIndex.collect { case (m, i) if
-          values.get((m.variable.family, m.variable.key)).exists(v => math.abs(v) > tolerance) => i }
-        group.members.forall(m => values.get((m.variable.family, m.variable.key)).exists(java.lang.Double.isFinite)) && LpSos.valid(group, active)
-      }
-    }
-  }
-
   private def reconstructValues(compiled: Compiled, x: DVector,
     integerOverrides: Map[Long, Double], direction: Boolean = false): RDD[((Int, String), Double)] = {
     // per-column primal values, aligned with the compiled column order
@@ -1425,7 +1432,7 @@ private[dsl] final class LpCompiler(problem: LpProblem, config: SolveConfig,
         case _ => throw new IllegalStateException("Expected one-column bounded variables")
       })
     }.toMap
-    val (activity, boundViolation) = compiled.sortedCols.zipPartitions(x) { (columns, blocks) =>
+    val (activity, maxBoundViolation) = compiled.sortedCols.zipPartitions(x) { (columns, blocks) =>
       val values = blocks.next().values
       val activity = new Array[Double](rowCount)
       var violation = 0.0
@@ -1434,7 +1441,7 @@ private[dsl] final class LpCompiler(problem: LpProblem, config: SolveConfig,
         if (data.kind == 0) {
           val value = data.shift + values(i)
           val (lower, upper) = bounds(data.setIndex)
-          violation = math.max(violation, relativeBoundViolation(value, Some(lower), upper))
+          violation = math.max(violation, boundViolation(value, Some(lower), upper, normalize = true))
           data.vector.foreachActive { (row, coefficient) =>
             if (row < rowCount) activity(row) += coefficient * value
           }
@@ -1450,7 +1457,7 @@ private[dsl] final class LpCompiler(problem: LpProblem, config: SolveConfig,
       }
       (left, math.max(lv, rv))
     }
-    compiled.rowSpecs.foldLeft(boundViolation) { (worst, row) =>
+    compiled.rowSpecs.foldLeft(maxBoundViolation) { (worst, row) =>
       val residual = activity(row.finalIdx) - row.rhsUser
       math.max(worst, relativeRowViolation(row.sense, residual, row.rhsUser))
     }
@@ -1466,7 +1473,8 @@ private[dsl] final class LpCompiler(problem: LpProblem, config: SolveConfig,
     originalValuesViolation(compiled, reconstructValues(compiled, x, Map.empty))
   }
 
-  private def originalValuesViolation(compiled: Compiled, values: RDD[((Int, String), Double)]): Double = {
+  private def originalValuesViolation(compiled: Compiled, values: RDD[((Int, String), Double)],
+    normalize: Boolean = true): Double = {
     val bounds = compiled.plans.map { p =>
       val limits = p.kind match {
         case FixedKind(v) => (Some(v), Some(v))
@@ -1478,13 +1486,14 @@ private[dsl] final class LpCompiler(problem: LpProblem, config: SolveConfig,
     }.toMap
     val boundViolations = values.map { case ((si, _), value) =>
       val (lower, upper) = bounds(si)
-      relativeBoundViolation(value, lower, upper)
+      boundViolation(value, lower, upper, normalize)
     }
     val rows = sc.parallelize(compiled.rowSpecs.map(r => (r.rowId, (r.rhsUser, r.sense))))
     val activity = compiled.userTermsAgg.map { case ((si, enc, row), c) => ((si, enc), (row, c)) }
       .join(values).map { case (_, ((row, c), value)) => (row, c * value) }.reduceByKey(_ + _)
     val violations = activity.rightOuterJoin(rows).map { case (_, (act, (rhs, sense))) =>
-      relativeRowViolation(sense, act.getOrElse(0.0) - rhs, rhs)
+      val scale = if (normalize) 1.0 + math.abs(rhs) else 1.0
+      rowViolation(sense, act.getOrElse(0.0) - rhs, scale)
     }
     boundViolations.union(violations).fold(0.0)(math.max)
   }
@@ -1604,21 +1613,26 @@ private[dsl] object LpCompiler {
   private[compiler] def notFinite(value: Double): Boolean = !Numerics.isFinite(value)
 
   /**
-    * Worst relative bound violation of `value` against optional lower/upper bounds, scaled by
-    * `1 + |bound|`; `0.0` when feasible and `+Inf` for a non-finite value. Safe to call inside Spark
-    * closures because it lives on the singleton object.
+    * Worst bound violation against optional lower/upper bounds. Normalization scales each
+    * violation by `1 + |bound|`. Non-finite values have infinite violation.
     */
-  private[compiler] def relativeBoundViolation(value: Double, lower: Option[Double], upper: Option[Double]): Double =
+  private[compiler] def boundViolation(value: Double, lower: Option[Double], upper: Option[Double],
+    normalize: Boolean): Double = {
+    def scale(bound: Double): Double = if (normalize) 1.0 + math.abs(bound) else 1.0
     if (notFinite(value)) Double.PositiveInfinity
     else math.max(
-      lower.map(l => (l - value) / (1.0 + math.abs(l))).getOrElse(0.0),
-      upper.map(u => (value - u) / (1.0 + math.abs(u))).getOrElse(0.0))
+      lower.map(l => (l - value) / scale(l)).getOrElse(0.0),
+      upper.map(u => (value - u) / scale(u)).getOrElse(0.0))
+  }
 
   /**
     * Relative constraint-row violation for a signed residual `activity - rhs`, scaled by `1 + |rhs|`;
     * `+Inf` for a non-finite residual. Safe inside Spark closures (singleton object).
     */
   private[compiler] def relativeRowViolation(sense: LpSense, residual: Double, rhs: Double): Double =
+    rowViolation(sense, residual, 1.0 + math.abs(rhs))
+
+  private[compiler] def rowViolation(sense: LpSense, residual: Double, scale: Double): Double =
     if (notFinite(residual)) Double.PositiveInfinity
-    else sense.violation(residual) / (1.0 + math.abs(rhs))
+    else sense.violation(residual) / scale
 }

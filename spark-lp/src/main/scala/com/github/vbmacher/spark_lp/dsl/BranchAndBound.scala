@@ -36,9 +36,6 @@ private[dsl] final class BranchAndBound(
   config: SolveConfig)(implicit spark: SparkSession) {
 
   import BranchAndBound._
-  import com.github.vbmacher.spark_lp.vectors.dense_vector.implicits._
-  import com.github.vbmacher.spark_lp.vectors.dmatrix.implicits._
-
   private val control = config.mip.control
   private val search = config.mip.search
   private val coordinator = Thread.currentThread()
@@ -483,24 +480,9 @@ private[dsl] final class BranchAndBound(
     Some(intCols.indices.map(j => intCols(j).g -> out(j)).toMap)
   }
 
-  /** Rounding an almost-integral value can still violate a row with a large coefficient. */
-  private def feasibleRounding(
-    node: Node, x: DVector, vals: Map[Long, Double], rounded: Map[Long, Double]): Boolean = {
-    val rhs = nodeRhs(node)
-    val residual = compiled.AT.adjointProduct(x).combine(1.0, -1.0, rhs).values
-    intCols.indices.foreach { j =>
-      val col = intCols(j)
-      val delta = rounded(col.g) - node.lower(j) - vals(col.g)
-      col.rowCoeffs.foreach { case (r, a) => residual(r) += a * delta }
-      residual(col.boundRow) += delta
-    }
-    math.sqrt(residual.map(v => v * v).sum) / (1.0 + math.sqrt(rhs.dot(rhs))) < config.tolerance &&
-      compiler.sosFeasible(compiled, x, rounded, config.mip.sosZeroTolerance)
-  }
-
   private def feasibleRoundedValues(node: Node, summary: LP.SolveSummary,
     values: Map[Long, Double]): Option[Map[Long, Double]] =
-    roundedValues(node, values).filter(feasibleRounding(node, summary.x, values, _))
+    roundedValues(node, values).filter(compiler.roundedCandidateFeasible(compiled, summary.x, _))
 
   private def roundedObjective(node: Node, values: Map[Long, Double], rounded: Map[Long, Double],
     relaxationObjective: Double): Double =

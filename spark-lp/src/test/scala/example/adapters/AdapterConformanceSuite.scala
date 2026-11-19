@@ -25,8 +25,9 @@ final class BoxAdapter extends LpSolverAdapter {
         if (options.shouldStop()) return LpAdapterResult(LpStatus.Stopped)
         val objectiveSign = if (sense == Minimize) 1.0 else -1.0
         val values = variables.map(v => v.id -> v).leftOuterJoin(costs).map { case (id, (v, cost)) =>
-          val lower = if (v.category == Continuous) v.lower else math.ceil(math.max(v.lower, if (v.category == Binary) 0.0 else v.lower))
-          val upper = if (v.category == Continuous) v.upper.get else math.floor(math.min(v.upper.get, if (v.category == Binary) 1.0 else v.upper.get))
+          val (domainLower, domainUpper) = VariableCategory.domainBoundsFinite(v.category, v.lower, v.upper)
+          val lower = if (v.category == Continuous) domainLower else math.ceil(domainLower)
+          val upper = if (v.category == Continuous) domainUpper else math.floor(domainUpper)
           require(lower <= upper, "Empty box domain")
           val c = cost.getOrElse(0.0) * objectiveSign
           LpCandidateValue(id, if (c >= 0.0) lower else upper)
@@ -88,6 +89,25 @@ class AdapterConformanceSuite extends AnyFunSuite with DataFrameSuiteBase {
         assert(input.storageLevel.useMemory)
       } finally { result.close(); builtIn.close(); input.unpersist() }
     }
+  }
+
+  test("finite-bound adapter accepts implicit binary bounds and rejects unbounded continuous variables") {
+    implicit val ss: SparkSession = spark
+    val model = LpProblem("binary box", Maximize)
+    val choice = model.variable("choice", category = Binary)
+    model += 1.0 * choice
+    val adapter = new BoxAdapter
+
+    val result = model.solve(adapter)
+    try {
+      assert(result.status == LpStatus.Optimal)
+      assert(result.value(choice) == 1.0)
+      assert(adapter.closed)
+    } finally result.close()
+
+    model.variable("unbounded")
+    val error = intercept[LpModelException](model.solve(new BoxAdapter))
+    assert(error.getMessage.contains("infinite bounds"))
   }
 
   test("real CLI solver maps continuous and mixed models and cleans its artifacts") {

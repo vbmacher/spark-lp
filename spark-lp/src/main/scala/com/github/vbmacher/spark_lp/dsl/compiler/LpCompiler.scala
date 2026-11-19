@@ -341,10 +341,14 @@ private[dsl] final class LpCompiler(problem: LpProblem, config: SolveConfig,
     plans.filter(_.metadata.members.nonEmpty).foreach { plan =>
       val metadata = plan.metadata
       val envelope = metadata.envelopeFor(Some(plan.count))
+      // Relaxation preserves the snapped domains of both the family and its members.
+      val category = if (config.relaxIntegrality) plan.handle.category else Continuous
+      val (familyLower, familyUpper) = LpIntegrality.integralBounds(category, envelope.lower, envelope.upper)
       plan.keys.toLocalIterator.foreach { case (key, _) =>
         val bounds = metadata.at(key)
-        Vector((bounds.lower > envelope.lower, LpSense.Ge, bounds.lower),
-          (bounds.upper.exists(u => envelope.upper.forall(_ > u)), LpSense.Le, bounds.upper.getOrElse(0.0)))
+        val (lower, upper) = LpIntegrality.integralBounds(category, bounds.lower, bounds.upper)
+        Vector((lower > familyLower, LpSense.Ge, lower),
+          (upper.exists(u => familyUpper.forall(_ > u)), LpSense.Le, upper.getOrElse(0.0)))
           .filter(_._1).foreach { case (_, sense, rhs) =>
             checkRowBudget(rowSpecs.size + 1L, "member variable bounds")
             val id = rowSpecs.size

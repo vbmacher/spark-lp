@@ -25,7 +25,7 @@ The DSL uses syntax very similar to [PuLP][pulp].
 
 ## Usage
 
-Requires **JDK 11**. Your application supplies Spark. Choose the artifact for
+Your application supplies Spark. Use a JDK supported by your Spark runtime. Choose the artifact for
 your Scala binary version and use your Spark major.minor line in the coordinate.
 The [build matrix](project/SparkLibs.scala) lists the supported lines.
 
@@ -46,7 +46,8 @@ Publish one variant to the local Ivy repository, then depend on it as above:
 sbt '<module>/publishLocal'
 ```
 
-Publish every variant locally (the root project aggregates all modules):
+Use the newest JDK in the [CI matrix](.github/workflows/scala.yml) to publish all variants.
+For a local publish, run:
 
 ```sh
 sbt publishLocal
@@ -150,7 +151,8 @@ representations, backend requirements and numerical checks.
 - [Algorithm, backend selection, scaling and certificate verification](docs/algorithm.adoc)
 - [Runnable examples](examples/src/main/scala/com/github/vbmacher/spark_lp/examples/)
 
-Run the supported Spark matrix with `sbt +test`, or select one module:
+CI tests every Spark line with its matching JDK. To run one line locally, select its sbt module
+and use the JDK configured for it in the [CI matrix](.github/workflows/scala.yml):
 
 ```sh
 sbt '<module>/test'

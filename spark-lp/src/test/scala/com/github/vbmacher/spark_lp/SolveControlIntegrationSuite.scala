@@ -81,13 +81,15 @@ class SolveControlIntegrationSuite extends AnyFunSuite with DataFrameSuiteBase {
       assert(stopped.stopReason.contains(StopReason.UserRequested))
       assert(timed.stopReason.contains(StopReason.TimeLimit))
       assert(stalled.stopReason.contains(StopReason.NoProgress))
+      val firstValues = first.x.collect().iterator.flatMap(_.values.iterator).toVector
       Seq(limited, stopped, timed, stalled).foreach { result =>
         assert(result.candidate == CandidateInfo(true, true, Some(1)))
         assert(result.objectiveValue == first.objectiveValue)
         assert(result.primalResidual == first.primalResidual)
         assert(result.dualResidual == first.dualResidual)
         assert(result.dualityGap == first.dualityGap)
-        assert(result.x.collect().flatMap(_.values).sameElements(first.x.collect().flatMap(_.values)))
+        val values = result.x.collect().iterator.flatMap(_.values.iterator)
+        assert(values.sameElements(firstValues.iterator))
       }
 
       assert(events.count(_.phase == SolvePhase.OuterIteration) == 4)

@@ -226,7 +226,7 @@ object LpEvidenceVerifier {
       val activities = joined.flatMap { case (_, (v, x)) =>
         val scale = if (ray) columnScale(v) else 1.0
         v.coefficients.map { case (r, a) => (r, (a * x, math.abs(a) / scale)) }
-      }.reduceByKey { case ((a, b), (c, d)) => (a + c, b + d) }.collectAsMap()
+      }.reduceByKey { (a: (Double, Double), b: (Double, Double)) => (a._1 + b._1, a._2 + b._2) }.collectAsMap()
       val (rowError, relativeRowError) = model.rows.zipWithIndex.map { case (r, i) =>
         val (activity, scale) = activities.getOrElse(i, (0.0, 0.0))
         val d = activity - (if (ray) 0.0 else r.rhs)

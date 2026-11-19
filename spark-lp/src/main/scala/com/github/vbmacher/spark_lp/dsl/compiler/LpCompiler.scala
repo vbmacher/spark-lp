@@ -389,7 +389,7 @@ private[dsl] final class LpCompiler(problem: LpProblem, config: SolveConfig,
     // --- aggregated user-space terms (repeated terms in one expression sum, per linear algebra)
     val emptyTerms: RDD[((Int, String, Int), Double)] = sc.emptyRDD
     val userTermsAgg = caches.cache(
-      (if (termPieces.isEmpty) emptyTerms else sc.union(termPieces))
+      (if (termPieces.isEmpty) emptyTerms else sc.union(termPieces.toVector))
         .reduceByKey(_ + _)
         .filter(_._2 != 0.0)
     )
@@ -422,7 +422,7 @@ private[dsl] final class LpCompiler(problem: LpProblem, config: SolveConfig,
         .map(p => p.handle.setIndex -> p.handle.metadata).toMap
       val equalities = rowSpecs.filter(r => r.sense == LpSense.Eq && !r.internalBound).map(_.rowId).toSet
       val singleton = userTermsAgg.map { case ((si, key, row), value) => ((si, key), (1L, row, value)) }
-        .reduceByKey { case ((n, row, value), (m, _, _)) => (n + m, row, value) }
+        .reduceByKey { (a: (Long, Int, Double), b: (Long, Int, Double)) => (a._1 + b._1, a._2, a._3) }
         .filter { case ((si, key), (count, row, _)) =>
           free.get(si).exists(m => m.at(key).lower.isNegInfinity && m.at(key).upper.isEmpty) && count == 1 && equalities(row)
         }
@@ -696,15 +696,16 @@ private[dsl] final class LpCompiler(problem: LpProblem, config: SolveConfig,
 
     if (slacks.nonEmpty) {
       val slackParts = math.max(1, math.min(sc.defaultParallelism, slacks.size))
-      entryPieces += sc.parallelize(slacks, slackParts)
-      basePieces += sc.parallelize(slacks.map { case (g, _) => (g, (-1, "", 3: Byte, 0.0)) }, slackParts)
+      val slackEntries = slacks.toVector
+      entryPieces += sc.parallelize(slackEntries, slackParts)
+      basePieces += sc.parallelize(slackEntries.map { case (g, _) => (g, (-1, "", 3: Byte, 0.0)) }, slackParts)
     }
 
     val emptyEntries: RDD[(Long, (Int, Double))] = sc.emptyRDD
     val emptyCosts: RDD[(Long, Double)] = sc.emptyRDD
-    val allBase = sc.union(basePieces)
-    val allEntries = if (entryPieces.isEmpty) emptyEntries else sc.union(entryPieces)
-    val allCosts = if (costPieces.isEmpty) emptyCosts else sc.union(costPieces)
+    val allBase = sc.union(basePieces.toVector)
+    val allEntries = if (entryPieces.isEmpty) emptyEntries else sc.union(entryPieces.toVector)
+    val allCosts = if (costPieces.isEmpty) emptyCosts else sc.union(costPieces.toVector)
 
     val parts = math.max(1, math.min(sc.defaultParallelism.toLong, numCols).toInt)
     val partitioner = new RangeIndexPartitioner(numCols, parts)
@@ -1542,7 +1543,7 @@ private[dsl] final class LpCompiler(problem: LpProblem, config: SolveConfig,
       val unavailable = originalRows -- prices.keySet
       val effects = compiled.userTermsAgg.map { case ((si, key, row), coefficient) =>
         ((si, key), (coefficient * prices.getOrElse(row, 0.0), unavailable(row) && coefficient != 0.0))
-      }.reduceByKey { case ((a, missingA), (b, missingB)) => (a + b, missingA || missingB) }
+      }.reduceByKey { (a: (Double, Boolean), b: (Double, Boolean)) => (a._1 + b._1, a._2 || b._2) }
       val costs = compiled.originalCosts.getOrElse(sc.emptyRDD[((Int, String), Double)])
       val keys = sc.union(compiled.plans.map { p =>
         val si = p.handle.setIndex

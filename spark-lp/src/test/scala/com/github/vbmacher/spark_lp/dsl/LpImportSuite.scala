@@ -427,6 +427,31 @@ class LpImportSuite extends AnyFunSuite with DataFrameSuiteBase {
     }
   }
 
+  test("original-name exports preserve row labels that resemble unsupported sections") {
+    implicit val ss: SparkSession = spark
+    val model = LpProblem("keyword row labels")
+    val x = model.variable("x")
+    val names = Seq("sos", "semi", "pwl", "lazy", "user")
+    names.zipWithIndex.foreach { case (name, index) =>
+      model += (x <= index.toDouble).named(name)
+    }
+    val directory = Files.createTempDirectory("spark-lp-row-label-roundtrip-")
+    val path = directory.resolve("model.lp")
+    val mapping = LpExport.lp(model.inspect, path, ExportNaming.Original)
+
+    try {
+      val imported = LpImport.read(path)
+      val rows = imported.model.inspect.constraints.collect().map(r => r.name -> r.rhs).toMap
+
+      assert(imported.constraints.keySet == names.toSet)
+      assert(rows == names.zipWithIndex.map { case (name, index) => name -> index.toDouble }.toMap)
+    } finally {
+      mapping.close()
+      Files.deleteIfExists(path)
+      Files.deleteIfExists(directory)
+    }
+  }
+
   test("invalid UTF-8 input reports a model error with file context") {
     implicit val ss: SparkSession = spark
     val path = Files.createTempFile("spark-lp-invalid-utf8-", ".lp")

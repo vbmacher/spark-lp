@@ -25,13 +25,25 @@ The DSL uses syntax very similar to [PuLP][pulp].
 
 ## Usage
 
-Your application supplies Spark. Use a JDK supported by your Spark runtime. Choose the artifact for
-your Scala binary version and use your Spark major.minor line in the coordinate.
-The [build matrix](project/SparkLibs.scala) lists the supported lines.
+Your application supplies Spark. Use a JDK supported by your Spark runtime.
+The [build matrix](project/SparkLibs.scala) lists the supported Spark and Scala versions.
+
+| Spark line | Scala binary version | Maven artifact |
+| --- | --- | --- |
+| 2.4 and 3.0–3.5 | 2.12 | `spark-lp_2.12` |
+| 4.0–4.3 | 2.13 | `spark-lp_2.13` |
+
+Starting with 2.2.0, the artifact version uses the Spark major and minor
+version in `<spark-line>_<spark-lp-release>`. For Spark 3.5 with Scala 2.12,
+add this dependency to `build.sbt`.
 
 ```scala
-libraryDependencies += "com.github.vbmacher" %% "spark-lp" % "<spark-line>_<spark-lp-release>"
+libraryDependencies += "com.github.vbmacher" %% "spark-lp" % "3.5_2.2.0"
 ```
+
+sbt's `%%` appends the Scala binary version to the artifact name. For Scala
+2.12, it resolves `spark-lp_2.12`.
+[Spark 3.5 artifact on Maven Central](https://repo.maven.apache.org/maven2/com/github/vbmacher/spark-lp_2.12/3.5_2.2.0/)
 
 Native BLAS/LAPACK can accelerate CPU linear algebra; a Java fallback is available.
 
@@ -46,8 +58,8 @@ Publish one variant to the local Ivy repository, then depend on it as above:
 sbt '<module>/publishLocal'
 ```
 
-Use the newest JDK in the [CI matrix](.github/workflows/scala.yml) to publish all variants.
-For a local publish, run:
+Use the newest JDK in the [CI build matrix](.github/workflows/scala.yml) to
+publish all variants locally.
 
 ```sh
 sbt publishLocal

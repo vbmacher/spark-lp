@@ -1,0 +1,68 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="760" height="388" viewBox="0 0 760 388" role="img" aria-labelledby="title desc">
+  <title id="title">LAPACK factorization by thread count</title>
+  <desc id="desc">On a 5,000 by 5,000 matrix, Java full factorization took 18.35 seconds. At 1, 2, 4, and 8 native threads, full factorization took 0.874, 0.448, 0.231, and 0.127 seconds. Native packed factorization took 3.87, 3.89, 3.89, and 3.92 seconds. The time axis is logarithmic.</desc>
+  <style>
+    text { font: 16px Arial, Helvetica, sans-serif; fill: #24344a; }
+    .title { font-size: 23px; font-weight: 700; }
+    .muted { font-size: 14px; fill: #526276; }
+    .grid { stroke: #dce3eb; }
+    .native-full { fill: #2463a8; }
+    .native-packed { fill: #b44c16; }
+    .java-full { fill: #526276; }
+    .series { fill: none; stroke-width: 2.5; }
+  </style>
+  <rect width="760" height="388" rx="8" fill="#fff"/>
+  <text x="30" y="35" class="title">LAPACK factorization by thread count</text>
+  <text x="30" y="61" class="muted">Local · 5,000 × 5,000 matrix · seconds on a logarithmic scale</text>
+
+  <path d="M80 85h620 M80 111.16h620 M80 156.61h620 M80 198.08h620 M80 243.53h620 M80 285h620" class="grid" fill="none"/>
+  <g text-anchor="end">
+    <text x="66" y="90">20</text>
+    <text x="66" y="116.16">10</text>
+    <text x="66" y="161.61">3</text>
+    <text x="66" y="203.08">1</text>
+    <text x="66" y="248.53">0.3</text>
+    <text x="66" y="290">0.1</text>
+  </g>
+  <g text-anchor="middle">
+    <text x="125" y="308">1</text>
+    <text x="307" y="308">2</text>
+    <text x="489" y="308">4</text>
+    <text x="671" y="308">8</text>
+    <text x="398" y="331" class="muted">Threads</text>
+  </g>
+
+  <path d="M125 82.25l6 6-6 6-6-6z" class="java-full"/>
+  <text x="139" y="98" class="java-full">18.35</text>
+
+  <polyline points="125,146.99 307,146.84 489,146.84 671,146.50" class="series" stroke="#b44c16" stroke-dasharray="6 4"/>
+  <g class="native-packed" text-anchor="middle">
+    <rect x="120" y="141.99" width="10" height="10"/>
+    <rect x="302" y="141.84" width="10" height="10"/>
+    <rect x="484" y="141.84" width="10" height="10"/>
+    <rect x="666" y="141.50" width="10" height="10"/>
+    <text x="125" y="134" class="native-packed">3.87</text>
+    <text x="307" y="134" class="native-packed">3.89</text>
+    <text x="489" y="134" class="native-packed">3.89</text>
+    <text x="671" y="134" class="native-packed">3.92</text>
+  </g>
+
+  <polyline points="125,203.17 307,228.36 489,253.39 671,275.96" class="series" stroke="#2463a8"/>
+  <g class="native-full" text-anchor="middle">
+    <circle cx="125" cy="203.17" r="5"/>
+    <circle cx="307" cy="228.36" r="5"/>
+    <circle cx="489" cy="253.39" r="5"/>
+    <circle cx="671" cy="275.96" r="5"/>
+    <text x="125" y="188" class="native-full">0.874</text>
+    <text x="307" y="216" class="native-full">0.448</text>
+    <text x="489" y="241" class="native-full">0.231</text>
+    <text x="671" y="264" class="native-full">0.127</text>
+  </g>
+
+  <path d="M167 350l6 6-6 6-6-6z" class="java-full"/>
+  <text x="181" y="362">Java full</text>
+  <circle cx="339" cy="356" r="5" class="native-full"/>
+  <text x="353" y="362">Native full</text>
+  <rect x="510" y="351" width="10" height="10" class="native-packed"/>
+  <text x="529" y="362">Native packed</text>
+</svg>

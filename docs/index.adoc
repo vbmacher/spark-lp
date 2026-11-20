@@ -25,12 +25,13 @@ solves continuous models; https://doi.org/10.2307/1910129[branch-and-bound] hand
 == Performance
 
 The https://bencher.dev/perf/spark-lp[live benchmark dashboard] tracks solve time,
-memory and convergence. The charts below compare the Cholesky and conjugate-gradient
-linear-system solvers. See xref:benchmarks.adoc[the benchmark guide] for measures and comparison rules.
+memory and convergence. The charts compare Cholesky and conjugate gradient on the
+spark-lp 2.2.0 local workloads. See xref:benchmarks.adoc[the benchmark report] for the release
+configuration, EMR results, and measurement details.
 
-image::benchmark-runtime.svg[Cholesky versus conjugate gradient solve time]
+image::benchmark-runtime.svg[Release 2.2.0 median solve time in seconds by local LP workload and solver]
 
-image::benchmark-memory.svg[Cholesky versus conjugate gradient peak local process memory]
+image::benchmark-memory.svg[Release 2.2.0 peak process RSS in GiB by local LP workload and solver]
 
 == Project
 

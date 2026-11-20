@@ -11,7 +11,54 @@ tolerance, solver backend, CPU allocation, partitions and heap limits.
 Check convergence before comparing time and memory. A missing time means no successful timing
 was published. Heap limits describe configuration; memory measures report observed usage.
 
-== September 2026 results
+== Spark LP 2.2.0 results
+
+The November 20, 2026 run used the `2.2.0` tag (`e08751f`), Spark 3.5.6, JDK 11, and
+four local Spark threads on Linux AArch64. It used Java BLAS and native LAPACK with a 4 GiB
+JVM heap. The release results have their own `release/2.2.0` branch and plots in Bencher.
+The September local scaling runs used Java LAPACK. A matched run of an earlier release on
+this setup would be needed to measure the change between releases.
+https://api.bencher.dev/v0/projects/spark-lp/reports?branch=release-2-2-0&per_page=100[2.2.0 reports]
+
+=== Local LPs
+
+Both solvers ran the same four LP inputs with eight partitions and a `1e-8` tolerance.
+The widths below are the matrix generator settings. Each timed result passed the warmup
+and five measured solves. RSS is peak process resident memory across the run.
+
+[cols="3,1,1,1,1",options="header"]
+|===
+|LP input |Cholesky median (s) |CG median (s) |Cholesky peak RSS (GiB) |CG peak RSS (GiB)
+|1,000 rows, 10,000 variables, width 8, seed 11 |3.71 |6.98 |3.82 |3.84
+|5,000 rows, 50,000 variables, width 8, seed 11 |15.28 |9.75 |4.24 |3.99
+|5,000 rows, 50,000 variables, width 20, widely scaled coefficients, seed 11 |19.42 |15.17 |3.90 |3.78
+|5,000 rows, 50,000 variables, width 20, nearly dependent rows, seed 47 |19.71 |Warmup timed out |4.02 |—
+|===
+
+On the width-8 inputs, Cholesky was 1.88× faster at 1,000 rows and CG was 1.57× faster at
+5,000 rows. Both solvers validated the widely scaled input. On the nearly dependent input,
+the CG warmup hit the 30-minute limit before measured solves began.
+https://api.bencher.dev/v0/projects/spark-lp/reports/01a1f99d-c4f2-75ff-a97c-56e03384f36d[LP and modelling results]
+
+image::benchmark-runtime.svg[Release 2.2.0 median solve time in seconds and observed ranges by local LP workload and solver]
+
+image::benchmark-memory.svg[Release 2.2.0 peak process RSS in GiB by local LP workload and solver]
+
+=== Presolve and MIP
+
+These benchmarks used four partitions, one warmup, and three measured solves per configuration.
+All five configurations validated.
+
+* On the LP with 12 variables and 12 fixed equality rows, the median was 2.19 seconds with
+  presolve off and 2.30 seconds with full presolve.
+* On the six-item knapsack, serial search took 19.73 seconds and search with two parallel
+  node relaxations took 9.90 seconds. Both found the same objective and processed 17 nodes.
+* The fixed-leaf probe used one binary and one continuous variable with an absolute MIP gap
+  target of `1e-6`. It took 6.50 seconds, returned the expected objective of 0.1 with a gap of
+  `2.76e-8`, and recorded two fixed-leaf refinements per solve.
+  https://api.bencher.dev/v0/projects/spark-lp/reports/01a1f99d-c85d-7770-b02b-96f76237088c[Fixed-leaf MIP results]
+
+== Historical results from September 2026
 
 Cholesky was faster on small LPs and validated more of the difficult cases. CG was faster on
 several large sparse LPs and solved the largest case, with 100,000 rows and 100 million variables.
@@ -20,8 +67,9 @@ The September 14–17 snapshot contains 375 published outcomes from 22 reports a
 testbeds. Each outcome represents one benchmark configuration in a report. The total covers
 local and EMR LPs, modelling workloads, LAPACK factorization, and Python and OpenCL checks,
 including repeat runs. Of those outcomes, 309 include a validated solve time, 17 validated
-without a published time, and 49 recorded no validated result. These measurements predate the
-Spark LP 2.2.0 release. https://api.bencher.dev/v0/projects/spark-lp/reports?per_page=100[Published reports]
+without a published time, and 49 recorded no validated result. Bencher groups these pre-release
+measurements under `master`.
+https://api.bencher.dev/v0/projects/spark-lp/reports?branch=master&per_page=100[Historical reports]
 
 === Local LP runtime and memory
 
@@ -29,12 +77,8 @@ On the width-8 series with four Spark threads and a 4 GiB heap, Cholesky was fas
 1,000 rows. At 5,000 rows, CG took 11.4 seconds and Cholesky took 156.0 seconds, a 13.6× speedup.
 At 10,000 rows, CG took 9.3 seconds and the benchmark excluded Cholesky for memory. A separate
 width-20 series favored CG starting at 2,500 rows. Observed peak process RSS was 3.8–4.1 GiB
-across the width-8 runs shown below.
+across the width-8 runs.
 https://api.bencher.dev/v0/projects/spark-lp/reports/01a0b3e6-ca9f-79e3-8daf-9f6fd8e4adb4[Local LP results]
-
-image::benchmark-runtime.svg[Median solve time by row count for Cholesky and CG on the local width-8 LP series]
-
-image::benchmark-memory.svg[Peak process RSS by row count for the same local LP series]
 
 === Distributed LPs on EMR
 

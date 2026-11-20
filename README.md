@@ -172,16 +172,17 @@ sbt '<module>/test'
 
 ## Benchmarks
 
-Local sparse LPs (2026-09-14): Cholesky wins through 1,000 rows; at 5,000,
-CG is **13.6× faster** (11.4 vs 156.0 seconds). Both stay near 4 GiB process RSS.
-These are matched workloads, not a universal crossover; ranges show observed
-variation, not confidence intervals. Cholesky at 10,000 rows was resource-excluded.
+On local Spark 3.5.6 with native LAPACK, spark-lp **2.2.0** solved the 1,000-row
+well-conditioned LP in 3.71 seconds with Cholesky and 6.98 seconds with CG. On the
+5,000-row well-conditioned LP, CG took 9.75 seconds and Cholesky took 15.28 seconds.
+Peak process RSS across the validated LP runs ranged from 3.78 to 4.24 GiB.
+CG timed out during warmup on the nearly dependent 5,000-row LP.
 
-[![Cholesky versus CG: solve time by problem size](docs/benchmark-runtime.svg)](https://bencher.dev/perf/spark-lp)
-[![Cholesky versus CG: peak local process memory](docs/benchmark-memory.svg)](https://bencher.dev/perf/spark-lp)
+[![Spark LP 2.2.0 median solve time in seconds by local LP workload and solver](docs/benchmark-runtime.svg)](https://bencher.dev/perf/spark-lp)
+[![Spark LP 2.2.0 peak process RSS in GiB by local LP workload and solver](docs/benchmark-memory.svg)](https://bencher.dev/perf/spark-lp)
 
-[Bencher dashboard](https://bencher.dev/perf/spark-lp): runtime, memory and convergence
-history, including separate EMR comparisons. Run a small suite locally:
+The [Bencher dashboard](https://bencher.dev/perf/spark-lp) tracks runtime, memory,
+and convergence, including separate EMR comparisons. Run a small suite locally:
 
 ```sh
 ./benchmarks/bench run --suite smoke --output benchmarks/output/smoke.bmf.json

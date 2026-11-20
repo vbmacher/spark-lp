@@ -1,11 +1,14 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="760" height="265" viewBox="0 0 760 265" role="img" aria-labelledby="title desc">
+<svg xmlns="http://www.w3.org/2000/svg" width="880" height="309" viewBox="0 0 880 309" role="img" aria-labelledby="title desc">
   <title id="title">EMR outcomes for generated LPs</title>
-  <desc id="desc">The same 100 generated LP benchmark cases per solver cover accuracy, conditioning, dense matrices, driver heap, sparse baselines, larger sparse LPs, and shape and sparsity. CG validated 90 cases and left 10 incomplete. Cholesky validated 82, ran out of JVM heap on 12, and was excluded for memory before running on 6.</desc>
+  <desc id="desc">Of the same 100 generated LP benchmark cases per solver, CG validated 90 and left 10 incomplete. Cholesky validated 82, ran out of heap on 12, and was excluded for memory on 6.</desc>
   <style>
-    text { font: 16px Arial, Helvetica, sans-serif; fill: #24344a; }
+    text { font-family: Arial, Helvetica, sans-serif; font-size: 16px; fill: #24344a; }
     .title { font-size: 23px; font-weight: 700; }
-    .muted { font-size: 14px; fill: #526276; }
-    .grid { stroke: #dce3eb; }
+    .detail { font-size: 14px; fill: #526276; }
+    .axis-label { font-size: 15px; font-weight: 700; }
+    .tick { font-size: 14px; text-anchor: middle; }
+    .grid { fill: none; stroke: #dce3eb; }
+    .axis { fill: none; stroke: #77879a; }
     .validated { fill: #2463a8; }
     .incomplete { fill: #ecb46a; }
     .oom { fill: #98374f; }
@@ -13,40 +16,46 @@
     .count { font-weight: 700; text-anchor: middle; }
     .on-dark { fill: #fff; }
   </style>
-  <rect width="760" height="265" rx="8" fill="#fff"/>
-  <text x="30" y="35" class="title">EMR outcomes for generated LPs</text>
-  <text x="30" y="61" class="muted">September 15–16, 2026 · Same 100 generated LP benchmark cases per solver</text>
-
-  <rect x="150" y="80" width="12" height="12" class="validated"/>
-  <text x="169" y="92">Validated</text>
-  <rect x="268" y="80" width="12" height="12" class="incomplete"/>
-  <text x="287" y="92">Solver incomplete</text>
-  <rect x="440" y="80" width="12" height="12" class="oom"/>
-  <text x="459" y="92">Heap OOM</text>
-  <rect x="563" y="80" width="12" height="12" class="excluded"/>
-  <text x="582" y="92">Resource-excluded</text>
-
-  <path d="M150 111v100 M287.5 111v100 M425 111v100 M562.5 111v100 M700 111v100" class="grid" fill="none"/>
-  <text x="30" y="144">CG</text>
-  <rect x="150" y="120" width="495" height="36" class="validated"/>
-  <rect x="645" y="120" width="55" height="36" class="incomplete"/>
-  <text x="397.5" y="144" class="count on-dark">90</text>
-  <text x="672.5" y="144" class="count">10</text>
-
-  <text x="30" y="194">Cholesky</text>
-  <rect x="150" y="170" width="451" height="36" class="validated"/>
-  <rect x="601" y="170" width="66" height="36" class="oom"/>
-  <rect x="667" y="170" width="33" height="36" class="excluded"/>
-  <text x="375.5" y="194" class="count on-dark">82</text>
-  <text x="634" y="194" class="count on-dark">12</text>
-  <text x="683.5" y="194" class="count">6</text>
-
-  <g text-anchor="middle" class="muted">
-    <text x="150" y="229">0</text>
-    <text x="287.5" y="229">25</text>
-    <text x="425" y="229">50</text>
-    <text x="562.5" y="229">75</text>
-    <text x="700" y="229">100</text>
-    <text x="425" y="252">LP benchmark cases</text>
+  <rect width="880" height="309" rx="8" fill="#fff"/>
+  <text x="29" y="36" class="title">EMR outcomes for generated LPs</text>
+  <text x="29" y="62" class="detail">September 15–16, 2026 · same 100 generated LP benchmark cases per solver</text>
+  <rect x="188" y="86" width="10" height="10" class="validated"/>
+  <text x="205" y="96">Validated</text>
+  <rect x="331" y="86" width="10" height="10" class="incomplete"/>
+  <text x="348" y="96">Incomplete</text>
+  <rect x="475" y="86" width="10" height="10" class="oom"/>
+  <text x="492" y="96">Heap OOM</text>
+  <rect x="620" y="86" width="10" height="10" class="excluded"/>
+  <text x="637" y="96">Resource-excluded</text>
+  <path d="M188 121V240 M347.5 121V240 M507 121V240 M666.5 121V240 M826 121V240" class="grid"/>
+  <path d="M188 121V240H826" class="axis"/>
+  <text x="24" y="181" class="axis-label" text-anchor="middle" transform="rotate(-90 24 181)">Solver backend</text>
+  <text x="188" y="262" class="tick">0</text>
+  <text x="347.5" y="262" class="tick">25</text>
+  <text x="507" y="262" class="tick">50</text>
+  <text x="666.5" y="262" class="tick">75</text>
+  <text x="826" y="262" class="tick">100</text>
+  <text x="507" y="289" class="axis-label" text-anchor="middle">Number of LP benchmark cases</text>
+  <text x="60" y="157">CG</text>
+  <g aria-label="CG, Validated, 90 LP benchmark cases">
+    <rect x="188" y="134" width="574.2" height="34" class="validated"/>
+    <text x="475.1" y="157" class="count on-dark">90</text>
+  </g>
+  <g aria-label="CG, Incomplete, 10 LP benchmark cases">
+    <rect x="762.2" y="134" width="63.8" height="34" class="incomplete"/>
+    <text x="794.1" y="157" class="count">10</text>
+  </g>
+  <text x="60" y="215">Cholesky</text>
+  <g aria-label="Cholesky, Validated, 82 LP benchmark cases">
+    <rect x="188" y="192" width="523.16" height="34" class="validated"/>
+    <text x="449.58" y="215" class="count on-dark">82</text>
+  </g>
+  <g aria-label="Cholesky, Heap OOM, 12 LP benchmark cases">
+    <rect x="711.16" y="192" width="76.56" height="34" class="oom"/>
+    <text x="749.44" y="215" class="count on-dark">12</text>
+  </g>
+  <g aria-label="Cholesky, Resource-excluded, 6 LP benchmark cases">
+    <rect x="787.72" y="192" width="38.28" height="34" class="excluded"/>
+    <text x="806.86" y="215" class="count">6</text>
   </g>
 </svg>
